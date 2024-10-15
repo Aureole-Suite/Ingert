@@ -1,5 +1,5 @@
-use std::path::PathBuf;
 use clap::Parser;
+use std::path::PathBuf;
 
 #[derive(clap::Parser)]
 struct Args {
@@ -13,7 +13,6 @@ fn main() {
 		process_file(&file);
 	}
 }
-
 
 #[tracing::instrument]
 fn process_file(file: &PathBuf) {
@@ -32,7 +31,7 @@ fn process_file(file: &PathBuf) {
 	};
 
 	match ingert::parse_da(&data) {
-		Ok(_) => {},
+		Ok(_) => {}
 		Err(e) => tracing::error!("Error: {}", snafu::Report::from_error(e)),
 	}
 }

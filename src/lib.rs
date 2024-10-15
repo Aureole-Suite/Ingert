@@ -8,7 +8,6 @@ impl Reader<'_> {
 	}
 }
 
-
 #[derive(Debug, snafu::Snafu)]
 #[snafu(module(scp), context(suffix(false)))]
 pub enum ScpError {
@@ -72,19 +71,31 @@ fn parse_entries(f: &mut Reader<'_>, n_entries: u32) -> Result<Vec<Entry3>, ScpE
 		let a4 = f.u32()?;
 		let a5 = f.u32()?;
 		let a6 = value(f)?;
-		entries.push(Entry { offset, counts, a1, a2, a3, a4, a5, a6 });
+		entries.push(Entry {
+			offset,
+			counts,
+			a1,
+			a2,
+			a3,
+			a4,
+			a5,
+			a6,
+		});
 	}
 
-	let mut entries2 = entries.iter().map(|e| Entry2 {
-		offset: e.offset,
-		count1: e.counts[1],
-		count2: e.counts[2],
-		a1: Vec::new(),
-		a2: Vec::new(),
-		a4: Vec::new(),
-		a5: e.a5,
-		a6: e.a6.clone(),
-	}).collect::<Vec<_>>();
+	let mut entries2 = entries
+		.iter()
+		.map(|e| Entry2 {
+			offset: e.offset,
+			count1: e.counts[1],
+			count2: e.counts[2],
+			a1: Vec::new(),
+			a2: Vec::new(),
+			a4: Vec::new(),
+			a5: e.a5,
+			a6: e.a6.clone(),
+		})
+		.collect::<Vec<_>>();
 
 	for (e, g) in std::iter::zip(&entries, &mut entries2) {
 		assert_eq!(f.pos(), e.a1 as usize);
@@ -107,16 +118,19 @@ fn parse_entries(f: &mut Reader<'_>, n_entries: u32) -> Result<Vec<Entry3>, ScpE
 		}
 	}
 
-	let mut entries3 = entries2.iter().map(|e| Entry3 {
-		offset: e.offset,
-		count1: e.count1,
-		count2: e.count2,
-		a1: e.a1.clone(),
-		a2: e.a2.clone(),
-		a4: e.a4.iter().map(|x| (x.0, x.1, Vec::new())).collect(),
-		a5: e.a5,
-		a6: e.a6.clone(),
-	}).collect::<Vec<_>>();
+	let mut entries3 = entries2
+		.iter()
+		.map(|e| Entry3 {
+			offset: e.offset,
+			count1: e.count1,
+			count2: e.count2,
+			a1: e.a1.clone(),
+			a2: e.a2.clone(),
+			a4: e.a4.iter().map(|x| (x.0, x.1, Vec::new())).collect(),
+			a5: e.a5,
+			a6: e.a6.clone(),
+		})
+		.collect::<Vec<_>>();
 
 	for (e, g) in std::iter::zip(&entries2, &mut entries3) {
 		for (e, g) in std::iter::zip(&e.a4, &mut g.a4) {
@@ -139,14 +153,14 @@ pub enum Value {
 }
 
 impl std::fmt::Debug for Value {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Uint(v) => write!(f, "{:#X}", v),
-            Self::Int(v) => write!(f, "{v}"),
-            Self::Float(v) => v.fmt(f),
-            Self::String(v) => v.fmt(f),
-        }
-    }
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			Self::Uint(v) => write!(f, "{:#X}", v),
+			Self::Int(v) => write!(f, "{v}"),
+			Self::Float(v) => v.fmt(f),
+			Self::String(v) => v.fmt(f),
+		}
+	}
 }
 
 fn f30(v: u32) -> f32 {
@@ -166,7 +180,10 @@ fn f30(v: u32) -> f32 {
 		write!(&mut c, "{:?}", v).unwrap();
 		c.0
 	}
-	(0..4).map(|n| f32::from_bits(v << 2 | n)).min_by_key(float_len).unwrap()
+	(0..4)
+		.map(|n| f32::from_bits(v << 2 | n))
+		.min_by_key(float_len)
+		.unwrap()
 }
 
 fn value(f: &mut Reader) -> Result<Value, ScpError> {
@@ -179,10 +196,11 @@ fn value(f: &mut Reader) -> Result<Value, ScpError> {
 		2 => Ok(Value::Float(f30(lo))),
 		3 => {
 			let zs = f.at(lo as usize)?.cstr()?.to_bytes();
-			let s = std::str::from_utf8(zs)
-				.with_context(|_| scp::Utf8 { lossy_string: String::from_utf8_lossy(zs).to_string() })?;
+			let s = std::str::from_utf8(zs).with_context(|_| scp::Utf8 {
+				lossy_string: String::from_utf8_lossy(zs).to_string(),
+			})?;
 			Ok(Value::String(s.to_string()))
-		},
+		}
 		_ => unreachable!(),
 	}
 }
@@ -204,15 +222,21 @@ pub fn parse_da(data: &[u8]) -> Result<(), ScpError> {
 		f.u32()?;
 	}
 
-
 	for g in &entries3 {
-		println!("{:04x} {:02X} {:02X} {:08X} {:?} {:?} {:?}", g.offset, g.count1, g.count2, g.a5, g.a6, g.a1, g.a2);
+		println!(
+			"{:04x} {:02X} {:02X} {:08X} {:?} {:?} {:?}",
+			g.offset, g.count1, g.count2, g.a5, g.a6, g.a1, g.a2
+		);
 		for v in &g.a4 {
 			println!("  {v:?}");
 		}
 	}
 
-	let last_offset = entries3.iter().map(|e| e.offset).max().unwrap_or(code_start);
+	let last_offset = entries3
+		.iter()
+		.map(|e| e.offset)
+		.max()
+		.unwrap_or(code_start);
 
 	// print!("{:#1X}", f.dump());
 	loop {
@@ -224,28 +248,56 @@ pub fn parse_da(data: &[u8]) -> Result<(), ScpError> {
 				println!("  push {:x?}", value(&mut f)?);
 				continue;
 			}
-			0x01 => { f.u8()?; }
-			0x02 => { f.i32()?; }
-			0x03 => { f.i32()?; }
-			0x04 => { f.i32()?; }
-			0x05 => { f.i32()?; }
-			0x06 => { f.i32()?; }
-			0x07 => { f.u32()?; }
-			0x08 => { f.u32()?; }
-			0x09 => { f.u8()?; }
-			0x0A => { f.u8()?; }
-			0x0B => { f.u32()?; }
-			0x0C => { f.u16()?; }
+			0x01 => {
+				f.u8()?;
+			}
+			0x02 => {
+				f.i32()?;
+			}
+			0x03 => {
+				f.i32()?;
+			}
+			0x04 => {
+				f.i32()?;
+			}
+			0x05 => {
+				f.i32()?;
+			}
+			0x06 => {
+				f.i32()?;
+			}
+			0x07 => {
+				f.u32()?;
+			}
+			0x08 => {
+				f.u32()?;
+			}
+			0x09 => {
+				f.u8()?;
+			}
+			0x0A => {
+				f.u8()?;
+			}
+			0x0B => {
+				f.u32()?;
+			}
+			0x0C => {
+				f.u16()?;
+			}
 			0x0D => {
 				println!("  return");
 				if f.pos() > last_offset as usize {
 					break;
 				}
 				continue;
-			},
-			0x0E => { f.u32()?; }
-			0x0F => { f.u32()?; }
-			0x10..=0x21 => {},
+			}
+			0x0E => {
+				f.u32()?;
+			}
+			0x0F => {
+				f.u32()?;
+			}
+			0x10..=0x21 => {}
 			0x22 | 0x23 => {
 				f.u32()?;
 				f.u32()?;
@@ -257,14 +309,18 @@ pub fn parse_da(data: &[u8]) -> Result<(), ScpError> {
 					f.u16()?;
 				}
 			}
-			0x25 => { f.u32()?; }
-			0x26 => { 
+			0x25 => {
+				f.u32()?;
+			}
+			0x26 => {
 				println!("  line {}", f.u16()?);
 				continue;
 			}
-			0x27 => { f.u8()?; }
+			0x27 => {
+				f.u8()?;
+			}
 			0x28.. => {
-				print!("what? {:#1X}", f.at(f.pos()-1)?.dump().num_width_as(0));
+				print!("what? {:#1X}", f.at(f.pos() - 1)?.dump().num_width_as(0));
 				// println!();
 				break;
 			}
