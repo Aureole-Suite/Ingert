@@ -145,7 +145,11 @@ fn parse_entries(f: &mut Reader<'_>, n_entries: u32) -> Result<Vec<Entry3>, ScpE
 }
 
 fn parse_entries2(f: &mut Reader<'_>, n_entries: u32) -> Result<Vec<Entry3>, ScpError> {
-	fn multi<T>(f: &mut Reader, n: usize, g: impl Fn(&mut Reader) -> Result<T, ScpError>) -> Result<Vec<T>, ScpError> {
+	fn multi<T>(
+		f: &mut Reader,
+		n: usize,
+		g: impl Fn(&mut Reader) -> Result<T, ScpError>,
+	) -> Result<Vec<T>, ScpError> {
 		(0..n).map(|_| g(f)).collect()
 	}
 	let mut entries = Vec::with_capacity(n_entries as usize);
@@ -161,7 +165,10 @@ fn parse_entries2(f: &mut Reader<'_>, n_entries: u32) -> Result<Vec<Entry3>, Scp
 		let a4 = f.u32()? as usize;
 		let a5 = f.u32()?;
 		let a6 = value(f)?;
-		println!("{:04X} {:02X} {:02X} {:08X} {:?} {:?} {:?}", offset, count1, count2, a5, a6, a1, a2);
+		println!(
+			"{:04X} {:02X} {:02X} {:08X} {:?} {:?} {:?}",
+			offset, count1, count2, a5, a6, a1, a2
+		);
 
 		let a1 = multi(&mut f.at(a1)?, count3, value)?;
 		let a2 = multi(&mut f.at(a2)?, count0, value)?;
