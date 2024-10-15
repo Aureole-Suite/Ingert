@@ -312,8 +312,11 @@ pub fn stuff(scp: &Scp) {
 		.map(|f| (f.1.start, f))
 		.collect::<std::collections::HashMap<_, _>>();
 
+	let mut stack = Vec::new();
+	let mut current_func = 0;
 	for (start, op, end) in &scp.ops {
 		if let Some((i, f)) = functions.get(start) {
+			current_func = *i as u32;
 			println!("function {:?}, {:?} {:?}", f.a6, f.a1, f.a2);
 			for v in &f.a4 {
 				println!("  :{:?}", v);
@@ -322,6 +325,29 @@ pub fn stuff(scp: &Scp) {
 		if labels.contains(start) {
 			println!("{:?}:", start);
 		}
-		println!("  {:?}", op);
+
+		match op {
+			Op::Push(v) => {
+				stack.push(v.clone());
+			}
+			Op::Syscall(n) => {
+				let pos = stack.iter().rposition(|v| v == &Value::Uint(end.0));
+				if pos.is_some_and(|pos| pos > 0 && stack[pos - 1] == Value::Uint(current_func)) {
+					let mut it = stack.split_off(pos.unwrap() - 1);
+					it.reverse();
+					it.pop();
+					it.pop();
+					println!("  syscall {} {:?}", n, it);
+				} else {
+					println!("  ?syscall {} {:?}", n, stack);
+					stack.clear();
+				}
+			}
+			Op::Line(_) => {}
+			_ => {
+				println!("  {op:?} {stack:?}");
+				stack.clear();
+			}
+		}
 	}
 }
