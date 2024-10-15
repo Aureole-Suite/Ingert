@@ -1,0 +1,18 @@
+[package]
+name = "ingert"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+camino = "1.1.9"
+clap = { version = "4.5.20", features = ["derive"] }
+tracing-subscriber = "0.3.18"
+
+gospel = "0.3.1"
+snafu = "0.8.5"
+tracing = "0.1.40"
+glam = "0.29.0"
+extend = "1.2.0"
+
+[profile.dev.package."*"]
+opt-level = 3
