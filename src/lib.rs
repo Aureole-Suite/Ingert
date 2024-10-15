@@ -1,7 +1,7 @@
-use std::{collections::VecDeque, num::NonZeroU8};
+use std::{cell::Cell, collections::HashSet, num::NonZeroU8};
 
 use gospel::read::{Le as _, Reader};
-use snafu::{OptionExt as _, ResultExt as _};
+use snafu::ResultExt as _;
 
 #[extend::ext]
 impl Reader<'_> {
@@ -24,18 +24,20 @@ pub enum ScpError {
 		source: std::str::Utf8Error,
 		lossy_string: String,
 	},
+	#[snafu(display("invalid opcode {op:02X} at {pos}"))]
+	Op { op: u8, pos: usize },
 }
 
 #[derive(Debug, Clone, PartialEq)]
-struct Entry3 {
-	offset: u32,
-	count1: u8,
-	count2: u8,
-	a1: Vec<Value>,
-	a2: Vec<Value>,
-	a4: Vec<(i32, u16, Vec<TaggedValue>)>,
-	a5: u32,
-	a6: Value,
+pub struct Function {
+	pub start: Label,
+	pub count1: u8,
+	pub count2: u8,
+	pub a1: Vec<Value>,
+	pub a2: Vec<Value>,
+	pub a4: Vec<(i32, u16, Vec<TaggedValue>)>,
+	pub a5: u32,
+	pub a6: Value,
 }
 
 fn multi<T>(
@@ -46,10 +48,10 @@ fn multi<T>(
 	(0..n).map(|_| g(f)).collect()
 }
 
-fn parse_entries2(f: &mut Reader<'_>, n_entries: u32) -> Result<Vec<Entry3>, ScpError> {
+fn parse_functions(f: &mut Reader<'_>, n_entries: u32) -> Result<Vec<Function>, ScpError> {
 	let mut entries = Vec::with_capacity(n_entries as usize);
 	for _ in 0..n_entries {
-		let offset = f.u32()?;
+		let start = Label(f.u32()?);
 		let count0 = f.u8()? as usize;
 		let count1 = f.u8()?;
 		let count2 = f.u8()?;
@@ -71,8 +73,8 @@ fn parse_entries2(f: &mut Reader<'_>, n_entries: u32) -> Result<Vec<Entry3>, Scp
 			let z = multi(&mut f.at(w)?, z, tagged_value)?;
 			Ok((x, y, z))
 		})?;
-		entries.push(Entry3 {
-			offset,
+		entries.push(Function {
+			start,
 			count1,
 			count2,
 			a1,
@@ -163,7 +165,49 @@ fn tagged_value(f: &mut Reader) -> Result<TaggedValue, ScpError> {
 	Ok(TaggedValue(value(f)?, f.u32()?))
 }
 
-pub fn parse_da(data: &[u8]) -> Result<(), ScpError> {
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Label(u32);
+
+impl std::fmt::Debug for Label {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(f, "l{:X}", self.0)
+	}
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Op {
+	Push(Value),
+	_01(u8),
+	_02(i32),
+	_03(i32),
+	_04(i32),
+	_05(i32),
+	_06(i32),
+	_07(u32),
+	_08(u32),
+	_09(u8),
+	_0A(u8),
+	_0B(Label),
+	Syscall(u16),
+	Return,
+	_0E(u32),
+	_0F(Label),
+	Op(u8),
+	CallFunc(Value, Value, u8),
+	_23(Value, Value, u8),
+	_24((u8, u8), Option<(NonZeroU8, u8, u8)>),
+	_25(Label),
+	Line(u16),
+	_27(u8),
+}
+
+pub struct Scp {
+	pub functions: Vec<Function>,
+	pub extras: Vec<TaggedValue>,
+	pub ops: Vec<(Label, Op, Label)>,
+}
+
+pub fn parse_da(data: &[u8]) -> Result<Scp, ScpError> {
 	tracing::info!("reading");
 	let mut f = Reader::new(data);
 	f.check(b"#scp")?;
@@ -173,167 +217,111 @@ pub fn parse_da(data: &[u8]) -> Result<(), ScpError> {
 	let n3 = f.u32()?;
 	f.check_u32(0)?;
 
-	let entries3 = parse_entries2(&mut f, n_entries)?;
+	let functions = parse_functions(&mut f, n_entries)?;
 	f.seek(code_start as usize)?;
 	let extras = multi(&mut f, n3 as usize, tagged_value)?;
 
-	for g in &entries3 {
-		println!(
-			"{:04x} {:02X} {:02X} {:08X} {:?} {:?} {:?}",
-			g.offset, g.count1, g.count2, g.a5, g.a6, g.a1, g.a2
-		);
-		for v in &g.a4 {
-			println!("  {v:?}");
-		}
-	}
-
-	let last_offset = entries3
+	let last_offset = functions
 		.iter()
-		.map(|e| e.offset)
+		.map(|e| e.start.0)
 		.max()
 		.unwrap_or(code_start);
+	let last_offset = Cell::new(last_offset);
 
-	// print!("{:#1X}", f.dump());
-	enum Expr {
-		Value(Value),
-		Op(u8),
-		_02(i32),
-		_09(u8),
-	}
-	impl std::fmt::Debug for Expr {
-		fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-			match self {
-				Self::Value(v) => v.fmt(f),
-				Self::Op(op) => write!(f, "op_{:X}", op),
-				Self::_02(v) => write!(f, "_02({})", v),
-				Self::_09(v) => write!(f, "_09({})", v),
-			}
+	let label = |f: &mut Reader| -> Result<Label, ScpError> {
+		let l = Label(f.u32()?);
+		if l.0 > last_offset.get() {
+			last_offset.set(l.0);
 		}
-	}
-	let mut stack = VecDeque::new();
+		Ok(l)
+	};
+
+	let mut ops = Vec::new();
 	loop {
 		let start = f.pos();
 		let op = f.u8()?;
-		match op {
+		let op = match op {
 			0x00 => {
 				f.check_u8(4)?;
-				stack.push_front(Expr::Value(value(&mut f)?));
-				continue;
+				Op::Push(value(&mut f)?)
 			}
-			0x01 => {
-				f.u8()?;
-			}
-			0x02 => {
-				stack.push_front(Expr::_02(f.i32()?));
-				continue;
-			}
-			0x03 => {
-				f.i32()?;
-			}
-			0x04 => {
-				f.i32()?;
-			}
-			0x05 => {
-				f.i32()?;
-			}
-			0x06 => {
-				f.i32()?;
-			}
-			0x07 => {
-				f.u32()?;
-			}
-			0x08 => {
-				f.u32()?;
-			}
-			0x09 => {
-				stack.push_front(Expr::_09(f.u8()?));
-				continue;
-			}
-			0x0A => {
-				let v = f.u8()?;
-				println!("  _0A {:X} {:?}", v, stack);
-				stack.clear();
-				continue;
-			}
-			0x0B => {
-				let target = f.u32()?;
-				println!("  jump_0B {:X} {:?}", target, stack);
-				stack.clear();
-				continue;
-			}
-			0x0C => {
-				println!("  call {} {:?} (-> {:X})", f.u16()?, stack, f.pos());
-				stack.clear();
-				continue;
-			}
-			0x0D => {
-				println!("  return {:?}", stack);
-				stack.clear();
-				if f.pos() > last_offset as usize {
-					break;
-				}
-				continue;
-			}
-			0x0E => {
-				f.u32()?;
-			}
-			0x0F => {
-				let target = f.u32()?;
-				println!("  jump_0F {:X} {:?}", target, stack);
-				stack.clear();
-				continue;
-			}
-			0x10..=0x21 => {
-				stack.push_front(Expr::Op(op));
-				continue;
-			}
-			0x22 => {
-				let a = value(&mut f)?;
-				let b = value(&mut f)?;
-				let c = f.u8()?;
-				println!("  call_extern {:?} {:?} {:X} {:?}", a, b, c, stack);
-				stack.clear();
-				continue
-			}
-			0x23 => {
-				value(&mut f)?;
-				value(&mut f)?;
-				f.u8()?;
-			}
+			0x01 => Op::_01(f.u8()?),
+			0x02 => Op::_02(f.i32()?),
+			0x03 => Op::_03(f.i32()?),
+			0x04 => Op::_04(f.i32()?),
+			0x05 => Op::_05(f.i32()?),
+			0x06 => Op::_06(f.i32()?),
+			0x07 => Op::_07(f.u32()?),
+			0x08 => Op::_08(f.u32()?),
+			0x09 => Op::_09(f.u8()?),
+			0x0A => Op::_0A(f.u8()?),
+			0x0B => Op::_0B(label(&mut f)?),
+			0x0C => Op::Syscall(f.u16()?),
+			0x0D => Op::Return,
+			0x0E => Op::_0E(f.u32()?),
+			0x0F => Op::_0F(label(&mut f)?),
+			0x10..=0x21 => Op::Op(op),
+			0x22 => Op::CallFunc(value(&mut f)?, value(&mut f)?, f.u8()?),
+			0x23 => Op::_23(value(&mut f)?, value(&mut f)?, f.u8()?),
 			0x24 => {
 				let a = (f.u8()?, f.u8()?);
 				if let Some(v) = NonZeroU8::new(f.u8()?) {
 					let b = (f.u8()?, f.u8()?);
-					println!("  _24 {a:?} {v} {b:?} {:?}", stack);
+					Op::_24((a.0, a.1), Some((v, b.0, b.1)))
 				} else {
-					println!("  _24 {a:?} {:?}", stack);
+					Op::_24((a.0, a.1), None)
 				}
-				stack.clear();
-				continue;
 			}
-			0x25 => {
-				f.u32()?;
-			}
-			0x26 => {
-				let _line = f.u16()?;
-				continue;
-			}
-			0x27 => {
-				f.u8()?;
-			}
-			0x28.. => {
-				print!("what? {:#1X}", f.at(f.pos() - 1)?.dump().num_width_as(0));
-				// println!();
-				break;
-			}
+			0x25 => Op::_25(label(&mut f)?),
+			0x26 => Op::Line(f.u16()?),
+			0x27 => Op::_27(f.u8()?),
+			0x28.. => return scp::Op { op, pos: start }.fail(),
+		};
+		let end = op == Op::Return && f.pos() > last_offset.get() as usize;
+		ops.push((Label(start as u32), op, Label(f.pos() as u32)));
+		if end {
+			break;
 		}
-		let end = f.pos();
-		if !stack.is_empty() {
-			println!("  _stack {:?}", stack);
-			stack.clear();
-		}
-		print!("{:#.16X}", f.at(start)?.dump().end(end));
 	}
 
-	Ok(())
+	Ok(Scp {
+		functions,
+		extras,
+		ops,
+	})
+}
+
+pub fn stuff(scp: &Scp) {
+	let labels = {
+		let mut labels = HashSet::new();
+		for (_, op, _) in &scp.ops {
+			match op {
+				Op::_0B(l) => labels.insert(*l),
+				Op::_0F(l) => labels.insert(*l),
+				Op::_25(l) => labels.insert(*l),
+				_ => false,
+			};
+		}
+		labels
+	};
+
+	let functions = scp
+		.functions
+		.iter()
+		.enumerate()
+		.map(|f| (f.1.start, f))
+		.collect::<std::collections::HashMap<_, _>>();
+
+	for (start, op, end) in &scp.ops {
+		if let Some((i, f)) = functions.get(start) {
+			println!("function {:?}, {:?} {:?}", f.a6, f.a1, f.a2);
+			for v in &f.a4 {
+				println!("  :{:?}", v);
+			}
+		}
+		if labels.contains(start) {
+			println!("{:?}:", start);
+		}
+		println!("  {:?}", op);
+	}
 }

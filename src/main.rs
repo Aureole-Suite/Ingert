@@ -31,7 +31,7 @@ fn process_file(file: &PathBuf) {
 	};
 
 	match ingert::parse_da(&data) {
-		Ok(_) => {}
+		Ok(v) => ingert::stuff(&v),
 		Err(e) => tracing::error!("Error: {}", snafu::Report::from_error(e)),
 	}
 }
