@@ -1,3 +1,5 @@
+use std::{collections::VecDeque, num::NonZeroU8};
+
 use gospel::read::{Le as _, Reader};
 use snafu::{OptionExt as _, ResultExt as _};
 
@@ -24,30 +26,6 @@ pub enum ScpError {
 	},
 }
 
-#[derive(Debug)]
-struct Entry {
-	offset: u32,
-	counts: [u8; 4],
-	a1: u32,
-	a2: u32,
-	a3: u32,
-	a4: u32,
-	a5: u32,
-	a6: Value,
-}
-
-#[derive(Debug)]
-struct Entry2 {
-	offset: u32,
-	count1: u8,
-	count2: u8,
-	a1: Vec<Value>,
-	a2: Vec<Value>,
-	a4: Vec<(i32, u16, u16, u32)>,
-	a5: u32,
-	a6: Value,
-}
-
 #[derive(Debug, Clone, PartialEq)]
 struct Entry3 {
 	offset: u32,
@@ -55,103 +33,20 @@ struct Entry3 {
 	count2: u8,
 	a1: Vec<Value>,
 	a2: Vec<Value>,
-	a4: Vec<(i32, u16, Vec<(Value, u32)>)>,
+	a4: Vec<(i32, u16, Vec<TaggedValue>)>,
 	a5: u32,
 	a6: Value,
 }
 
-fn parse_entries(f: &mut Reader<'_>, n_entries: u32) -> Result<Vec<Entry3>, ScpError> {
-	let mut entries = Vec::new();
-	for _ in 0..n_entries {
-		let offset = f.u32()?;
-		let counts = f.array()?;
-		let a1 = f.u32()?;
-		let a2 = f.u32()?;
-		let a3 = f.u32()?;
-		let a4 = f.u32()?;
-		let a5 = f.u32()?;
-		let a6 = value(f)?;
-		entries.push(Entry {
-			offset,
-			counts,
-			a1,
-			a2,
-			a3,
-			a4,
-			a5,
-			a6,
-		});
-	}
-
-	let mut entries2 = entries
-		.iter()
-		.map(|e| Entry2 {
-			offset: e.offset,
-			count1: e.counts[1],
-			count2: e.counts[2],
-			a1: Vec::new(),
-			a2: Vec::new(),
-			a4: Vec::new(),
-			a5: e.a5,
-			a6: e.a6.clone(),
-		})
-		.collect::<Vec<_>>();
-
-	for (e, g) in std::iter::zip(&entries, &mut entries2) {
-		assert_eq!(f.pos(), e.a1 as usize);
-		for _ in 0..e.counts[3] {
-			g.a1.push(value(f)?);
-		}
-	}
-
-	for (e, g) in std::iter::zip(&entries, &mut entries2) {
-		assert_eq!(f.pos(), e.a2 as usize);
-		for _ in 0..e.counts[0] {
-			g.a2.push(value(f)?);
-		}
-	}
-
-	for (e, g) in std::iter::zip(&entries, &mut entries2) {
-		assert_eq!(f.pos(), e.a4 as usize);
-		for _ in 0..e.a3 {
-			g.a4.push((f.i32()?, f.u16()?, f.u16()?, f.u32()?));
-		}
-	}
-
-	let mut entries3 = entries2
-		.iter()
-		.map(|e| Entry3 {
-			offset: e.offset,
-			count1: e.count1,
-			count2: e.count2,
-			a1: e.a1.clone(),
-			a2: e.a2.clone(),
-			a4: e.a4.iter().map(|x| (x.0, x.1, Vec::new())).collect(),
-			a5: e.a5,
-			a6: e.a6.clone(),
-		})
-		.collect::<Vec<_>>();
-
-	for (e, g) in std::iter::zip(&entries2, &mut entries3) {
-		for (e, g) in std::iter::zip(&e.a4, &mut g.a4) {
-			assert_eq!(f.pos(), e.3 as usize);
-			for _ in 0..e.2 {
-				g.2.push((value(f)?, f.u32()?));
-			}
-		}
-	}
-
-	Ok(entries3)
+fn multi<T>(
+	f: &mut Reader,
+	n: usize,
+	g: impl Fn(&mut Reader) -> Result<T, ScpError>,
+) -> Result<Vec<T>, ScpError> {
+	(0..n).map(|_| g(f)).collect()
 }
 
 fn parse_entries2(f: &mut Reader<'_>, n_entries: u32) -> Result<Vec<Entry3>, ScpError> {
-	fn multi<T>(
-		f: &mut Reader,
-		n: usize,
-		g: impl Fn(&mut Reader) -> Result<T, ScpError>,
-	) -> Result<Vec<T>, ScpError> {
-		(0..n).map(|_| g(f)).collect()
-	}
 	let mut entries = Vec::with_capacity(n_entries as usize);
 	for _ in 0..n_entries {
 		let offset = f.u32()?;
@@ -173,7 +68,7 @@ fn parse_entries2(f: &mut Reader<'_>, n_entries: u32) -> Result<Vec<Entry3>, Scp
 			let y = f.u16()?;
 			let z = f.u16()? as usize;
 			let w = f.u32()? as usize;
-			let z = multi(&mut f.at(w)?, z, |f| Ok((value(f)?, f.u32()?)))?;
+			let z = multi(&mut f.at(w)?, z, tagged_value)?;
 			Ok((x, y, z))
 		})?;
 		entries.push(Entry3 {
@@ -205,6 +100,19 @@ impl std::fmt::Debug for Value {
 			Self::Int(v) => write!(f, "{v}"),
 			Self::Float(v) => v.fmt(f),
 			Self::String(v) => v.fmt(f),
+		}
+	}
+}
+
+#[derive(Clone, PartialEq)]
+pub struct TaggedValue(Value, u32);
+
+impl std::fmt::Debug for TaggedValue {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		if self.1 == 0 {
+			self.0.fmt(f)
+		} else {
+			write!(f, "{:?}:{}", self.0, self.1)
 		}
 	}
 }
@@ -251,6 +159,10 @@ fn value(f: &mut Reader) -> Result<Value, ScpError> {
 	}
 }
 
+fn tagged_value(f: &mut Reader) -> Result<TaggedValue, ScpError> {
+	Ok(TaggedValue(value(f)?, f.u32()?))
+}
+
 pub fn parse_da(data: &[u8]) -> Result<(), ScpError> {
 	tracing::info!("reading");
 	let mut f = Reader::new(data);
@@ -261,18 +173,9 @@ pub fn parse_da(data: &[u8]) -> Result<(), ScpError> {
 	let n3 = f.u32()?;
 	f.check_u32(0)?;
 
-	let start = f.pos();
-	let entries2 = parse_entries(&mut f, n_entries)?;
-	assert_eq!(f.pos(), code_start as usize);
-
-	f.seek(start)?;
 	let entries3 = parse_entries2(&mut f, n_entries)?;
-	assert_eq!(entries2, entries3);
 	f.seek(code_start as usize)?;
-	for _ in 0..n3 {
-		f.u32()?;
-		f.u32()?;
-	}
+	let extras = multi(&mut f, n3 as usize, tagged_value)?;
 
 	for g in &entries3 {
 		println!(
@@ -291,20 +194,38 @@ pub fn parse_da(data: &[u8]) -> Result<(), ScpError> {
 		.unwrap_or(code_start);
 
 	// print!("{:#1X}", f.dump());
+	enum Expr {
+		Value(Value),
+		Op(u8),
+		_02(i32),
+		_09(u8),
+	}
+	impl std::fmt::Debug for Expr {
+		fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+			match self {
+				Self::Value(v) => v.fmt(f),
+				Self::Op(op) => write!(f, "op_{:X}", op),
+				Self::_02(v) => write!(f, "_02({})", v),
+				Self::_09(v) => write!(f, "_09({})", v),
+			}
+		}
+	}
+	let mut stack = VecDeque::new();
 	loop {
 		let start = f.pos();
 		let op = f.u8()?;
 		match op {
 			0x00 => {
 				f.check_u8(4)?;
-				println!("  push {:x?}", value(&mut f)?);
+				stack.push_front(Expr::Value(value(&mut f)?));
 				continue;
 			}
 			0x01 => {
 				f.u8()?;
 			}
 			0x02 => {
-				f.i32()?;
+				stack.push_front(Expr::_02(f.i32()?));
+				continue;
 			}
 			0x03 => {
 				f.i32()?;
@@ -325,19 +246,29 @@ pub fn parse_da(data: &[u8]) -> Result<(), ScpError> {
 				f.u32()?;
 			}
 			0x09 => {
-				f.u8()?;
+				stack.push_front(Expr::_09(f.u8()?));
+				continue;
 			}
 			0x0A => {
-				f.u8()?;
+				let v = f.u8()?;
+				println!("  _0A {:X} {:?}", v, stack);
+				stack.clear();
+				continue;
 			}
 			0x0B => {
-				f.u32()?;
+				let target = f.u32()?;
+				println!("  jump_0B {:X} {:?}", target, stack);
+				stack.clear();
+				continue;
 			}
 			0x0C => {
-				f.u16()?;
+				println!("  call {} {:?} (-> {:X})", f.u16()?, stack, f.pos());
+				stack.clear();
+				continue;
 			}
 			0x0D => {
-				println!("  return");
+				println!("  return {:?}", stack);
+				stack.clear();
 				if f.pos() > last_offset as usize {
 					break;
 				}
@@ -347,25 +278,44 @@ pub fn parse_da(data: &[u8]) -> Result<(), ScpError> {
 				f.u32()?;
 			}
 			0x0F => {
-				f.u32()?;
+				let target = f.u32()?;
+				println!("  jump_0F {:X} {:?}", target, stack);
+				stack.clear();
+				continue;
 			}
-			0x10..=0x21 => {}
-			0x22 | 0x23 => {
-				f.u32()?;
-				f.u32()?;
+			0x10..=0x21 => {
+				stack.push_front(Expr::Op(op));
+				continue;
+			}
+			0x22 => {
+				let a = value(&mut f)?;
+				let b = value(&mut f)?;
+				let c = f.u8()?;
+				println!("  call_extern {:?} {:?} {:X} {:?}", a, b, c, stack);
+				stack.clear();
+				continue
+			}
+			0x23 => {
+				value(&mut f)?;
+				value(&mut f)?;
 				f.u8()?;
 			}
 			0x24 => {
-				f.u16()?;
-				if f.u8()? != 0 {
-					f.u16()?;
+				let a = (f.u8()?, f.u8()?);
+				if let Some(v) = NonZeroU8::new(f.u8()?) {
+					let b = (f.u8()?, f.u8()?);
+					println!("  _24 {a:?} {v} {b:?} {:?}", stack);
+				} else {
+					println!("  _24 {a:?} {:?}", stack);
 				}
+				stack.clear();
+				continue;
 			}
 			0x25 => {
 				f.u32()?;
 			}
 			0x26 => {
-				println!("  line {}", f.u16()?);
+				let _line = f.u16()?;
 				continue;
 			}
 			0x27 => {
@@ -378,10 +328,12 @@ pub fn parse_da(data: &[u8]) -> Result<(), ScpError> {
 			}
 		}
 		let end = f.pos();
+		if !stack.is_empty() {
+			println!("  _stack {:?}", stack);
+			stack.clear();
+		}
 		print!("{:#.16X}", f.at(start)?.dump().end(end));
 	}
-	// print!("{:#1X}", f.dump());
-	print!("{:#.16X}", f.dump());
 
 	Ok(())
 }
