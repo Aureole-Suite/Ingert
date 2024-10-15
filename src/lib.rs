@@ -11,7 +11,7 @@ impl Reader<'_> {
 #[derive(Debug, snafu::Snafu)]
 #[snafu(module(scp), context(suffix(false)))]
 pub enum ScpError {
-	#[snafu(display("invalid file"), context(false))]
+	#[snafu(display("invalid read (at {location})"), context(false))]
 	Read {
 		source: gospel::read::Error,
 		#[snafu(implicit)]
@@ -48,7 +48,7 @@ struct Entry2 {
 	a6: Value,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 struct Entry3 {
 	offset: u32,
 	count1: u8,
@@ -144,6 +144,49 @@ fn parse_entries(f: &mut Reader<'_>, n_entries: u32) -> Result<Vec<Entry3>, ScpE
 	Ok(entries3)
 }
 
+fn parse_entries2(f: &mut Reader<'_>, n_entries: u32) -> Result<Vec<Entry3>, ScpError> {
+	fn multi<T>(f: &mut Reader, n: usize, g: impl Fn(&mut Reader) -> Result<T, ScpError>) -> Result<Vec<T>, ScpError> {
+		(0..n).map(|_| g(f)).collect()
+	}
+	let mut entries = Vec::with_capacity(n_entries as usize);
+	for _ in 0..n_entries {
+		let offset = f.u32()?;
+		let count0 = f.u8()? as usize;
+		let count1 = f.u8()?;
+		let count2 = f.u8()?;
+		let count3 = f.u8()? as usize;
+		let a1 = f.u32()? as usize;
+		let a2 = f.u32()? as usize;
+		let a3 = f.u32()? as usize;
+		let a4 = f.u32()? as usize;
+		let a5 = f.u32()?;
+		let a6 = value(f)?;
+		println!("{:04X} {:02X} {:02X} {:08X} {:?} {:?} {:?}", offset, count1, count2, a5, a6, a1, a2);
+
+		let a1 = multi(&mut f.at(a1)?, count3, value)?;
+		let a2 = multi(&mut f.at(a2)?, count0, value)?;
+		let a4 = multi(&mut f.at(a4)?, a3, |f| {
+			let x = f.i32()?;
+			let y = f.u16()?;
+			let z = f.u16()? as usize;
+			let w = f.u32()? as usize;
+			let z = multi(&mut f.at(w)?, z, |f| Ok((value(f)?, f.u32()?)))?;
+			Ok((x, y, z))
+		})?;
+		entries.push(Entry3 {
+			offset,
+			count1,
+			count2,
+			a1,
+			a2,
+			a4,
+			a5,
+			a6,
+		});
+	}
+	Ok(entries)
+}
+
 #[derive(Clone, PartialEq)]
 pub enum Value {
 	Uint(u32),
@@ -197,7 +240,7 @@ fn value(f: &mut Reader) -> Result<Value, ScpError> {
 		3 => {
 			let zs = f.at(lo as usize)?.cstr()?.to_bytes();
 			let s = std::str::from_utf8(zs).with_context(|_| scp::Utf8 {
-				lossy_string: String::from_utf8_lossy(zs).to_string(),
+				lossy_string: String::from_utf8_lossy(zs).into_owned(),
 			})?;
 			Ok(Value::String(s.to_string()))
 		}
@@ -215,8 +258,14 @@ pub fn parse_da(data: &[u8]) -> Result<(), ScpError> {
 	let n3 = f.u32()?;
 	f.check_u32(0)?;
 
-	let entries3 = parse_entries(&mut f, n_entries)?;
+	let start = f.pos();
+	let entries2 = parse_entries(&mut f, n_entries)?;
 	assert_eq!(f.pos(), code_start as usize);
+
+	f.seek(start)?;
+	let entries3 = parse_entries2(&mut f, n_entries)?;
+	assert_eq!(entries2, entries3);
+	f.seek(code_start as usize)?;
 	for _ in 0..n3 {
 		f.u32()?;
 		f.u32()?;
