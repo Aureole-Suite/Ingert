@@ -553,13 +553,11 @@ fn stmt(ctx: &mut Ctx<'_>, i: Indent) {
 			let d = 4 * ctx.stack.len() as i32;
 			ctx.push(Expr::Var(*n + d));
 		}
-		Op::_03(_) => todo!(),
-		Op::_04(_) => todo!(),
-		Op::SetVar(_) => todo!(),
-		Op::_06(_) => todo!(),
-		Op::_07(_) => todo!(),
-		Op::_08(_) => todo!(),
-		Op::GetGlobal(_) => todo!(),
+		Op::SetVar(n) => {
+			let a = ctx.pop();
+			let d = 4 * ctx.stack.len() as i32;
+			println!("{i}Var({}) = {:?}", *n + d, a);
+		}
 		Op::SetGlobal(0) if ctx.peek().is_some_and(|a| a.1 == Op::GetGlobal(0)) => {
 			todo!("this is a switch");
 		}
@@ -567,8 +565,6 @@ fn stmt(ctx: &mut Ctx<'_>, i: Indent) {
 			let a = ctx.pop();
 			println!("{i}return {a:?}");
 		}
-		Op::SetGlobal(_) => todo!(),
-		Op::Goto(_) => todo!(),
 		Op::Syscall(n) => {
 			let pos = ctx
 				.stack
@@ -584,7 +580,6 @@ fn stmt(ctx: &mut Ctx<'_>, i: Indent) {
 			println!("{i}(end)");
 			assert_eq!(ctx.stack, &[]);
 		}
-		Op::If2(_) => todo!(),
 		Op::If(mut target) => {
 			let a = ctx.pop();
 			let has_else = false;
@@ -618,12 +613,10 @@ fn stmt(ctx: &mut Ctx<'_>, i: Indent) {
 			let a = ctx.pop();
 			ctx.push(Expr::Unop(*n, a.into()));
 		}
-		Op::Op(_) => todo!(),
 		Op::CallFunc(a, b, n) => {
 			let it = ctx.pop_n(*n as usize);
 			ctx.push_call(i, Expr::CallFunc(a.clone(), b.clone(), it));
 		}
-		Op::_23(_, _, _) => todo!(),
 		Op::Syscall2(a, b, c) => {
 			let it = ctx.pop_n(*c as usize);
 			ctx.push_call(i, Expr::Syscall2(*a, *b, it));
@@ -639,7 +632,10 @@ fn stmt(ctx: &mut Ctx<'_>, i: Indent) {
 			}
 			println!("{i}}}");
 		}
-		Op::Line(_) => todo!(),
-		Op::_27(_) => todo!(),
+		Op::Line(_) => {}
+		_ => {
+			println!("{i}!!{op:?} {:?}", ctx.stack);
+			unimplemented!("{op:?} {:?}", ctx.stack);
+		}
 	}
 }
