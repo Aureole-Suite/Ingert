@@ -350,6 +350,18 @@ impl<'a> Ctx<'a> {
 		self.scp.ops.get(self.pos)
 	}
 
+	fn push(&mut self, e: Expr) {
+		self.stack.push_front(e);
+	}
+
+	fn pop(&mut self) -> Expr {
+		self.stack.pop_front().unwrap()
+	}
+
+	fn pop_n(&mut self, n: usize) -> Vec<Expr> {
+		self.stack.drain(..n).collect()
+	}
+
 	fn push_call(&mut self, call: Expr) {
 		if self.peek().is_some_and(|a| a.1 == Op::GetGlobal(0)) {
 			self.next();
@@ -419,16 +431,16 @@ pub fn stuff(scp: &Scp) {
 
 		match op {
 			Op::Push(v) => {
-				ctx.stack.push_front(Expr::Value(v.clone()));
+				ctx.push(Expr::Value(v.clone()));
 			}
 			Op::Pop(n) => {
 				for _ in 0..*n / 4 {
-					ctx.stack.pop_front().unwrap(); // TODO must be Local or Arg
+					ctx.pop(); // TODO must be Local or Arg
 				}
 			}
 			Op::GetVar(n) => {
 				let d = 4 * ctx.stack.len() as i32;
-				ctx.stack.push_front(Expr::Var(*n + d));
+				ctx.push(Expr::Var(*n + d));
 			}
 			Op::_03(_) => todo!(),
 			Op::_04(_) => todo!(),
@@ -441,7 +453,7 @@ pub fn stuff(scp: &Scp) {
 				todo!("this is a switch");
 			}
 			Op::SetGlobal(0) => {
-				let a = ctx.stack.pop_front().unwrap();
+				let a = ctx.pop();
 				println!("  return {a:?}");
 			}
 			Op::SetGlobal(_) => todo!(),
@@ -451,13 +463,9 @@ pub fn stuff(scp: &Scp) {
 					.iter()
 					.position(|v| v == &Expr::Value(Value::Uint(end.0)))
 					.unwrap();
-				assert_eq!(
-					ctx.stack.get(pos + 1),
-					Some(&Expr::Value(Value::Uint(ctx.current_func)))
-				);
-				let it = ctx.stack.drain(..pos).collect::<Vec<_>>();
-				ctx.stack.pop_front().unwrap();
-				ctx.stack.pop_front().unwrap();
+				let it = ctx.pop_n(pos);
+				assert_eq!(ctx.pop(), Expr::Value(Value::Uint(end.0)));
+				assert_eq!(ctx.pop(), Expr::Value(Value::Uint(ctx.current_func)));
 				ctx.push_call(Expr::Syscall(*n, it));
 			}
 			Op::Return => {
@@ -468,19 +476,19 @@ pub fn stuff(scp: &Scp) {
 			Op::If(_) => todo!(),
 			Op::Op(n @ (16..=30)) => {
 				// 21: ==
-				let b = ctx.stack.pop_front().unwrap();
-				let a = ctx.stack.pop_front().unwrap();
-				ctx.stack.push_front(Expr::Binop(*n, a.into(), b.into()));
+				let b = ctx.pop();
+				let a = ctx.pop();
+				ctx.push(Expr::Binop(*n, a.into(), b.into()));
 			}
 			Op::Op(n @ 32) => {
-				let a = ctx.stack.pop_front().unwrap();
-				ctx.stack.push_front(Expr::Unop(*n, a.into()));
+				let a = ctx.pop();
+				ctx.push(Expr::Unop(*n, a.into()));
 			}
 			Op::Op(_) => todo!(),
 			Op::CallFunc(_, _, _) => todo!(),
 			Op::_23(_, _, _) => todo!(),
 			Op::Syscall2(a, b, c) => {
-				let it = ctx.stack.drain(..*c as usize).collect::<Vec<_>>();
+				let it = ctx.pop_n(*c as usize);
 				ctx.push_call(Expr::Syscall2(*a, *b, it));
 			}
 			Op::_25(_) => todo!(),
