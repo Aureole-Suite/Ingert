@@ -371,20 +371,6 @@ impl<'a> Ctx<'a> {
 }
 
 pub fn stuff(scp: &Scp) {
-	let labels = {
-		let mut labels = HashSet::new();
-		for (_, op, _) in &scp.ops {
-			match op {
-				Op::Goto(l) => labels.insert(*l),
-				Op::If2(l) => labels.insert(*l),
-				Op::If(l) => labels.insert(*l),
-				Op::_25(l) => labels.insert(*l),
-				_ => false,
-			};
-		}
-		labels
-	};
-
 	let functions = scp
 		.functions
 		.iter()
@@ -422,9 +408,6 @@ pub fn stuff(scp: &Scp) {
 			for _ in &f.a2 {
 				ctx.stack.push_front(Expr::Arg);
 			}
-		}
-		if labels.contains(start) {
-			println!("{start:?}:");
 		}
 
 		stmt(&mut ctx);
