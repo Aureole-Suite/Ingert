@@ -578,11 +578,11 @@ fn stmt(ctx: &mut Ctx<'_>) {
 					assert_eq!(p, target);
 					break
 				}
-				if let Some((_, Op::Goto(t), _)) = ctx.peek() {
+				if let Some(&(_, Op::Goto(t), gend)) = ctx.peek() && gend == target {
 					if !has_else {
 						ctx.next();
 						println!("  }} else {{");
-						target = *t;
+						target = t;
 						continue
 					} else {
 						unreachable!();
