@@ -1,4 +1,8 @@
-use std::{cell::Cell, collections::HashSet, num::NonZeroU8};
+use std::{
+	cell::Cell,
+	collections::{HashSet, VecDeque},
+	num::NonZeroU8,
+};
 
 use gospel::read::{Le as _, Reader};
 use snafu::ResultExt as _;
@@ -178,20 +182,20 @@ impl std::fmt::Debug for Label {
 pub enum Op {
 	Push(Value),
 	_01(u8),
-	_02(i32),
+	GetVar(i32),
 	_03(i32),
 	_04(i32),
-	_05(i32),
+	SetVar(i32),
 	_06(i32),
 	_07(u32),
 	_08(u32),
 	_09(u8),
 	_0A(u8),
-	_0B(Label),
+	Goto(Label),
 	Syscall(u16),
 	Return,
-	_0E(u32),
-	_0F(Label),
+	If2(Label),
+	If(Label),
 	Op(u8),
 	CallFunc(Value, Value, u8),
 	_23(Value, Value, u8),
@@ -199,6 +203,44 @@ pub enum Op {
 	_25(Label),
 	Line(u16),
 	_27(u8),
+}
+
+fn syscall_returns(n: u16) -> bool {
+	!matches!(n,
+		| 6..=9 | 15 | 28..=29 | 31 | 45..=46 | 53 | 56 | 60..=63 | 68..=72 | 74..=76 | 82 | 87 | 92 | 93 | 95..=99
+		| 100..=102 | 104 | 107..=108 | 111 | 113 | 115..=120 | 122..=123 | 125..=126 | 128 | 132 | 134 | 137..=140 | 148..=164 | 166 | 171..=183 | 186..=187 | 189..=199
+		| 200..=208 | 215..=225 | 227..=228 | 230 | 232 | 234..=242 | 244 | 248..=257 | 260..=271 | 273 | 275..=284 | 291..=293 | 295 | 296..=298
+		| 300..=302 | 304..=320 | 322..=328 | 330..=338
+	)
+}
+
+fn _24_returns(v: (u8, u8)) -> bool {
+	!matches!(v,
+		| (0, 1 | 2 | 5 | 6 | 8 | 9 | 13)
+		| (1, 2 | 4 | 10 | 11 | 14 | 16 | 23 | 28 | 47 | 137 | 145 | 153 | 154 | 156 | 171 | 183)
+		| (2, 0 | 2 | 3 | 4 | 5 | 12 | 22 | 23 | 24 | 25 | 26 | 27)
+		| (3, 0 | 1 | 30 | 19 | 20 | 21 | 23 | 32 | 33 | 34 | 35 | 37)
+		| (4, 0..=2)
+		| (5, 0..=3 | 6..=11)
+		| (6, 0 | 16 | 30 | 32 | 35)
+		| (9, 0)
+		| (11, 10 | 13 | 20 | 27 | 28 | 39 | 44 | 49 | 50 | 51 | 80)
+		| (12, 0..=4 | 6)
+		| (13, 19 | 20 | 89)
+		| (15, 0..=3)
+		| (16, 0 | 1 | 3 | 6 | 9 | 12 | 13 | 14 | 16 | 19)
+		| (17, 2)
+		| (19, 5..=6 | 10..=14 | 18..=20)
+		| (20, 0 | 3)
+		| (21, 0)
+		| (22, 0..=6 | 8..=12 | 15..=16)
+		| (23, 8 | 11 | 22 | 23)
+		| (24, 0 | 2 | 13 | 14)
+		| (25, 0..=3 | 8..=9 | 11..=12 | 14..=15 | 17..=18 | 20..=21 | 28 | 30)
+		| (26, 0..=2 | 4 | 5)
+		| (27, 0..=1)
+		| (28, 1 | 5)
+	)
 }
 
 pub struct Scp {
@@ -246,20 +288,20 @@ pub fn parse_da(data: &[u8]) -> Result<Scp, ScpError> {
 				Op::Push(value(&mut f)?)
 			}
 			0x01 => Op::_01(f.u8()?),
-			0x02 => Op::_02(f.i32()?),
+			0x02 => Op::GetVar(f.i32()?),
 			0x03 => Op::_03(f.i32()?),
 			0x04 => Op::_04(f.i32()?),
-			0x05 => Op::_05(f.i32()?),
+			0x05 => Op::SetVar(f.i32()?),
 			0x06 => Op::_06(f.i32()?),
 			0x07 => Op::_07(f.u32()?),
 			0x08 => Op::_08(f.u32()?),
 			0x09 => Op::_09(f.u8()?),
 			0x0A => Op::_0A(f.u8()?),
-			0x0B => Op::_0B(label(&mut f)?),
+			0x0B => Op::Goto(label(&mut f)?),
 			0x0C => Op::Syscall(f.u16()?),
 			0x0D => Op::Return,
-			0x0E => Op::_0E(f.u32()?),
-			0x0F => Op::_0F(label(&mut f)?),
+			0x0E => Op::If2(label(&mut f)?),
+			0x0F => Op::If(label(&mut f)?),
 			0x10..=0x21 => Op::Op(op),
 			0x22 => Op::CallFunc(value(&mut f)?, value(&mut f)?, f.u8()?),
 			0x23 => Op::_23(value(&mut f)?, value(&mut f)?, f.u8()?),
@@ -296,8 +338,9 @@ pub fn stuff(scp: &Scp) {
 		let mut labels = HashSet::new();
 		for (_, op, _) in &scp.ops {
 			match op {
-				Op::_0B(l) => labels.insert(*l),
-				Op::_0F(l) => labels.insert(*l),
+				Op::Goto(l) => labels.insert(*l),
+				Op::If2(l) => labels.insert(*l),
+				Op::If(l) => labels.insert(*l),
 				Op::_25(l) => labels.insert(*l),
 				_ => false,
 			};
@@ -312,42 +355,160 @@ pub fn stuff(scp: &Scp) {
 		.map(|f| (f.1.start, f))
 		.collect::<std::collections::HashMap<_, _>>();
 
-	let mut stack = Vec::new();
+	#[derive(Clone, PartialEq)]
+	enum Expr<'a> {
+		Value(&'a Value),
+		Var(i32),
+		Syscall(u16, Vec<Expr<'a>>),
+		_24(u8, u8, Vec<Expr<'a>>),
+		Op(u8),
+		Unop(u8, Box<Expr<'a>>),
+		Binop(u8, Box<Expr<'a>>, Box<Expr<'a>>),
+		Local,
+		Arg,
+	}
+
+	impl std::fmt::Debug for Expr<'_> {
+		fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+			match self {
+				Expr::Value(v) => v.fmt(f),
+				Expr::Var(n) => f.debug_tuple("Var").field(n).finish(),
+				Expr::Syscall(n, v) => f.debug_tuple("Syscall").field(n).field(v).finish(),
+				Expr::_24(a, b, v) => f.debug_tuple("_24").field(a).field(b).field(v).finish(),
+				Expr::Op(v) => f.debug_tuple("Op").field(v).finish(),
+				Expr::Unop(v, a) => f.debug_tuple("Unop").field(v).field(a).finish(),
+				Expr::Binop(v, a, b) => f.debug_tuple("Binop").field(v).field(a).field(b).finish(),
+				Expr::Local => f.write_str("Local"),
+				Expr::Arg => f.write_str("Arg"),
+			}
+		}
+	}
+
+	let mut stack = VecDeque::new();
 	let mut current_func = 0;
 	for (start, op, end) in &scp.ops {
 		if let Some((i, f)) = functions.get(start) {
+			// if f.a6 == Value::String("screen_dof_set_focus_range".into()) {
+			// 	break;
+			// }
 			current_func = *i as u32;
-			println!("function {:?}, {:?} {:?}", f.a6, f.a1, f.a2);
+			println!("\nfunction {:?}, {:?} {:?}", f.a6, f.a1, f.a2);
 			for v in &f.a4 {
 				println!("  :{:?}", v);
+			}
+			stack.clear();
+			for _ in &f.a2 {
+				stack.push_front(Expr::Arg);
 			}
 		}
 		if labels.contains(start) {
 			println!("{:?}:", start);
 		}
 
+		let mut line = String::new();
+
 		match op {
 			Op::Push(v) => {
-				stack.push(v.clone());
+				stack.push_front(Expr::Value(v));
 			}
-			Op::Syscall(n) => {
-				let pos = stack.iter().rposition(|v| v == &Value::Uint(end.0));
-				if pos.is_some_and(|pos| pos > 0 && stack[pos - 1] == Value::Uint(current_func)) {
-					let mut it = stack.split_off(pos.unwrap() - 1);
-					it.reverse();
-					it.pop();
-					it.pop();
-					println!("  syscall {} {:?}", n, it);
-				} else {
-					println!("  ?syscall {} {:?}", n, stack);
-					stack.clear();
+			Op::_01(n) => {
+				for _ in 0..*n/4 {
+					stack.pop_back(); // TODO unwrap
 				}
 			}
+			Op::GetVar(v) => {
+				let d = 4 * stack.len() as i32;
+				stack.push_front(Expr::Var(*v + d));
+			}
+			Op::SetVar(v) => {
+				let a = stack.pop_front().unwrap();
+				let d = 4 * stack.len() as i32;
+				line = format!("Var({}) = {:?}", *v + d, a);
+			}
+			Op::_09(0) => {
+				let a = stack.pop_front().unwrap();
+				stack.push_front(Expr::Unop(9, a.into()));
+			}
+			Op::_09(_) => unreachable!(),
+			Op::Op(n@(16..=30)) => {
+				let a = stack.pop_front().unwrap();
+				let b = stack.pop_front().unwrap();
+				stack.push_front(Expr::Binop(*n, a.into(), b.into()));
+			}
+			Op::Op(n@32) => {
+				let a = stack.pop_front().unwrap();
+				stack.push_front(Expr::Unop(*n, a.into()));
+			}
+			Op::Op(n) => {
+				line = format!("Op({n})");
+				stack.push_front(Expr::Op(*n))
+			}
+			Op::If2(l) => {
+				let a = stack.pop_front().unwrap();
+				line = format!("if2 {:?} {:?}", a, l);
+				stack.push_front(Expr::Local); // TODO no idea what if2 is
+			}
+			Op::If(l) => {
+				let a = stack.pop_front().unwrap();
+				line = format!("if {:?} {:?}", a, l);
+			}
+			Op::Goto(l) => {
+				line = format!("goto {:?}", l);
+			}
+			Op::_27(n) => { // something about messages
+				let a = stack.pop_front().unwrap();
+				line = format!("27({n}) {:?}", a);
+			}
+			Op::CallFunc(a, b, n) => {
+				let it = stack.drain(..*n as usize).collect::<Vec<_>>();
+				line = format!("call {:?} {:?} {:?}", a, b, it);
+			}
+			Op::Syscall(n) => {
+				let pos = stack
+					.iter()
+					.position(|v| v == &Expr::Value(&Value::Uint(end.0)));
+				if pos.is_some_and(|pos| {
+					stack.get(pos + 1) == Some(&Expr::Value(&Value::Uint(current_func)))
+				}) {
+					let mut it = stack.drain(..pos.unwrap() + 2).collect::<Vec<_>>();
+					it.pop();
+					it.pop();
+					let call = Expr::Syscall(*n, it);
+					if syscall_returns(*n) {
+						stack.push_front(call);
+					} else {
+						line = format!("{call:?}");
+					}
+				} else {
+					line = format!("?syscall {} {:?}", n, stack);
+				}
+			}
+			Op::_24((a, b), c) => {
+				let call = if let Some(c) = c {
+					assert_eq!(c.1, 1);
+					assert_eq!(c.2, 4 * c.0.get());
+					let it = stack.drain(..c.0.get() as usize).collect::<Vec<_>>();
+					Expr::_24(*a, *b, it)
+				} else {
+					Expr::_24(*a, *b, Vec::new())
+				};
+				if _24_returns((*a, *b)) {
+					stack.push_front(call);
+				} else {
+					line = format!("{call:?}");
+				}
+			}
+			// Op::_09(_) => {
+			// 	unreachable!(); // only used after syscall?
+			// }
 			Op::Line(_) => {}
 			_ => {
-				println!("  {op:?} {stack:?}");
-				stack.clear();
+				line = format!("{:?}", op);
 			}
+		}
+
+		if !line.is_empty() {
+			println!("  {line} {stack:?}");
 		}
 	}
 }

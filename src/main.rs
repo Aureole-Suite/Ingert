@@ -7,7 +7,7 @@ struct Args {
 }
 
 fn main() {
-	tracing::subscriber::set_global_default(tracing_subscriber::FmtSubscriber::new()).unwrap();
+	tracing_subscriber::fmt::fmt().with_writer(std::io::stderr).init();
 	let args = Args::parse();
 	for file in args.files {
 		process_file(&file);
