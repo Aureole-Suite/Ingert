@@ -1,8 +1,5 @@
-use std::{
-	cell::Cell,
-	collections::{HashSet, VecDeque},
-	num::NonZeroU8,
-};
+use std::cell::Cell;
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 
 use gospel::read::{Le as _, Reader};
 use snafu::ResultExt as _;
@@ -205,47 +202,6 @@ pub enum Op {
 	_27(u8),
 }
 
-fn syscall_returns(n: u16) -> bool {
-	false &&
-	!matches!(n,
-		| 6..=9 | 12 | 15 | 20 | 28..=29 | 31 | 45..=46 | 53 | 56 | 60..=63 | 68..=72 | 74..=76 | 82 | 87 | 92 | 93 | 95..=99
-		| 100..=102 | 104 | 107..=108 | 111 | 113 | 115..=120 | 122..=123 | 125..=126 | 128 | 132 | 134 | 137..=140 | 148..=164 | 166 | 171..=183 | 186..=187 | 189..=199
-		| 200..=208 | 215..=225 | 227..=228 | 230 | 232 | 234..=242 | 244 | 248..=257 | 260..=271 | 273 | 275..=284 | 291..=293 | 296..=298
-		| 300..=302 | 304..=307 | 309..=320 | 322..=328 | 330..=338 | 369 | 383
-		| 405 | 464 | 470
-	)
-}
-
-fn _24_returns(v: (u8, u8)) -> bool {
-	false &&
-	!matches!(v,
-		| (0, 1 | 2 | 5 | 6 | 8 | 9 | 13)
-		| (1, 2 | 4 | 10 | 11 | 14 | 16 | 23 | 28 | 47 | 137 | 145 | 153 | 154 | 156 | 171 | 183)
-		| (2, 0 | 2 | 3 | 4 | 5 | 12 | 22 | 23 | 24 | 25 | 26 | 27)
-		| (3, 0 | 1 | 30 | 19 | 20 | 21 | 23 | 32 | 33 | 34 | 35 | 37)
-		| (4, 0..=2)
-		| (5, 0..=3 | 6..=11)
-		| (6, 0 | 16 | 30 | 32..=33 | 35)
-		| (9, 0)
-		| (11, 10 | 13 | 20 | 27 | 28 | 39 | 44 | 49 | 50 | 51 | 80)
-		| (12, 0..=4 | 6)
-		| (13, 19 | 20 | 89)
-		| (15, 0..=3)
-		| (16, 0 | 1 | 3 | 6 | 9 | 12 | 13 | 14 | 16 | 19)
-		| (17, 2)
-		| (19, 5..=6 | 10..=14 | 18..=20)
-		| (20, 0 | 3)
-		| (21, 0)
-		| (22, 0..=6 | 8..=12 | 15..=16)
-		| (23, 8 | 11 | 22 | 23)
-		| (24, 0 | 2 | 13 | 14)
-		| (25, 0..=3 | 8..=9 | 11..=12 | 14..=15 | 17..=18 | 20..=21 | 28 | 30)
-		| (26, 0..=2 | 4 | 5)
-		| (27, 0..=1)
-		| (28, 1 | 5)
-	)
-}
-
 pub struct Scp {
 	pub functions: Vec<Function>,
 	pub extras: Vec<TaggedValue>,
@@ -357,7 +313,12 @@ impl std::fmt::Debug for Expr {
 			Expr::Value(v) => v.fmt(f),
 			Expr::Var(n) => f.debug_tuple("Var").field(n).finish(),
 			Expr::Syscall(n, v) => f.debug_tuple("Syscall").field(n).field(v).finish(),
-			Expr::Syscall2(a, b, v) => f.debug_tuple("Syscall2").field(a).field(b).field(v).finish(),
+			Expr::Syscall2(a, b, v) => f
+				.debug_tuple("Syscall2")
+				.field(a)
+				.field(b)
+				.field(v)
+				.finish(),
 			Expr::Unop(v, a) => f.debug_tuple("Unop").field(v).field(a).finish(),
 			Expr::Binop(v, a, b) => f.debug_tuple("Binop").field(v).field(a).field(b).finish(),
 			Expr::Local => f.write_str("Local"),
@@ -368,6 +329,36 @@ impl std::fmt::Debug for Expr {
 	}
 }
 
+struct Ctx<'a> {
+	scp: &'a Scp,
+	functions: BTreeMap<Label, (u32, &'a Function)>,
+	back_labels: HashMap<Label, usize>,
+
+	stack: VecDeque<Expr>,
+	current_func: u32,
+	pos: usize,
+}
+
+impl<'a> Ctx<'a> {
+	fn next(&mut self) -> Option<&'a (Label, Op, Label)> {
+		let v = self.peek();
+		self.pos += 1;
+		v
+	}
+
+	fn peek(&self) -> Option<&'a (Label, Op, Label)> {
+		self.scp.ops.get(self.pos)
+	}
+
+	fn push_call(&mut self, call: Expr) {
+		if self.peek().is_some_and(|a| a.1 == Op::GetGlobal(0)) {
+			self.next();
+			self.stack.push_front(call);
+		} else {
+			println!("  {call:?}");
+		}
+	}
+}
 
 pub fn stuff(scp: &Scp) {
 	let labels = {
@@ -388,22 +379,38 @@ pub fn stuff(scp: &Scp) {
 		.functions
 		.iter()
 		.enumerate()
-		.map(|f| (f.1.start, f))
-		.collect::<std::collections::HashMap<_, _>>();
+		.map(|f| (f.1.start, (f.0 as u32, f.1)))
+		.collect::<BTreeMap<_, _>>();
 
-	let mut stack = VecDeque::new();
-	let mut current_func = 0;
-	let mut iter = scp.ops.iter().peekable();
-	while let Some((start, op, end)) = iter.next() {
-		if let Some((i, f)) = functions.get(start) {
-			current_func = *i as u32;
+	let back_labels = scp
+		.ops
+		.iter()
+		.enumerate()
+		.filter_map(|(i, (l, o, _))| match o {
+			Op::Goto(target) if target <= l => Some((*target, i)),
+			_ => None,
+		})
+		.collect::<HashMap<_, _>>();
+
+	let mut ctx = Ctx {
+		scp,
+		functions,
+		back_labels,
+		stack: VecDeque::new(),
+		current_func: 0,
+		pos: 0,
+	};
+
+	while let Some((start, op, end)) = ctx.next() {
+		if let Some((i, f)) = ctx.functions.get(start) {
+			ctx.current_func = *i;
 			println!("\nfunction {:?}, {:?} {:?}", f.a6, f.a1, f.a2);
 			for v in &f.a4 {
 				println!("  :{:?}", v);
 			}
-			stack.clear();
+			assert_eq!(ctx.stack, &[]);
 			for _ in &f.a2 {
-				stack.push_front(Expr::Arg);
+				ctx.stack.push_front(Expr::Arg);
 			}
 		}
 		if labels.contains(start) {
@@ -412,16 +419,16 @@ pub fn stuff(scp: &Scp) {
 
 		match op {
 			Op::Push(v) => {
-				stack.push_front(Expr::Value(v.clone()));
+				ctx.stack.push_front(Expr::Value(v.clone()));
 			}
 			Op::Pop(n) => {
 				for _ in 0..*n / 4 {
-					stack.pop_front().unwrap(); // TODO must be Local or Arg
+					ctx.stack.pop_front().unwrap(); // TODO must be Local or Arg
 				}
 			}
 			Op::GetVar(n) => {
-				let d = 4 * stack.len() as i32;
-				stack.push_front(Expr::Var(*n + d));
+				let d = 4 * ctx.stack.len() as i32;
+				ctx.stack.push_front(Expr::Var(*n + d));
 			}
 			Op::_03(_) => todo!(),
 			Op::_04(_) => todo!(),
@@ -430,58 +437,51 @@ pub fn stuff(scp: &Scp) {
 			Op::_07(_) => todo!(),
 			Op::_08(_) => todo!(),
 			Op::GetGlobal(_) => todo!(),
-			Op::SetGlobal(0) if iter.next_if(|a| a.1 == Op::GetGlobal(0)).is_some() => {
+			Op::SetGlobal(0) if ctx.peek().is_some_and(|a| a.1 == Op::GetGlobal(0)) => {
 				todo!("this is a switch");
 			}
 			Op::SetGlobal(0) => {
-				let a = stack.pop_front().unwrap();
+				let a = ctx.stack.pop_front().unwrap();
 				println!("  return {a:?}");
 			}
 			Op::SetGlobal(_) => todo!(),
 			Op::Goto(_) => todo!(),
 			Op::Syscall(n) => {
-				let pos = stack
+				let pos = ctx.stack
 					.iter()
 					.position(|v| v == &Expr::Value(Value::Uint(end.0)))
 					.unwrap();
-				assert_eq!(stack.get(pos + 1), Some(&Expr::Value(Value::Uint(current_func))));
-				let mut it = stack.drain(..pos + 2).collect::<Vec<_>>();
-				it.pop();
-				it.pop();
-				let call = Expr::Syscall(*n, it);
-				if iter.next_if(|a| a.1 == Op::GetGlobal(0)).is_some() {
-					stack.push_front(call);
-				} else {
-					println!("  {call:?}");
-				}
+				assert_eq!(
+					ctx.stack.get(pos + 1),
+					Some(&Expr::Value(Value::Uint(ctx.current_func)))
+				);
+				let it = ctx.stack.drain(..pos).collect::<Vec<_>>();
+				ctx.stack.pop_front().unwrap();
+				ctx.stack.pop_front().unwrap();
+				ctx.push_call(Expr::Syscall(*n, it));
 			}
 			Op::Return => {
 				println!("  (end)");
-				assert!(stack.is_empty());
+				assert_eq!(ctx.stack, &[]);
 			}
 			Op::If2(_) => todo!(),
 			Op::If(_) => todo!(),
-			Op::Op(n@(16..=30)) => {
+			Op::Op(n @ (16..=30)) => {
 				// 21: ==
-				let b = stack.pop_front().unwrap();
-				let a = stack.pop_front().unwrap();
-				stack.push_front(Expr::Binop(*n, a.into(), b.into()));
+				let b = ctx.stack.pop_front().unwrap();
+				let a = ctx.stack.pop_front().unwrap();
+				ctx.stack.push_front(Expr::Binop(*n, a.into(), b.into()));
 			}
-			Op::Op(n@32) => {
-				let a = stack.pop_front().unwrap();
-				stack.push_front(Expr::Unop(*n, a.into()));
+			Op::Op(n @ 32) => {
+				let a = ctx.stack.pop_front().unwrap();
+				ctx.stack.push_front(Expr::Unop(*n, a.into()));
 			}
 			Op::Op(_) => todo!(),
 			Op::CallFunc(_, _, _) => todo!(),
 			Op::_23(_, _, _) => todo!(),
 			Op::Syscall2(a, b, c) => {
-				let it = stack.drain(..*c as usize).collect::<Vec<_>>();
-				let call = Expr::Syscall2(*a, *b, it);
-				if iter.next_if(|a| a.1 == Op::GetGlobal(0)).is_some() {
-					stack.push_front(call);
-				} else {
-					println!("  {call:?}");
-				}
+				let it = ctx.stack.drain(..*c as usize).collect::<Vec<_>>();
+				ctx.push_call(Expr::Syscall2(*a, *b, it));
 			}
 			Op::_25(_) => todo!(),
 			Op::Line(_) => todo!(),

@@ -7,7 +7,9 @@ struct Args {
 }
 
 fn main() {
-	tracing_subscriber::fmt::fmt().with_writer(std::io::stderr).init();
+	tracing_subscriber::fmt::fmt()
+		.with_writer(std::io::stderr)
+		.init();
 	let args = Args::parse();
 	for file in args.files {
 		process_file(&file);
