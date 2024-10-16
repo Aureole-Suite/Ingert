@@ -199,7 +199,7 @@ pub enum Op {
 	Op(u8),
 	CallFunc(Value, Value, u8),
 	_23(Value, Value, u8),
-	_24((u8, u8), Option<(NonZeroU8, u8, u8)>),
+	_24(u8, u8, u8),
 	_25(Label),
 	Line(u16),
 	_27(u8),
@@ -306,13 +306,14 @@ pub fn parse_da(data: &[u8]) -> Result<Scp, ScpError> {
 			0x22 => Op::CallFunc(value(&mut f)?, value(&mut f)?, f.u8()?),
 			0x23 => Op::_23(value(&mut f)?, value(&mut f)?, f.u8()?),
 			0x24 => {
-				let a = (f.u8()?, f.u8()?);
-				if let Some(v) = NonZeroU8::new(f.u8()?) {
-					let b = (f.u8()?, f.u8()?);
-					Op::_24((a.0, a.1), Some((v, b.0, b.1)))
-				} else {
-					Op::_24((a.0, a.1), None)
+				let a = f.u8()?;
+				let b = f.u8()?;
+				let c = f.u8()?;
+				if c != 0 {
+					f.check_u8(1)?;
+					f.check_u8(4 * c)?;
 				}
+				Op::_24(a, b, c)
 			}
 			0x25 => Op::_25(label(&mut f)?),
 			0x26 => Op::Line(f.u16()?),
@@ -483,15 +484,9 @@ pub fn stuff(scp: &Scp) {
 					line = format!("?syscall {} {:?}", n, stack);
 				}
 			}
-			Op::_24((a, b), c) => {
-				let call = if let Some(c) = c {
-					assert_eq!(c.1, 1);
-					assert_eq!(c.2, 4 * c.0.get());
-					let it = stack.drain(..c.0.get() as usize).collect::<Vec<_>>();
-					Expr::_24(*a, *b, it)
-				} else {
-					Expr::_24(*a, *b, Vec::new())
-				};
+			Op::_24(a, b, c) => {
+				let it = stack.drain(..*c as usize).collect::<Vec<_>>();
+				let call = Expr::_24(*a, *b, it);
 				if _24_returns((*a, *b)) {
 					stack.push_front(call);
 				} else {
