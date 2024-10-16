@@ -181,7 +181,7 @@ impl std::fmt::Debug for Label {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Op {
 	Push(Value),
-	_01(u8),
+	Pop(u8),
 	GetVar(i32),
 	_03(i32),
 	_04(i32),
@@ -189,8 +189,8 @@ pub enum Op {
 	_06(i32),
 	_07(u32),
 	_08(u32),
-	_09(u8),
-	_0A(u8),
+	GetReturn(u8),
+	SetReturn(u8),
 	Goto(Label),
 	Syscall(u16),
 	Return,
@@ -199,22 +199,25 @@ pub enum Op {
 	Op(u8),
 	CallFunc(Value, Value, u8),
 	_23(Value, Value, u8),
-	_24(u8, u8, u8),
+	Syscall2(u8, u8, u8),
 	_25(Label),
 	Line(u16),
 	_27(u8),
 }
 
 fn syscall_returns(n: u16) -> bool {
+	false &&
 	!matches!(n,
-		| 6..=9 | 15 | 28..=29 | 31 | 45..=46 | 53 | 56 | 60..=63 | 68..=72 | 74..=76 | 82 | 87 | 92 | 93 | 95..=99
+		| 6..=9 | 12 | 15 | 20 | 28..=29 | 31 | 45..=46 | 53 | 56 | 60..=63 | 68..=72 | 74..=76 | 82 | 87 | 92 | 93 | 95..=99
 		| 100..=102 | 104 | 107..=108 | 111 | 113 | 115..=120 | 122..=123 | 125..=126 | 128 | 132 | 134 | 137..=140 | 148..=164 | 166 | 171..=183 | 186..=187 | 189..=199
-		| 200..=208 | 215..=225 | 227..=228 | 230 | 232 | 234..=242 | 244 | 248..=257 | 260..=271 | 273 | 275..=284 | 291..=293 | 295 | 296..=298
-		| 300..=302 | 304..=320 | 322..=328 | 330..=338
+		| 200..=208 | 215..=225 | 227..=228 | 230 | 232 | 234..=242 | 244 | 248..=257 | 260..=271 | 273 | 275..=284 | 291..=293 | 296..=298
+		| 300..=302 | 304..=307 | 309..=320 | 322..=328 | 330..=338 | 369 | 383
+		| 405 | 464 | 470
 	)
 }
 
 fn _24_returns(v: (u8, u8)) -> bool {
+	false &&
 	!matches!(v,
 		| (0, 1 | 2 | 5 | 6 | 8 | 9 | 13)
 		| (1, 2 | 4 | 10 | 11 | 14 | 16 | 23 | 28 | 47 | 137 | 145 | 153 | 154 | 156 | 171 | 183)
@@ -222,7 +225,7 @@ fn _24_returns(v: (u8, u8)) -> bool {
 		| (3, 0 | 1 | 30 | 19 | 20 | 21 | 23 | 32 | 33 | 34 | 35 | 37)
 		| (4, 0..=2)
 		| (5, 0..=3 | 6..=11)
-		| (6, 0 | 16 | 30 | 32 | 35)
+		| (6, 0 | 16 | 30 | 32..=33 | 35)
 		| (9, 0)
 		| (11, 10 | 13 | 20 | 27 | 28 | 39 | 44 | 49 | 50 | 51 | 80)
 		| (12, 0..=4 | 6)
@@ -284,10 +287,10 @@ pub fn parse_da(data: &[u8]) -> Result<Scp, ScpError> {
 		let op = f.u8()?;
 		let op = match op {
 			0x00 => {
-				f.check_u8(4)?;
+				f.check_u8(4)?; // number of bytes to push?
 				Op::Push(value(&mut f)?)
 			}
-			0x01 => Op::_01(f.u8()?),
+			0x01 => Op::Pop(f.u8()?),
 			0x02 => Op::GetVar(f.i32()?),
 			0x03 => Op::_03(f.i32()?),
 			0x04 => Op::_04(f.i32()?),
@@ -295,8 +298,8 @@ pub fn parse_da(data: &[u8]) -> Result<Scp, ScpError> {
 			0x06 => Op::_06(f.i32()?),
 			0x07 => Op::_07(f.u32()?),
 			0x08 => Op::_08(f.u32()?),
-			0x09 => Op::_09(f.u8()?),
-			0x0A => Op::_0A(f.u8()?),
+			0x09 => Op::GetReturn(f.u8()?),
+			0x0A => Op::SetReturn(f.u8()?),
 			0x0B => Op::Goto(label(&mut f)?),
 			0x0C => Op::Syscall(f.u16()?),
 			0x0D => Op::Return,
@@ -313,7 +316,7 @@ pub fn parse_da(data: &[u8]) -> Result<Scp, ScpError> {
 					f.check_u8(1)?;
 					f.check_u8(4 * c)?;
 				}
-				Op::_24(a, b, c)
+				Op::Syscall2(a, b, c)
 			}
 			0x25 => Op::_25(label(&mut f)?),
 			0x26 => Op::Line(f.u16()?),
@@ -367,6 +370,8 @@ pub fn stuff(scp: &Scp) {
 		Binop(u8, Box<Expr<'a>>, Box<Expr<'a>>),
 		Local,
 		Arg,
+		_07(u32),
+		Result(u8),
 	}
 
 	impl std::fmt::Debug for Expr<'_> {
@@ -381,6 +386,8 @@ pub fn stuff(scp: &Scp) {
 				Expr::Binop(v, a, b) => f.debug_tuple("Binop").field(v).field(a).field(b).finish(),
 				Expr::Local => f.write_str("Local"),
 				Expr::Arg => f.write_str("Arg"),
+				Expr::_07(v) => f.debug_tuple("_07").field(v).finish(),
+				Expr::Result(v) => f.debug_tuple("Result").field(v).finish(),
 			}
 		}
 	}
@@ -389,9 +396,6 @@ pub fn stuff(scp: &Scp) {
 	let mut current_func = 0;
 	for (start, op, end) in &scp.ops {
 		if let Some((i, f)) = functions.get(start) {
-			// if f.a6 == Value::String("screen_dof_set_focus_range".into()) {
-			// 	break;
-			// }
 			current_func = *i as u32;
 			println!("\nfunction {:?}, {:?} {:?}", f.a6, f.a1, f.a2);
 			for v in &f.a4 {
@@ -403,19 +407,35 @@ pub fn stuff(scp: &Scp) {
 			}
 		}
 		if labels.contains(start) {
-			println!("{:?}:", start);
+			println!("{start:?}:");
 		}
 
 		let mut line = String::new();
+		line = format!("{op:?}");
 
 		match op {
 			Op::Push(v) => {
 				stack.push_front(Expr::Value(v));
 			}
-			Op::_01(n) => {
+			Op::Pop(n) => {
+				line = format!("01({n})");
 				for _ in 0..*n/4 {
-					stack.pop_back(); // TODO unwrap
+					stack.pop_front().unwrap();
 				}
+			}
+			Op::_07(n) => {
+				stack.push_front(Expr::_07(*n));
+			}
+			Op::_08(n) => {
+				let a = stack.pop_front().unwrap();
+				line = format!("08({n}) = {a:?}");
+			}
+			Op::SetReturn(n) => {
+				let a = stack.pop_front().unwrap();
+				line = format!("SetReturn({n}) = {a:?}");
+			}
+			Op::GetReturn(n) => {
+				stack.push_front(Expr::Result(*n));
 			}
 			Op::GetVar(v) => {
 				let d = 4 * stack.len() as i32;
@@ -426,11 +446,6 @@ pub fn stuff(scp: &Scp) {
 				let d = 4 * stack.len() as i32;
 				line = format!("Var({}) = {:?}", *v + d, a);
 			}
-			Op::_09(0) => {
-				let a = stack.pop_front().unwrap();
-				stack.push_front(Expr::Unop(9, a.into()));
-			}
-			Op::_09(_) => unreachable!(),
 			Op::Op(n@(16..=30)) => {
 				let a = stack.pop_front().unwrap();
 				let b = stack.pop_front().unwrap();
@@ -484,7 +499,7 @@ pub fn stuff(scp: &Scp) {
 					line = format!("?syscall {} {:?}", n, stack);
 				}
 			}
-			Op::_24(a, b, c) => {
+			Op::Syscall2(a, b, c) => {
 				let it = stack.drain(..*c as usize).collect::<Vec<_>>();
 				let call = Expr::_24(*a, *b, it);
 				if _24_returns((*a, *b)) {
