@@ -613,7 +613,7 @@ fn stmt(ctx: &mut Ctx<'_>) {
 			ctx.push_call(Expr::Syscall2(*a, *b, it));
 		}
 		&Op::_25(target) => {
-			println!("  skip {{");
+			println!("  _25 {{");
 			loop {
 				if let Some(&(p, _, _)) = ctx.peek() && p >= target {
 					assert_eq!(p, target);
