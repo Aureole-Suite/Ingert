@@ -286,29 +286,29 @@ pub fn parse_da(data: &[u8]) -> Result<Scp, ScpError> {
 		let start = f.pos();
 		let op = f.u8()?;
 		let op = match op {
-			0x00 => {
+			0 => {
 				f.check_u8(4)?; // number of bytes to push?
 				Op::Push(value(&mut f)?)
 			}
-			0x01 => Op::Pop(f.u8()?),
-			0x02 => Op::GetVar(f.i32()?),
-			0x03 => Op::_03(f.i32()?),
-			0x04 => Op::_04(f.i32()?),
-			0x05 => Op::SetVar(f.i32()?),
-			0x06 => Op::_06(f.i32()?),
-			0x07 => Op::_07(f.u32()?),
-			0x08 => Op::_08(f.u32()?),
-			0x09 => Op::GetReturn(f.u8()?),
-			0x0A => Op::SetReturn(f.u8()?),
-			0x0B => Op::Goto(label(&mut f)?),
-			0x0C => Op::Syscall(f.u16()?),
-			0x0D => Op::Return,
-			0x0E => Op::If2(label(&mut f)?),
-			0x0F => Op::If(label(&mut f)?),
-			0x10..=0x21 => Op::Op(op),
-			0x22 => Op::CallFunc(value(&mut f)?, value(&mut f)?, f.u8()?),
-			0x23 => Op::_23(value(&mut f)?, value(&mut f)?, f.u8()?),
-			0x24 => {
+			1 => Op::Pop(f.u8()?),
+			2 => Op::GetVar(f.i32()?),
+			3 => Op::_03(f.i32()?),
+			4 => Op::_04(f.i32()?),
+			5 => Op::SetVar(f.i32()?),
+			6 => Op::_06(f.i32()?),
+			7 => Op::_07(f.u32()?),
+			8 => Op::_08(f.u32()?),
+			9 => Op::GetReturn(f.u8()?),
+			10 => Op::SetReturn(f.u8()?),
+			11 => Op::Goto(label(&mut f)?),
+			12 => Op::Syscall(f.u16()?),
+			13 => Op::Return,
+			14 => Op::If2(label(&mut f)?),
+			15 => Op::If(label(&mut f)?),
+			16..=33 => Op::Op(op),
+			34 => Op::CallFunc(value(&mut f)?, value(&mut f)?, f.u8()?),
+			35 => Op::_23(value(&mut f)?, value(&mut f)?, f.u8()?),
+			36 => {
 				let a = f.u8()?;
 				let b = f.u8()?;
 				let c = f.u8()?;
@@ -318,10 +318,10 @@ pub fn parse_da(data: &[u8]) -> Result<Scp, ScpError> {
 				}
 				Op::Syscall2(a, b, c)
 			}
-			0x25 => Op::_25(label(&mut f)?),
-			0x26 => Op::Line(f.u16()?),
-			0x27 => Op::_27(f.u8()?),
-			0x28.. => return scp::Op { op, pos: start }.fail(),
+			37 => Op::_25(label(&mut f)?),
+			38 => Op::Line(f.u16()?),
+			39 => Op::_27(f.u8()?),
+			40.. => return scp::Op { op, pos: start }.fail(),
 		};
 		let end = op == Op::Return && f.pos() > last_offset.get() as usize;
 		ops.push((Label(start as u32), op, Label(f.pos() as u32)));
