@@ -360,12 +360,12 @@ impl<'a> Ctx<'a> {
 		self.stack.drain(..n).collect()
 	}
 
-	fn push_call(&mut self, call: Expr) {
+	fn push_call(&mut self, i: Indent, call: Expr) {
 		if self.peek().is_some_and(|a| a.1 == Op::GetGlobal(0)) {
 			self.next();
 			self.stack.push_front(call);
 		} else {
-			println!("  {call:?}");
+			println!("{i}{call:?}");
 		}
 	}
 }
@@ -410,7 +410,7 @@ pub fn stuff(scp: &Scp) {
 			}
 		}
 
-		stmt(&mut ctx);
+		stmt(&mut ctx, Indent(1));
 
 		// match op {
 		// 	Op::Push(v) => {
@@ -522,7 +522,23 @@ pub fn stuff(scp: &Scp) {
 	}
 }
 
-fn stmt(ctx: &mut Ctx<'_>) {
+#[derive(Debug, Clone, PartialEq)]
+struct Indent(usize);
+impl Indent {
+	fn inc(&self) -> Self {
+		Self(self.0 + 1)
+	}
+}
+impl std::fmt::Display for Indent {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		for _ in 0..self.0 {
+			write!(f, "  ")?;
+		}
+		Ok(())
+	}
+}
+
+fn stmt(ctx: &mut Ctx<'_>, i: Indent) {
 	let (_, op, end) = ctx.next().unwrap();
 	match op {
 		Op::Push(v) => {
@@ -549,7 +565,7 @@ fn stmt(ctx: &mut Ctx<'_>) {
 		}
 		Op::SetGlobal(0) => {
 			let a = ctx.pop();
-			println!("  return {a:?}");
+			println!("{i}return {a:?}");
 		}
 		Op::SetGlobal(_) => todo!(),
 		Op::Goto(_) => todo!(),
@@ -562,17 +578,17 @@ fn stmt(ctx: &mut Ctx<'_>) {
 			let it = ctx.pop_n(pos);
 			assert_eq!(ctx.pop(), Expr::Value(Value::Uint(end.0)));
 			assert_eq!(ctx.pop(), Expr::Value(Value::Uint(ctx.current_func)));
-			ctx.push_call(Expr::Syscall(*n, it));
+			ctx.push_call(i, Expr::Syscall(*n, it));
 		}
 		Op::Return => {
-			println!("  (end)");
+			println!("{i}(end)");
 			assert_eq!(ctx.stack, &[]);
 		}
 		Op::If2(_) => todo!(),
 		Op::If(mut target) => {
 			let a = ctx.pop();
 			let has_else = false;
-			println!("  if {a:?} {{");
+			println!("{i}if {a:?} {{");
 			loop {
 				if let Some(&(p, _, _)) = ctx.peek() && p >= target {
 					assert_eq!(p, target);
@@ -581,16 +597,16 @@ fn stmt(ctx: &mut Ctx<'_>) {
 				if let Some(&(_, Op::Goto(t), gend)) = ctx.peek() && gend == target {
 					if !has_else {
 						ctx.next();
-						println!("  }} else {{");
+						println!("{i}}} else {{");
 						target = t;
 						continue
 					} else {
 						unreachable!();
 					}
 				}
-				stmt(ctx);
+				stmt(ctx, i.inc());
 			}
-			println!("  }}");
+			println!("{i}}}");
 		}
 		Op::Op(n @ (16..=30)) => {
 			// 21: ==
@@ -605,23 +621,23 @@ fn stmt(ctx: &mut Ctx<'_>) {
 		Op::Op(_) => todo!(),
 		Op::CallFunc(a, b, n) => {
 			let it = ctx.pop_n(*n as usize);
-			ctx.push_call(Expr::CallFunc(a.clone(), b.clone(), it));
+			ctx.push_call(i, Expr::CallFunc(a.clone(), b.clone(), it));
 		}
 		Op::_23(_, _, _) => todo!(),
 		Op::Syscall2(a, b, c) => {
 			let it = ctx.pop_n(*c as usize);
-			ctx.push_call(Expr::Syscall2(*a, *b, it));
+			ctx.push_call(i, Expr::Syscall2(*a, *b, it));
 		}
 		&Op::_25(target) => {
-			println!("  _25 {{");
+			println!("{i}_25 {{");
 			loop {
 				if let Some(&(p, _, _)) = ctx.peek() && p >= target {
 					assert_eq!(p, target);
 					break
 				}
-				stmt(ctx);
+				stmt(ctx, i.inc());
 			}
-			println!("  }}");
+			println!("{i}}}");
 		}
 		Op::Line(_) => todo!(),
 		Op::_27(_) => todo!(),
