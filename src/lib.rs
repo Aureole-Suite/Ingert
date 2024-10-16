@@ -189,8 +189,8 @@ pub enum Op {
 	_06(i32),
 	_07(u32),
 	_08(u32),
-	GetReturn(u8),
-	SetReturn(u8),
+	GetGlobal(u8),
+	SetGlobal(u8),
 	Goto(Label),
 	Syscall(u16),
 	Return,
@@ -298,8 +298,8 @@ pub fn parse_da(data: &[u8]) -> Result<Scp, ScpError> {
 			6 => Op::_06(f.i32()?),
 			7 => Op::_07(f.u32()?),
 			8 => Op::_08(f.u32()?),
-			9 => Op::GetReturn(f.u8()?),
-			10 => Op::SetReturn(f.u8()?),
+			9 => Op::GetGlobal(f.u8()?),
+			10 => Op::SetGlobal(f.u8()?),
 			11 => Op::Goto(label(&mut f)?),
 			12 => Op::Syscall(f.u16()?),
 			13 => Op::Return,
@@ -337,6 +337,38 @@ pub fn parse_da(data: &[u8]) -> Result<Scp, ScpError> {
 	})
 }
 
+#[derive(Clone, PartialEq)]
+enum Expr {
+	Value(Value),
+	Var(i32),
+	Syscall(u16, Vec<Expr>),
+	Syscall2(u8, u8, Vec<Expr>),
+	Unop(u8, Box<Expr>),
+	Binop(u8, Box<Expr>, Box<Expr>),
+	Local,
+	Arg,
+	_07(u32),
+	Global(u8),
+}
+
+impl std::fmt::Debug for Expr {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			Expr::Value(v) => v.fmt(f),
+			Expr::Var(n) => f.debug_tuple("Var").field(n).finish(),
+			Expr::Syscall(n, v) => f.debug_tuple("Syscall").field(n).field(v).finish(),
+			Expr::Syscall2(a, b, v) => f.debug_tuple("Syscall2").field(a).field(b).field(v).finish(),
+			Expr::Unop(v, a) => f.debug_tuple("Unop").field(v).field(a).finish(),
+			Expr::Binop(v, a, b) => f.debug_tuple("Binop").field(v).field(a).field(b).finish(),
+			Expr::Local => f.write_str("Local"),
+			Expr::Arg => f.write_str("Arg"),
+			Expr::_07(v) => f.debug_tuple("_07").field(v).finish(),
+			Expr::Global(v) => f.debug_tuple("Global").field(v).finish(),
+		}
+	}
+}
+
+
 pub fn stuff(scp: &Scp) {
 	let labels = {
 		let mut labels = HashSet::new();
@@ -359,42 +391,10 @@ pub fn stuff(scp: &Scp) {
 		.map(|f| (f.1.start, f))
 		.collect::<std::collections::HashMap<_, _>>();
 
-	#[derive(Clone, PartialEq)]
-	enum Expr<'a> {
-		Value(&'a Value),
-		Var(i32),
-		Syscall(u16, Vec<Expr<'a>>),
-		_24(u8, u8, Vec<Expr<'a>>),
-		Op(u8),
-		Unop(u8, Box<Expr<'a>>),
-		Binop(u8, Box<Expr<'a>>, Box<Expr<'a>>),
-		Local,
-		Arg,
-		_07(u32),
-		Result(u8),
-	}
-
-	impl std::fmt::Debug for Expr<'_> {
-		fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-			match self {
-				Expr::Value(v) => v.fmt(f),
-				Expr::Var(n) => f.debug_tuple("Var").field(n).finish(),
-				Expr::Syscall(n, v) => f.debug_tuple("Syscall").field(n).field(v).finish(),
-				Expr::_24(a, b, v) => f.debug_tuple("_24").field(a).field(b).field(v).finish(),
-				Expr::Op(v) => f.debug_tuple("Op").field(v).finish(),
-				Expr::Unop(v, a) => f.debug_tuple("Unop").field(v).field(a).finish(),
-				Expr::Binop(v, a, b) => f.debug_tuple("Binop").field(v).field(a).field(b).finish(),
-				Expr::Local => f.write_str("Local"),
-				Expr::Arg => f.write_str("Arg"),
-				Expr::_07(v) => f.debug_tuple("_07").field(v).finish(),
-				Expr::Result(v) => f.debug_tuple("Result").field(v).finish(),
-			}
-		}
-	}
-
 	let mut stack = VecDeque::new();
 	let mut current_func = 0;
-	for (start, op, end) in &scp.ops {
+	let mut iter = scp.ops.iter().peekable();
+	while let Some((start, op, end)) = iter.next() {
 		if let Some((i, f)) = functions.get(start) {
 			current_func = *i as u32;
 			println!("\nfunction {:?}, {:?} {:?}", f.a6, f.a1, f.a2);
@@ -410,115 +410,190 @@ pub fn stuff(scp: &Scp) {
 			println!("{start:?}:");
 		}
 
-		let mut line = String::new();
-		line = format!("{op:?}");
-
 		match op {
 			Op::Push(v) => {
-				stack.push_front(Expr::Value(v));
+				stack.push_front(Expr::Value(v.clone()));
 			}
 			Op::Pop(n) => {
-				line = format!("01({n})");
-				for _ in 0..*n/4 {
-					stack.pop_front().unwrap();
+				for _ in 0..*n / 4 {
+					stack.pop_front().unwrap(); // TODO must be Local or Arg
 				}
 			}
-			Op::_07(n) => {
-				stack.push_front(Expr::_07(*n));
-			}
-			Op::_08(n) => {
-				let a = stack.pop_front().unwrap();
-				line = format!("08({n}) = {a:?}");
-			}
-			Op::SetReturn(n) => {
-				let a = stack.pop_front().unwrap();
-				line = format!("SetReturn({n}) = {a:?}");
-			}
-			Op::GetReturn(n) => {
-				stack.push_front(Expr::Result(*n));
-			}
-			Op::GetVar(v) => {
+			Op::GetVar(n) => {
 				let d = 4 * stack.len() as i32;
-				stack.push_front(Expr::Var(*v + d));
+				stack.push_front(Expr::Var(*n + d));
 			}
-			Op::SetVar(v) => {
+			Op::_03(_) => todo!(),
+			Op::_04(_) => todo!(),
+			Op::SetVar(_) => todo!(),
+			Op::_06(_) => todo!(),
+			Op::_07(_) => todo!(),
+			Op::_08(_) => todo!(),
+			Op::GetGlobal(_) => todo!(),
+			Op::SetGlobal(0) if iter.next_if(|a| a.1 == Op::GetGlobal(0)).is_some() => {
+				todo!("this is a switch");
+			}
+			Op::SetGlobal(0) => {
 				let a = stack.pop_front().unwrap();
-				let d = 4 * stack.len() as i32;
-				line = format!("Var({}) = {:?}", *v + d, a);
+				println!("  return {a:?}");
 			}
+			Op::SetGlobal(_) => todo!(),
+			Op::Goto(_) => todo!(),
+			Op::Syscall(n) => {
+				let pos = stack
+					.iter()
+					.position(|v| v == &Expr::Value(Value::Uint(end.0)))
+					.unwrap();
+				assert_eq!(stack.get(pos + 1), Some(&Expr::Value(Value::Uint(current_func))));
+				let mut it = stack.drain(..pos + 2).collect::<Vec<_>>();
+				it.pop();
+				it.pop();
+				let call = Expr::Syscall(*n, it);
+				if iter.next_if(|a| a.1 == Op::GetGlobal(0)).is_some() {
+					stack.push_front(call);
+				} else {
+					println!("  {call:?}");
+				}
+			}
+			Op::Return => {
+				println!("  (end)");
+				assert!(stack.is_empty());
+			}
+			Op::If2(_) => todo!(),
+			Op::If(_) => todo!(),
 			Op::Op(n@(16..=30)) => {
-				let a = stack.pop_front().unwrap();
+				// 21: ==
 				let b = stack.pop_front().unwrap();
+				let a = stack.pop_front().unwrap();
 				stack.push_front(Expr::Binop(*n, a.into(), b.into()));
 			}
 			Op::Op(n@32) => {
 				let a = stack.pop_front().unwrap();
 				stack.push_front(Expr::Unop(*n, a.into()));
 			}
-			Op::Op(n) => {
-				line = format!("Op({n})");
-				stack.push_front(Expr::Op(*n))
-			}
-			Op::If2(l) => {
-				let a = stack.pop_front().unwrap();
-				line = format!("if2 {:?} {:?}", a, l);
-				stack.push_front(Expr::Local); // TODO no idea what if2 is
-			}
-			Op::If(l) => {
-				let a = stack.pop_front().unwrap();
-				line = format!("if {:?} {:?}", a, l);
-			}
-			Op::Goto(l) => {
-				line = format!("goto {:?}", l);
-			}
-			Op::_27(n) => { // something about messages
-				let a = stack.pop_front().unwrap();
-				line = format!("27({n}) {:?}", a);
-			}
-			Op::CallFunc(a, b, n) => {
-				let it = stack.drain(..*n as usize).collect::<Vec<_>>();
-				line = format!("call {:?} {:?} {:?}", a, b, it);
-			}
-			Op::Syscall(n) => {
-				let pos = stack
-					.iter()
-					.position(|v| v == &Expr::Value(&Value::Uint(end.0)));
-				if pos.is_some_and(|pos| {
-					stack.get(pos + 1) == Some(&Expr::Value(&Value::Uint(current_func)))
-				}) {
-					let mut it = stack.drain(..pos.unwrap() + 2).collect::<Vec<_>>();
-					it.pop();
-					it.pop();
-					let call = Expr::Syscall(*n, it);
-					if syscall_returns(*n) {
-						stack.push_front(call);
-					} else {
-						line = format!("{call:?}");
-					}
-				} else {
-					line = format!("?syscall {} {:?}", n, stack);
-				}
-			}
+			Op::Op(_) => todo!(),
+			Op::CallFunc(_, _, _) => todo!(),
+			Op::_23(_, _, _) => todo!(),
 			Op::Syscall2(a, b, c) => {
 				let it = stack.drain(..*c as usize).collect::<Vec<_>>();
-				let call = Expr::_24(*a, *b, it);
-				if _24_returns((*a, *b)) {
+				let call = Expr::Syscall2(*a, *b, it);
+				if iter.next_if(|a| a.1 == Op::GetGlobal(0)).is_some() {
 					stack.push_front(call);
 				} else {
-					line = format!("{call:?}");
+					println!("  {call:?}");
 				}
 			}
-			// Op::_09(_) => {
-			// 	unreachable!(); // only used after syscall?
-			// }
-			Op::Line(_) => {}
-			_ => {
-				line = format!("{:?}", op);
-			}
+			Op::_25(_) => todo!(),
+			Op::Line(_) => todo!(),
+			Op::_27(_) => todo!(),
 		}
 
-		if !line.is_empty() {
-			println!("  {line} {stack:?}");
-		}
+		// match op {
+		// 	Op::Push(v) => {
+		// 		stack.push_front(Expr::Value(v.clone()));
+		// 	}
+		// 	Op::Pop(n) => {
+		// 		line = format!("01({n})");
+		// 		for _ in 0..*n/4 {
+		// 			stack.pop_front();
+		// 		}
+		// 	}
+		// 	Op::_07(n) => {
+		// 		stack.push_front(Expr::_07(*n));
+		// 	}
+		// 	Op::_08(n) => {
+		// 		let a = stack.pop_front().unwrap();
+		// 		line = format!("08({n}) = {a:?}");
+		// 	}
+		//
+		// 	Op::GetGlobal(n) => {
+		// 		stack.push_front(Expr::Global(*n));
+		// 	}
+		// 	Op::SetGlobal(n) => {
+		// 		let a = stack.pop_front().unwrap();
+		// 		line = format!("Global({n}) = {a:?}");
+		// 		stack.push_front(a);
+		// 	}
+		//
+		// 	Op::GetVar(v) => {
+		// 		let d = 4 * stack.len() as i32;
+		// 		stack.push_front(Expr::Var(*v + d));
+		// 	}
+		// 	Op::SetVar(v) => {
+		// 		let a = stack.pop_front().unwrap();
+		// 		let d = 4 * stack.len() as i32;
+		// 		line = format!("Var({}) = {:?}", *v + d, a);
+		// 	}
+		//
+		// 	Op::Op(n@(16..=30)) => {
+		// 		let a = stack.pop_front().unwrap();
+		// 		let b = stack.pop_front().unwrap();
+		// 		stack.push_front(Expr::Binop(*n, a.into(), b.into()));
+		// 	}
+		// 	Op::Op(n@32) => {
+		// 		let a = stack.pop_front().unwrap();
+		// 		stack.push_front(Expr::Unop(*n, a.into()));
+		// 	}
+		// 	Op::Op(n) => {
+		// 		line = format!("Op({n})");
+		// 		stack.push_front(Expr::Op(*n))
+		// 	}
+		// 	Op::If2(l) => {
+		// 		let a = stack.pop_front().unwrap();
+		// 		line = format!("if2 {:?} {:?}", a, l);
+		// 	}
+		// 	Op::If(l) => {
+		// 		let a = stack.pop_front().unwrap();
+		// 		line = format!("if {:?} {:?}", a, l);
+		// 	}
+		// 	Op::Goto(l) => {
+		// 		line = format!("goto {:?}", l);
+		// 	}
+		// 	Op::_27(n) => { // something about messages
+		// 		let a = stack.pop_front().unwrap();
+		// 		line = format!("27({n}) {:?}", a);
+		// 	}
+		// 	Op::CallFunc(a, b, n) => {
+		// 		let it = stack.drain(..*n as usize).collect::<Vec<_>>();
+		// 		line = format!("call {:?} {:?} {:?}", a, b, it);
+		// 	}
+		// 	Op::Syscall(n) => {
+		// 		let pos = stack
+		// 			.iter()
+		// 			.position(|v| v == &Expr::Value(&Value::Uint(end.0)));
+		// 		if pos.is_some_and(|pos| {
+		// 			stack.get(pos + 1) == Some(&Expr::Value(&Value::Uint(current_func)))
+		// 		}) {
+		// 			let mut it = stack.drain(..pos.unwrap() + 2).collect::<Vec<_>>();
+		// 			it.pop();
+		// 			it.pop();
+		// 			let call = Expr::Syscall(*n, it);
+		// 			if syscall_returns(*n) {
+		// 				stack.push_front(call);
+		// 			} else {
+		// 				line = format!("{call:?}");
+		// 			}
+		// 		} else {
+		// 			line = format!("?syscall {} {:?}", n, stack);
+		// 		}
+		// 	}
+		// 	Op::Syscall2(a, b, c) => {
+		// 		let it = stack.drain(..*c as usize).collect::<Vec<_>>();
+		// 		let call = Expr::_24(*a, *b, it);
+		// 		if _24_returns((*a, *b)) {
+		// 			stack.push_front(call);
+		// 		} else {
+		// 			line = format!("{call:?}");
+		// 		}
+		// 	}
+		// 	Op::Line(_) => {}
+		// 	_ => {
+		// 		line = format!("{:?}", op);
+		// 	}
+		// }
+		//
+		// if !line.is_empty() {
+		// 	println!("  {line} {stack:?}");
+		// }
 	}
 }
