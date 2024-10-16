@@ -1,3 +1,4 @@
+#![feature(let_chains)]
 use std::cell::Cell;
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 
@@ -299,6 +300,7 @@ enum Expr {
 	Var(i32),
 	Syscall(u16, Vec<Expr>),
 	Syscall2(u8, u8, Vec<Expr>),
+	CallFunc(Value, Value, Vec<Expr>),
 	Unop(u8, Box<Expr>),
 	Binop(u8, Box<Expr>, Box<Expr>),
 	Local,
@@ -313,12 +315,8 @@ impl std::fmt::Debug for Expr {
 			Expr::Value(v) => v.fmt(f),
 			Expr::Var(n) => f.debug_tuple("Var").field(n).finish(),
 			Expr::Syscall(n, v) => f.debug_tuple("Syscall").field(n).field(v).finish(),
-			Expr::Syscall2(a, b, v) => f
-				.debug_tuple("Syscall2")
-				.field(a)
-				.field(b)
-				.field(v)
-				.finish(),
+			Expr::Syscall2(a, b, v) => f.debug_tuple("Syscall2").field(a).field(b).field(v).finish(),
+			Expr::CallFunc(a, b, v) => f.debug_tuple("CallFunc").field(a).field(b).field(v).finish(),
 			Expr::Unop(v, a) => f.debug_tuple("Unop").field(v).field(a).finish(),
 			Expr::Binop(v, a, b) => f.debug_tuple("Binop").field(v).field(a).field(b).finish(),
 			Expr::Local => f.write_str("Local"),
@@ -430,6 +428,114 @@ pub fn stuff(scp: &Scp) {
 		}
 
 		stmt(&mut ctx);
+
+		// match op {
+		// 	Op::Push(v) => {
+		// 		stack.push_front(Expr::Value(v.clone()));
+		// 	}
+		// 	Op::Pop(n) => {
+		// 		line = format!("01({n})");
+		// 		for _ in 0..*n/4 {
+		// 			stack.pop_front();
+		// 		}
+		// 	}
+		// 	Op::_07(n) => {
+		// 		stack.push_front(Expr::_07(*n));
+		// 	}
+		// 	Op::_08(n) => {
+		// 		let a = stack.pop_front().unwrap();
+		// 		line = format!("08({n}) = {a:?}");
+		// 	}
+		//
+		// 	Op::GetGlobal(n) => {
+		// 		stack.push_front(Expr::Global(*n));
+		// 	}
+		// 	Op::SetGlobal(n) => {
+		// 		let a = stack.pop_front().unwrap();
+		// 		line = format!("Global({n}) = {a:?}");
+		// 		stack.push_front(a);
+		// 	}
+		//
+		// 	Op::GetVar(v) => {
+		// 		let d = 4 * stack.len() as i32;
+		// 		stack.push_front(Expr::Var(*v + d));
+		// 	}
+		// 	Op::SetVar(v) => {
+		// 		let a = stack.pop_front().unwrap();
+		// 		let d = 4 * stack.len() as i32;
+		// 		line = format!("Var({}) = {:?}", *v + d, a);
+		// 	}
+		//
+		// 	Op::Op(n@(16..=30)) => {
+		// 		let a = stack.pop_front().unwrap();
+		// 		let b = stack.pop_front().unwrap();
+		// 		stack.push_front(Expr::Binop(*n, a.into(), b.into()));
+		// 	}
+		// 	Op::Op(n@32) => {
+		// 		let a = stack.pop_front().unwrap();
+		// 		stack.push_front(Expr::Unop(*n, a.into()));
+		// 	}
+		// 	Op::Op(n) => {
+		// 		line = format!("Op({n})");
+		// 		stack.push_front(Expr::Op(*n))
+		// 	}
+		// 	Op::If2(l) => {
+		// 		let a = stack.pop_front().unwrap();
+		// 		line = format!("if2 {:?} {:?}", a, l);
+		// 	}
+		// 	Op::If(l) => {
+		// 		let a = stack.pop_front().unwrap();
+		// 		line = format!("if {:?} {:?}", a, l);
+		// 	}
+		// 	Op::Goto(l) => {
+		// 		line = format!("goto {:?}", l);
+		// 	}
+		// 	Op::_27(n) => { // something about messages
+		// 		let a = stack.pop_front().unwrap();
+		// 		line = format!("27({n}) {:?}", a);
+		// 	}
+		// 	Op::CallFunc(a, b, n) => {
+		// 		let it = stack.drain(..*n as usize).collect::<Vec<_>>();
+		// 		line = format!("call {:?} {:?} {:?}", a, b, it);
+		// 	}
+		// 	Op::Syscall(n) => {
+		// 		let pos = stack
+		// 			.iter()
+		// 			.position(|v| v == &Expr::Value(&Value::Uint(end.0)));
+		// 		if pos.is_some_and(|pos| {
+		// 			stack.get(pos + 1) == Some(&Expr::Value(&Value::Uint(current_func)))
+		// 		}) {
+		// 			let mut it = stack.drain(..pos.unwrap() + 2).collect::<Vec<_>>();
+		// 			it.pop();
+		// 			it.pop();
+		// 			let call = Expr::Syscall(*n, it);
+		// 			if syscall_returns(*n) {
+		// 				stack.push_front(call);
+		// 			} else {
+		// 				line = format!("{call:?}");
+		// 			}
+		// 		} else {
+		// 			line = format!("?syscall {} {:?}", n, stack);
+		// 		}
+		// 	}
+		// 	Op::Syscall2(a, b, c) => {
+		// 		let it = stack.drain(..*c as usize).collect::<Vec<_>>();
+		// 		let call = Expr::_24(*a, *b, it);
+		// 		if _24_returns((*a, *b)) {
+		// 			stack.push_front(call);
+		// 		} else {
+		// 			line = format!("{call:?}");
+		// 		}
+		// 	}
+		// 	Op::Line(_) => {}
+		// 	_ => {
+		// 		line = format!("{:?}", op);
+		// 	}
+		// }
+		//
+		// if !line.is_empty() {
+		// 	println!("  {line} {stack:?}");
+		// }
 	}
 }
 
@@ -480,7 +586,29 @@ fn stmt(ctx: &mut Ctx<'_>) {
 			assert_eq!(ctx.stack, &[]);
 		}
 		Op::If2(_) => todo!(),
-		Op::If(_) => todo!(),
+		Op::If(mut target) => {
+			let a = ctx.pop();
+			let has_else = false;
+			println!("  if {a:?} {{");
+			loop {
+				if let Some(&(p, _, _)) = ctx.peek() && p >= target {
+					assert_eq!(p, target);
+					break
+				}
+				if let Some((_, Op::Goto(t), _)) = ctx.peek() {
+					if !has_else {
+						ctx.next();
+						println!("  }} else {{");
+						target = *t;
+						continue
+					} else {
+						unreachable!();
+					}
+				}
+				stmt(ctx);
+			}
+			println!("  }}");
+		}
 		Op::Op(n @ (16..=30)) => {
 			// 21: ==
 			let b = ctx.pop();
@@ -492,13 +620,26 @@ fn stmt(ctx: &mut Ctx<'_>) {
 			ctx.push(Expr::Unop(*n, a.into()));
 		}
 		Op::Op(_) => todo!(),
-		Op::CallFunc(_, _, _) => todo!(),
+		Op::CallFunc(a, b, n) => {
+			let it = ctx.pop_n(*n as usize);
+			ctx.push_call(Expr::CallFunc(a.clone(), b.clone(), it));
+		}
 		Op::_23(_, _, _) => todo!(),
 		Op::Syscall2(a, b, c) => {
 			let it = ctx.pop_n(*c as usize);
 			ctx.push_call(Expr::Syscall2(*a, *b, it));
 		}
-		Op::_25(_) => todo!(),
+		&Op::_25(target) => {
+			println!("  skip {{");
+			loop {
+				if let Some(&(p, _, _)) = ctx.peek() && p >= target {
+					assert_eq!(p, target);
+					break
+				}
+				stmt(ctx);
+			}
+			println!("  }}");
+		}
 		Op::Line(_) => todo!(),
 		Op::_27(_) => todo!(),
 	}
