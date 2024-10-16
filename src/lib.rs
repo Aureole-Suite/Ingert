@@ -1,6 +1,6 @@
-#![feature(let_chains)]
+#![feature(let_chains, is_sorted, is_none_or)]
 use std::cell::Cell;
-use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 
 use gospel::read::{Le as _, Reader};
 use snafu::ResultExt as _;
@@ -538,6 +538,29 @@ impl std::fmt::Display for Indent {
 	}
 }
 
+fn switch_cases(ctx: &mut Ctx<'_>) -> BTreeMap<Label, Vec<Option<i32>>> {
+	let mut cases = Vec::new();
+	let default = loop {
+		match &ctx.next().unwrap().1 {
+			Op::GetGlobal(0) => {
+				let Op::Push(Value::Int(n)) = ctx.next().unwrap().1 else { unreachable!() };
+				let Op::Op(21) = ctx.next().unwrap().1 else { unreachable!() };
+				let Op::If2(target) = ctx.next().unwrap().1 else { unreachable!() };
+				cases.push((n, target));
+			}
+			Op::Goto(default) => break *default,
+			op => unreachable!("unexpected {op:?} in switch"),
+		}
+	};
+	assert!(cases.is_sorted_by_key(|(_, a)| a));
+	let mut inv_cases = BTreeMap::<Label, Vec<Option<i32>>>::new();
+	for (n, target) in cases {
+		inv_cases.entry(target).or_default().push(Some(n));
+	}
+	inv_cases.entry(default).or_default().push(None);
+	inv_cases
+}
+
 fn stmt(ctx: &mut Ctx<'_>, i: Indent) {
 	let (_, op, end) = ctx.next().unwrap();
 	match op {
@@ -559,7 +582,31 @@ fn stmt(ctx: &mut Ctx<'_>, i: Indent) {
 			println!("{i}Var({}) = {:?}", *n + d, a);
 		}
 		Op::SetGlobal(0) if ctx.peek().is_some_and(|a| a.1 == Op::GetGlobal(0)) => {
-			todo!("this is a switch");
+			let a = ctx.pop();
+			let cases = switch_cases(ctx);
+			println!("{i}switch {a:?} {{");
+			let mut the_end = None;
+			for (target, n) in cases {
+				assert_eq!(ctx.peek().unwrap().0, target);
+				for n in n {
+					match n {
+						Some(n) => println!("{i}  case {n}:"),
+						None => println!("{i}  default:"),
+					}
+				}
+				loop {
+					if let Some(&(_, Op::Goto(t), _)) = ctx.peek() {
+						ctx.next();
+						assert!(the_end.is_none_or(|e| e == t));
+						the_end = Some(t);
+						println!("{i}    break");
+						break
+					}
+					stmt(ctx, i.inc().inc());
+				}
+			}
+			assert_eq!(ctx.peek().unwrap().0, the_end.unwrap());
+			println!("{i}}}");
 		}
 		Op::SetGlobal(0) => {
 			let a = ctx.pop();
