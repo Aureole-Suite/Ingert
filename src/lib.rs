@@ -362,7 +362,8 @@ impl std::fmt::Debug for Expr {
 }
 
 struct Ctx<'a> {
-	scp: &'a Scp,
+	code: &'a [(Label, Op)],
+	code_end: Label,
 
 	stack: VecDeque<Expr>,
 	current_func: u32,
@@ -371,9 +372,9 @@ struct Ctx<'a> {
 
 impl<'a> Ctx<'a> {
 	fn pos(&self) -> Label {
-		match self.scp.code.get(self.pos) {
+		match self.code.get(self.pos) {
 			Some(t) => t.0,
-			None => self.scp.code_end,
+			None => self.code_end,
 		}
 	}
 
@@ -384,7 +385,7 @@ impl<'a> Ctx<'a> {
 	}
 
 	fn peek(&self) -> Option<&'a Op> {
-		self.scp.code.get(self.pos).map(|(_, a)| a)
+		self.code.get(self.pos).map(|(_, a)| a)
 	}
 
 	fn push(&mut self, e: Expr) {
@@ -418,7 +419,8 @@ pub fn stuff(scp: &Scp) {
 		.collect::<BTreeMap<_, _>>();
 
 	let mut ctx = Ctx {
-		scp,
+		code: &scp.code,
+		code_end: scp.code_end,
 		stack: VecDeque::new(),
 		current_func: 0,
 		pos: 0,
