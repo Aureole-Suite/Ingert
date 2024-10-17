@@ -84,12 +84,6 @@ impl<'a> Ctx<'a> {
 }
 
 pub fn stuff(scp: &Scp) {
-	let functions = scp
-		.functions
-		.iter()
-		.map(|f| (f.start, f))
-		.collect::<BTreeMap<_, _>>();
-
 	let mut ctx = Ctx {
 		code: &scp.code,
 		code_end: scp.code_end,
@@ -98,17 +92,22 @@ pub fn stuff(scp: &Scp) {
 		pos: 0,
 	};
 
-	while ctx.peek().is_some() {
-		if let Some(f) = functions.get(&ctx.pos()) {
-			ctx.current_func = f.index;
-			println!("\nfunction {} {:?} {:?}", f.name, (f.a0, f.a1, &f.a2, f.checksum), f.args);
-			assert_eq!(ctx.stack, &[]);
-			for _ in &f.args {
-				ctx.stack.push_front(Expr::Arg);
-			}
+	let ends = scp
+		.functions
+		.iter()
+		.skip(1)
+		.map(|f| f.start)
+		.chain(Some(scp.code_end));
+	for (f, end) in std::iter::zip(&scp.functions, ends) {
+		ctx.current_func = f.index;
+		println!("\nfunction {} {:?} {:?}", f.name, (f.a0, f.a1, &f.a2, f.checksum), f.args);
+		assert_eq!(ctx.stack, &[]);
+		for _ in &f.args {
+			ctx.stack.push_front(Expr::Arg);
 		}
-
-		stmt(&mut ctx, Indent(1));
+		while ctx.pos() < end {
+			stmt(&mut ctx, Indent(1));
+		}
 	}
 }
 
