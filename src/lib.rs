@@ -38,13 +38,13 @@ pub enum ScpError {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Function {
 	pub start: Label,
-	pub count1: u8,
-	pub count2: u8,
-	pub a1: Vec<Value>,
+	pub a0: u8,
+	pub a1: u8,
 	pub a2: Vec<Value>,
-	pub a4: Vec<(i32, u16, Vec<TaggedValue>)>,
-	pub a5: u32,
-	pub a6: String,
+	pub args: Vec<Value>,
+	pub called: Vec<(i32, u16, Vec<TaggedValue>)>,
+	pub checksum: u32,
+	pub name: String,
 }
 
 fn multi<T>(
@@ -59,20 +59,20 @@ fn parse_functions(f: &mut Reader<'_>, n_entries: u32) -> Result<Vec<Function>, 
 	let mut entries = Vec::with_capacity(n_entries as usize);
 	for _ in 0..n_entries {
 		let start = Label(f.u32()?);
-		let count0 = f.u8()? as usize;
-		let count1 = f.u8()?;
-		let count2 = f.u8()?;
-		let count3 = f.u8()? as usize;
-		let a1 = f.u32()? as usize;
-		let a2 = f.u32()? as usize;
-		let a3 = f.u32()? as usize;
-		let a4 = f.u32()? as usize;
-		let a5 = f.u32()?;
-		let a6 = string_value(f)?;
+		let argc = f.u8()? as usize;
+		let a0 = f.u8()?;
+		let a1 = f.u8()?;
+		let a2c = f.u8()? as usize;
+		let a2p = f.u32()? as usize;
+		let argp = f.u32()? as usize;
+		let calledc = f.u32()? as usize;
+		let calledp = f.u32()? as usize;
+		let checksum = f.u32()?;
+		let name = string_value(f)?;
 
-		let a1 = multi(&mut f.at(a1)?, count3, value)?;
-		let a2 = multi(&mut f.at(a2)?, count0, value)?;
-		let a4 = multi(&mut f.at(a4)?, a3, |f| {
+		let a2 = multi(&mut f.at(a2p)?, a2c, value)?;
+		let args = multi(&mut f.at(argp)?, argc, value)?;
+		let called = multi(&mut f.at(calledp)?, calledc, |f| {
 			let x = f.i32()?;
 			let y = f.u16()?;
 			let z = f.u16()? as usize;
@@ -82,13 +82,13 @@ fn parse_functions(f: &mut Reader<'_>, n_entries: u32) -> Result<Vec<Function>, 
 		})?;
 		entries.push(Function {
 			start,
-			count1,
-			count2,
+			a0,
 			a1,
 			a2,
-			a4,
-			a5,
-			a6,
+			args,
+			called,
+			checksum,
+			name,
 		});
 	}
 	// they're sorted by name, but that's not useful here
@@ -431,9 +431,9 @@ pub fn stuff(scp: &Scp) {
 	while let Some((start, _, _)) = ctx.peek() {
 		if let Some((i, f)) = ctx.functions.get(start) {
 			ctx.current_func = *i;
-			println!("\nfunction {:?}, {:?} {:?}", f.a6, f.a1, f.a2);
+			println!("\nfunction {} {:?} {:?}", f.name, (f.a0, f.a1, &f.a2, f.checksum), f.args);
 			assert_eq!(ctx.stack, &[]);
-			for _ in &f.a2 {
+			for _ in &f.args {
 				ctx.stack.push_front(Expr::Arg);
 			}
 		}
