@@ -361,8 +361,6 @@ impl std::fmt::Debug for Expr {
 
 struct Ctx<'a> {
 	scp: &'a Scp,
-	functions: BTreeMap<Label, &'a Function>,
-	back_labels: HashMap<Label, usize>,
 
 	stack: VecDeque<Expr>,
 	current_func: u32,
@@ -410,27 +408,15 @@ pub fn stuff(scp: &Scp) {
 		.map(|f| (f.start, f))
 		.collect::<BTreeMap<_, _>>();
 
-	let back_labels = scp
-		.ops
-		.iter()
-		.enumerate()
-		.filter_map(|(i, (l, o, _))| match o {
-			Op::Goto(target) if target <= l => Some((*target, i)),
-			_ => None,
-		})
-		.collect::<HashMap<_, _>>();
-
 	let mut ctx = Ctx {
 		scp,
-		functions,
-		back_labels,
 		stack: VecDeque::new(),
 		current_func: 0,
 		pos: 0,
 	};
 
 	while let Some((start, _, _)) = ctx.peek() {
-		if let Some(f) = ctx.functions.get(start) {
+		if let Some(f) = functions.get(start) {
 			ctx.current_func = f.index;
 			println!("\nfunction {} {:?} {:?}", f.name, (f.a0, f.a1, &f.a2, f.checksum), f.args);
 			assert_eq!(ctx.stack, &[]);
