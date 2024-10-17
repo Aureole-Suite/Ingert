@@ -1,4 +1,4 @@
-#![feature(is_sorted, is_none_or)]
+#![feature(let_chains, is_sorted, is_none_or)]
 use std::collections::{BTreeMap, VecDeque};
 
 mod scp;
@@ -98,6 +98,16 @@ impl<'a> Ctx<'a> {
 		};
 		self.pos = index;
 		new
+	}
+
+	fn last_goto(&mut self, target: impl Fn(Label) -> bool) -> Option<Label> {
+		if let [code@.., (code_end, Op::Goto(t))] = self.code && target(*t) {
+			self.code = code;
+			self.code_end = *code_end;
+			Some(*t)
+		} else {
+			None
+		}
 	}
 }
 
@@ -236,26 +246,20 @@ fn stmt(ctx: &mut Ctx<'_>, i: Indent) {
 			println!("{i}(end)");
 			assert_eq!(ctx.stack, &[]);
 		}
-		Op::If(mut target) => {
+		Op::If(target) => {
 			let a = ctx.pop();
-			let has_else = false;
+			let mut sub = ctx.sub(*target);
+			let the_else = sub.last_goto(|l| l >= *target);
 			println!("{i}if {a:?} {{");
-			loop {
-				if ctx.pos() >= target {
-					assert_eq!(ctx.pos(), target);
-					break
+			while sub.peek().is_some() {
+				stmt(&mut sub, i.inc());
+			}
+			if let Some(the_else) = the_else {
+				println!("{i}}} else {{");
+				let mut sub = ctx.sub(the_else);
+				while sub.peek().is_some() {
+					stmt(&mut sub, i.inc());
 				}
-				if let Some(Op::Goto(t)) = ctx.peek() {
-					if !has_else {
-						ctx.next();
-						println!("{i}}} else {{");
-						target = *t;
-						continue
-					} else {
-						unreachable!();
-					}
-				}
-				stmt(ctx, i.inc());
 			}
 			println!("{i}}}");
 		}
