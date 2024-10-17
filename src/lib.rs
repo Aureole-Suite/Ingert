@@ -21,13 +21,18 @@ pub enum ScpError {
 		#[snafu(implicit)]
 		location: snafu::Location,
 	},
-	#[snafu(display("invalid string: {lossy_string:?}"))]
-	Utf8 {
-		source: std::str::Utf8Error,
-		lossy_string: String,
+	#[snafu(display("invalid string (at {location})"), context(false))]
+	String {
+		source: StringError,
+		#[snafu(implicit)]
+		location: snafu::Location,
 	},
 	#[snafu(display("invalid opcode {op:02X} at {pos}"))]
 	Op { op: u8, pos: usize },
+	#[snafu(display("invalid value {value:?}"))]
+	BadValue {
+		value: Value,
+	},
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -39,7 +44,7 @@ pub struct Function {
 	pub a2: Vec<Value>,
 	pub a4: Vec<(i32, u16, Vec<TaggedValue>)>,
 	pub a5: u32,
-	pub a6: Value,
+	pub a6: String,
 }
 
 fn multi<T>(
@@ -63,7 +68,7 @@ fn parse_functions(f: &mut Reader<'_>, n_entries: u32) -> Result<Vec<Function>, 
 		let a3 = f.u32()? as usize;
 		let a4 = f.u32()? as usize;
 		let a5 = f.u32()?;
-		let a6 = value(f)?;
+		let a6 = string_value(f)?;
 
 		let a1 = multi(&mut f.at(a1)?, count3, value)?;
 		let a2 = multi(&mut f.at(a2)?, count0, value)?;
@@ -86,6 +91,8 @@ fn parse_functions(f: &mut Reader<'_>, n_entries: u32) -> Result<Vec<Function>, 
 			a6,
 		});
 	}
+	// they're sorted by name, but that's not useful here
+	entries.sort_by_key(|e| e.start);
 	Ok(entries)
 }
 
@@ -144,6 +151,28 @@ fn f30(v: u32) -> f32 {
 		.unwrap()
 }
 
+#[derive(Debug, snafu::Snafu)]
+#[snafu(module(string), context(suffix(false)))]
+pub enum StringError {
+	#[snafu(display("invalid read"), context(false))]
+	Read {
+		source: gospel::read::Error,
+	},
+	#[snafu(display("invalid string: {lossy_string:?}"))]
+	Utf8 {
+		source: std::str::Utf8Error,
+		lossy_string: String,
+	},
+}
+
+fn string(f: &mut Reader) -> Result<String, StringError> {
+	let zs = f.cstr()?.to_bytes();
+	let s = std::str::from_utf8(zs).with_context(|_| string::Utf8 {
+		lossy_string: String::from_utf8_lossy(zs).into_owned(),
+	})?;
+	Ok(s.to_string())
+}
+
 fn value(f: &mut Reader) -> Result<Value, ScpError> {
 	let v = f.u32()?;
 	let hi = v >> 30;
@@ -152,14 +181,15 @@ fn value(f: &mut Reader) -> Result<Value, ScpError> {
 		0 => Ok(Value::Uint(lo)),
 		1 => Ok(Value::Int((lo as i32) << 2 >> 2)),
 		2 => Ok(Value::Float(f30(lo))),
-		3 => {
-			let zs = f.at(lo as usize)?.cstr()?.to_bytes();
-			let s = std::str::from_utf8(zs).with_context(|_| scp::Utf8 {
-				lossy_string: String::from_utf8_lossy(zs).into_owned(),
-			})?;
-			Ok(Value::String(s.to_string()))
-		}
+		3 => Ok(Value::String(string(&mut f.at(lo as usize)?)?)),
 		_ => unreachable!(),
+	}
+}
+
+fn string_value(f: &mut Reader) -> Result<String, ScpError> {
+	match value(f)? {
+		Value::String(s) => Ok(s),
+		value => scp::BadValue { value }.fail(),
 	}
 }
 
@@ -352,6 +382,7 @@ impl<'a> Ctx<'a> {
 		self.stack.push_front(e);
 	}
 
+	#[track_caller]
 	fn pop(&mut self) -> Expr {
 		self.stack.pop_front().unwrap()
 	}
@@ -401,9 +432,6 @@ pub fn stuff(scp: &Scp) {
 		if let Some((i, f)) = ctx.functions.get(start) {
 			ctx.current_func = *i;
 			println!("\nfunction {:?}, {:?} {:?}", f.a6, f.a1, f.a2);
-			for v in &f.a4 {
-				println!("  :{:?}", v);
-			}
 			assert_eq!(ctx.stack, &[]);
 			for _ in &f.a2 {
 				ctx.stack.push_front(Expr::Arg);
@@ -651,7 +679,11 @@ fn stmt(ctx: &mut Ctx<'_>, i: Indent) {
 			println!("{i}}}");
 		}
 		Op::Op(n @ (16..=30)) => {
-			// 21: ==
+			// 16: + (probably)
+			// 21: == (certain)
+			// 29: &
+			// 30: |
+			// 32: !
 			let b = ctx.pop();
 			let a = ctx.pop();
 			ctx.push(Expr::Binop(*n, a.into(), b.into()));
