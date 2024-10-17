@@ -40,6 +40,7 @@ struct Ctx<'a> {
 	stack: VecDeque<Expr>,
 	current_func: u32,
 	pos: usize,
+	indent: Indent,
 }
 
 impl<'a> Ctx<'a> {
@@ -95,6 +96,7 @@ impl<'a> Ctx<'a> {
 			stack: self.stack.clone(),
 			current_func: self.current_func,
 			pos: 0,
+			indent: self.indent.inc(),
 		};
 		self.pos = index;
 		new
@@ -118,6 +120,7 @@ pub fn stuff(scp: &Scp) {
 		stack: VecDeque::new(),
 		current_func: 0,
 		pos: 0,
+		indent: Indent(0),
 	};
 
 	let ends = scp
@@ -135,7 +138,7 @@ pub fn stuff(scp: &Scp) {
 		for _ in &f.args {
 			sub.stack.push_front(Expr::Arg);
 		}
-		stmts(&mut sub, Indent(0));
+		stmts(sub);
 	}
 }
 
@@ -178,15 +181,16 @@ fn switch_cases(ctx: &mut Ctx<'_>) -> BTreeMap<Label, Vec<Option<i32>>> {
 	inv_cases
 }
 
-fn stmts(mut ctx: Ctx<'_>, i: Indent) {
+fn stmts(mut ctx: Ctx<'_>) {
 	// let depth = ctx.stack.len();
 	while ctx.peek().is_some() {
-		stmt(&mut ctx, i.inc());
+		stmt(&mut ctx);
 	}
 	// assert_eq!(ctx.stack.len(), depth);
 }
 
-fn stmt(ctx: &mut Ctx<'_>, i: Indent) {
+fn stmt(ctx: &mut Ctx<'_>) {
+	let i = ctx.indent;
 	match ctx.next().unwrap() {
 		Op::Push(v) => {
 			ctx.push(Expr::Value(v.clone()));
@@ -214,11 +218,11 @@ fn stmt(ctx: &mut Ctx<'_>, i: Indent) {
 			println!("{i}if {a:?} {{");
 			let mut sub = ctx.sub(*target);
 			let the_else = sub.last_goto(|l| l >= *target);
-			stmts(sub, i);
+			stmts(sub);
 			if let Some(the_else) = the_else {
 				println!("{i}}} else {{");
 				let sub = ctx.sub(the_else);
-				stmts(sub, i);
+				stmts(sub);
 			}
 			println!("{i}}}");
 		}
@@ -237,12 +241,13 @@ fn stmt(ctx: &mut Ctx<'_>, i: Indent) {
 					}
 				}
 				let mut sub = ctx.sub(end);
+				sub.indent.0 += 1;
 				let new_end = sub.last_goto(|l| l >= end);
 				if let Some(new_end) = new_end {
 					assert!(the_end.get().is_none_or(|e| e == new_end));
 					the_end.set(Some(new_end));
 				}
-				stmts(sub, i.inc());
+				stmts(sub);
 				if new_end.is_some() {
 					println!("{i}    break");
 				}
@@ -288,13 +293,8 @@ fn stmt(ctx: &mut Ctx<'_>, i: Indent) {
 		}
 		&Op::_25(target) => {
 			println!("{i}_25 {{");
-			loop {
-				if ctx.pos() >= target {
-					assert_eq!(ctx.pos(), target);
-					break
-				}
-				stmt(ctx, i.inc());
-			}
+			let sub = ctx.sub(target);
+			stmts(sub);
 			println!("{i}}}");
 		}
 		Op::Line(_) => {}
