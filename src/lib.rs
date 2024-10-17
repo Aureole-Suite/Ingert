@@ -337,10 +337,7 @@ enum Expr {
 	CallFunc(Value, Value, Vec<Expr>),
 	Unop(u8, Box<Expr>),
 	Binop(u8, Box<Expr>, Box<Expr>),
-	Local,
 	Arg,
-	_07(u32),
-	Global(u8),
 }
 
 impl std::fmt::Debug for Expr {
@@ -353,10 +350,7 @@ impl std::fmt::Debug for Expr {
 			Expr::CallFunc(a, b, v) => f.debug_tuple("CallFunc").field(a).field(b).field(v).finish(),
 			Expr::Unop(v, a) => f.debug_tuple("Unop").field(v).field(a).finish(),
 			Expr::Binop(v, a, b) => f.debug_tuple("Binop").field(v).field(a).field(b).finish(),
-			Expr::Local => f.write_str("Local"),
 			Expr::Arg => f.write_str("Arg"),
-			Expr::_07(v) => f.debug_tuple("_07").field(v).finish(),
-			Expr::Global(v) => f.debug_tuple("Global").field(v).finish(),
 		}
 	}
 }
