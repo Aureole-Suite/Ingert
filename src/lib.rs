@@ -42,6 +42,8 @@ struct Ctx<'a> {
 	current_func: u32,
 	pos: usize,
 	indent: Indent,
+	cont: Option<Label>,
+	brk: Option<Label>,
 }
 
 impl<'a> Ctx<'a> {
@@ -99,6 +101,8 @@ impl<'a> Ctx<'a> {
 			current_func: self.current_func,
 			pos: 0,
 			indent: self.indent.inc(),
+			cont: self.cont,
+			brk: self.brk,
 		};
 		self.pos = index;
 		new
@@ -130,6 +134,8 @@ pub fn stuff(scp: &Scp) {
 		current_func: 0,
 		pos: 0,
 		indent: Indent(0),
+		cont: None,
+		brk: None,
 	};
 
 	let ends = scp
@@ -200,9 +206,12 @@ fn stmts(mut ctx: Ctx<'_>) {
 
 fn stmt(ctx: &mut Ctx<'_>) {
 	let i = ctx.indent;
-	if let Some(end) = ctx.loops.get(&ctx.pos()) && (ctx.indent == Indent(0) || ctx.pos != 0) {
+	if let Some(&brk) = ctx.loops.get(&ctx.pos()) && (ctx.indent == Indent(0) || ctx.pos != 0) {
+		let cont = ctx.pos();
 		println!("{i}loop {{");
-		let sub = ctx.sub(*end);
+		let mut sub = ctx.sub(brk);
+		sub.cont = Some(cont);
+		sub.brk = Some(brk);
 		stmts(sub);
 		println!("{i}}}");
 		return;
@@ -257,12 +266,13 @@ fn stmt(ctx: &mut Ctx<'_>) {
 					}
 				}
 				let mut sub = ctx.sub(end);
-				sub.indent.0 += 1;
 				let new_end = sub.last_goto(|l| l >= end);
 				if let Some(new_end) = new_end {
 					assert!(the_end.get().is_none_or(|e| e == new_end));
 					the_end.set(Some(new_end));
 				}
+				sub.indent.0 += 1;
+				sub.brk = the_end.get();
 				stmts(sub);
 				if new_end.is_some() {
 					println!("{i}    break");
@@ -273,6 +283,12 @@ fn stmt(ctx: &mut Ctx<'_>) {
 		Op::SetGlobal(0) => {
 			let a = ctx.pop();
 			println!("{i}return {a:?}");
+		}
+		Op::Goto(t) if ctx.cont == Some(*t) => {
+			println!("{i}continue");
+		}
+		Op::Goto(t) if ctx.brk == Some(*t) => {
+			println!("{i}break");
 		}
 		Op::Syscall(n) => {
 			let pos = ctx
