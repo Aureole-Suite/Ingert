@@ -1,5 +1,5 @@
 #![feature(let_chains, is_sorted, is_none_or)]
-use std::{cell::Cell, collections::{BTreeMap, VecDeque}};
+use std::{cell::Cell, collections::{BTreeMap, HashMap, VecDeque}};
 
 mod scp;
 
@@ -37,6 +37,7 @@ struct Ctx<'a> {
 	code: &'a [(Label, Op)],
 	code_end: Label,
 
+	loops: &'a HashMap<Label, Label>,
 	stack: VecDeque<Expr>,
 	current_func: u32,
 	pos: usize,
@@ -93,6 +94,7 @@ impl<'a> Ctx<'a> {
 		let new = Ctx {
 			code: &self.code[self.pos..index],
 			code_end: target,
+			loops: self.loops,
 			stack: self.stack.clone(),
 			current_func: self.current_func,
 			pos: 0,
@@ -114,9 +116,16 @@ impl<'a> Ctx<'a> {
 }
 
 pub fn stuff(scp: &Scp) {
+	let mut loops = HashMap::new();
+	for (i, (_, op)) in scp.code.iter().enumerate() {
+		if let Op::Goto(start) = op && *start < scp.code[i + 1].0 {
+			loops.insert(*start, scp.code[i + 1].0);
+		}
+	}
 	let mut ctx = Ctx {
 		code: &scp.code,
 		code_end: scp.code_end,
+		loops: &loops,
 		stack: VecDeque::new(),
 		current_func: 0,
 		pos: 0,
@@ -191,6 +200,13 @@ fn stmts(mut ctx: Ctx<'_>) {
 
 fn stmt(ctx: &mut Ctx<'_>) {
 	let i = ctx.indent;
+	if let Some(end) = ctx.loops.get(&ctx.pos()) && (ctx.indent == Indent(0) || ctx.pos != 0) {
+		println!("{i}loop {{");
+		let sub = ctx.sub(*end);
+		stmts(sub);
+		println!("{i}}}");
+		return;
+	}
 	match ctx.next().unwrap() {
 		Op::Push(v) => {
 			ctx.push(Expr::Value(v.clone()));
