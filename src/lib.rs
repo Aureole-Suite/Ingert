@@ -135,14 +135,11 @@ pub fn stuff(scp: &Scp) {
 		for _ in &f.args {
 			sub.stack.push_front(Expr::Arg);
 		}
-		while sub.peek().is_some() {
-			stmt(&mut sub, Indent(1));
-		}
-		assert_eq!(sub.stack, ctx.stack);
+		stmts(&mut sub, Indent(0));
 	}
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 struct Indent(usize);
 impl Indent {
 	fn inc(&self) -> Self {
@@ -181,6 +178,14 @@ fn switch_cases(ctx: &mut Ctx<'_>) -> BTreeMap<Label, Vec<Option<i32>>> {
 	inv_cases
 }
 
+fn stmts(ctx: &mut Ctx<'_>, i: Indent) {
+	// let depth = ctx.stack.len();
+	while ctx.peek().is_some() {
+		stmt(ctx, i.inc());
+	}
+	// assert_eq!(ctx.stack.len(), depth);
+}
+
 fn stmt(ctx: &mut Ctx<'_>, i: Indent) {
 	match ctx.next().unwrap() {
 		Op::Push(v) => {
@@ -206,18 +211,14 @@ fn stmt(ctx: &mut Ctx<'_>, i: Indent) {
 		}
 		Op::If(target) => {
 			let a = ctx.pop();
+			println!("{i}if {a:?} {{");
 			let mut sub = ctx.sub(*target);
 			let the_else = sub.last_goto(|l| l >= *target);
-			println!("{i}if {a:?} {{");
-			while sub.peek().is_some() {
-				stmt(&mut sub, i.inc());
-			}
+			stmts(&mut sub, i);
 			if let Some(the_else) = the_else {
 				println!("{i}}} else {{");
 				let mut sub = ctx.sub(the_else);
-				while sub.peek().is_some() {
-					stmt(&mut sub, i.inc());
-				}
+				stmts(&mut sub, i);
 			}
 			println!("{i}}}");
 		}
