@@ -327,13 +327,18 @@ fn stmt(ctx: &mut Ctx<'_>) {
 			let it = ctx.pop_n(*c as usize);
 			ctx.push_call(i, Expr::Syscall2(*a, *b, it));
 		}
-		&Op::_25(target) => {
+		Op::_25(target) => {
 			println!("{i}_25 {{");
-			let sub = ctx.sub(target);
+			let sub = ctx.sub(*target);
 			stmts(sub);
 			println!("{i}}}");
 		}
 		Op::Line(_) => {}
+		Op::Debug(n) => {
+			assert_eq!(*n, 1);
+			let a = ctx.pop();
+			println!("{i}debug {a:?}");
+		}
 		op => {
 			println!("{i}!!{op:?} {:?}", ctx.stack);
 			unimplemented!("{op:?} {:?}", ctx.stack);

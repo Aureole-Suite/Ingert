@@ -222,7 +222,7 @@ pub enum Op {
 	Syscall2(u8, u8, u8),
 	_25(Label),
 	Line(u16),
-	_27(u8),
+	Debug(u8),
 }
 
 pub struct Scp {
@@ -300,7 +300,7 @@ pub fn parse_scp(data: &[u8]) -> Result<Scp, ScpError> {
 			}
 			37 => Op::_25(label(&mut f)?),
 			38 => Op::Line(f.u16()?),
-			39 => Op::_27(f.u8()?),
+			39 => Op::Debug(f.u8()?),
 			40.. => return scp::Op { op, pos: start }.fail(),
 		};
 		let end = op == Op::Return && f.pos() > last_offset.get() as usize;
