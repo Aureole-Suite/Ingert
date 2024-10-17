@@ -200,6 +200,27 @@ fn stmt(ctx: &mut Ctx<'_>, i: Indent) {
 			let d = 4 * ctx.stack.len() as i32;
 			println!("{i}Var({}) = {:?}", *n + d, a);
 		}
+		Op::Return => {
+			println!("{i}(end)");
+			assert_eq!(ctx.stack, &[]);
+		}
+		Op::If(target) => {
+			let a = ctx.pop();
+			let mut sub = ctx.sub(*target);
+			let the_else = sub.last_goto(|l| l >= *target);
+			println!("{i}if {a:?} {{");
+			while sub.peek().is_some() {
+				stmt(&mut sub, i.inc());
+			}
+			if let Some(the_else) = the_else {
+				println!("{i}}} else {{");
+				let mut sub = ctx.sub(the_else);
+				while sub.peek().is_some() {
+					stmt(&mut sub, i.inc());
+				}
+			}
+			println!("{i}}}");
+		}
 		Op::SetGlobal(0) if ctx.peek() == Some(&Op::GetGlobal(0)) => {
 			let a = ctx.pop();
 			let cases = switch_cases(ctx);
@@ -241,27 +262,6 @@ fn stmt(ctx: &mut Ctx<'_>, i: Indent) {
 			assert_eq!(ctx.pop(), Expr::Value(Value::Uint(ctx.pos().0)));
 			assert_eq!(ctx.pop(), Expr::Value(Value::Uint(ctx.current_func)));
 			ctx.push_call(i, Expr::Syscall(*n, it));
-		}
-		Op::Return => {
-			println!("{i}(end)");
-			assert_eq!(ctx.stack, &[]);
-		}
-		Op::If(target) => {
-			let a = ctx.pop();
-			let mut sub = ctx.sub(*target);
-			let the_else = sub.last_goto(|l| l >= *target);
-			println!("{i}if {a:?} {{");
-			while sub.peek().is_some() {
-				stmt(&mut sub, i.inc());
-			}
-			if let Some(the_else) = the_else {
-				println!("{i}}} else {{");
-				let mut sub = ctx.sub(the_else);
-				while sub.peek().is_some() {
-					stmt(&mut sub, i.inc());
-				}
-			}
-			println!("{i}}}");
 		}
 		Op::Op(n @ (16..=30)) => {
 			// 16: + (probably)
