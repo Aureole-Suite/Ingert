@@ -81,6 +81,24 @@ impl<'a> Ctx<'a> {
 			println!("{i}{call:?}");
 		}
 	}
+
+	fn sub(&mut self, target: Label) -> Ctx<'a> {
+		let index = if target == self.code_end {
+			self.code.len()
+		} else {
+			self.code.iter().position(|(l, _)| *l == target).unwrap()
+		};
+		assert!(index >= self.pos);
+		let new = Ctx {
+			code: &self.code[self.pos..index],
+			code_end: target,
+			stack: self.stack.clone(),
+			current_func: self.current_func,
+			pos: 0,
+		};
+		self.pos = index;
+		new
+	}
 }
 
 pub fn stuff(scp: &Scp) {
@@ -99,15 +117,18 @@ pub fn stuff(scp: &Scp) {
 		.map(|f| f.start)
 		.chain(Some(scp.code_end));
 	for (f, end) in std::iter::zip(&scp.functions, ends) {
+		assert_eq!(ctx.pos(), f.start);
 		ctx.current_func = f.index;
+		let mut sub = ctx.sub(end);
+
 		println!("\nfunction {} {:?} {:?}", f.name, (f.a0, f.a1, &f.a2, f.checksum), f.args);
-		assert_eq!(ctx.stack, &[]);
 		for _ in &f.args {
-			ctx.stack.push_front(Expr::Arg);
+			sub.stack.push_front(Expr::Arg);
 		}
-		while ctx.pos() < end {
-			stmt(&mut ctx, Indent(1));
+		while sub.peek().is_some() {
+			stmt(&mut sub, Indent(1));
 		}
+		assert_eq!(sub.stack, ctx.stack);
 	}
 }
 
