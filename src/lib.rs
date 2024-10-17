@@ -178,10 +178,10 @@ fn switch_cases(ctx: &mut Ctx<'_>) -> BTreeMap<Label, Vec<Option<i32>>> {
 	inv_cases
 }
 
-fn stmts(ctx: &mut Ctx<'_>, i: Indent) {
+fn stmts(mut ctx: Ctx<'_>, i: Indent) {
 	// let depth = ctx.stack.len();
 	while ctx.peek().is_some() {
-		stmt(ctx, i.inc());
+		stmt(&mut ctx, i.inc());
 	}
 	// assert_eq!(ctx.stack.len(), depth);
 }
@@ -214,11 +214,11 @@ fn stmt(ctx: &mut Ctx<'_>, i: Indent) {
 			println!("{i}if {a:?} {{");
 			let mut sub = ctx.sub(*target);
 			let the_else = sub.last_goto(|l| l >= *target);
-			stmts(&mut sub, i);
+			stmts(sub, i);
 			if let Some(the_else) = the_else {
 				println!("{i}}} else {{");
-				let mut sub = ctx.sub(the_else);
-				stmts(&mut sub, i);
+				let sub = ctx.sub(the_else);
+				stmts(sub, i);
 			}
 			println!("{i}}}");
 		}
@@ -242,7 +242,7 @@ fn stmt(ctx: &mut Ctx<'_>, i: Indent) {
 					assert!(the_end.get().is_none_or(|e| e == new_end));
 					the_end.set(Some(new_end));
 				}
-				stmts(&mut sub, i.inc());
+				stmts(sub, i.inc());
 				if new_end.is_some() {
 					println!("{i}    break");
 				}
