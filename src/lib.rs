@@ -45,6 +45,7 @@ pub struct Function {
 	pub called: Vec<(i32, u16, Vec<TaggedValue>)>,
 	pub checksum: u32,
 	pub name: String,
+	pub index: u32,
 }
 
 fn multi<T>(
@@ -57,7 +58,7 @@ fn multi<T>(
 
 fn parse_functions(f: &mut Reader<'_>, n_entries: u32) -> Result<Vec<Function>, ScpError> {
 	let mut entries = Vec::with_capacity(n_entries as usize);
-	for _ in 0..n_entries {
+	for index in 0..n_entries {
 		let start = Label(f.u32()?);
 		let argc = f.u8()? as usize;
 		let a0 = f.u8()?;
@@ -89,6 +90,7 @@ fn parse_functions(f: &mut Reader<'_>, n_entries: u32) -> Result<Vec<Function>, 
 			called,
 			checksum,
 			name,
+			index,
 		});
 	}
 	// they're sorted by name, but that's not useful here
@@ -359,7 +361,7 @@ impl std::fmt::Debug for Expr {
 
 struct Ctx<'a> {
 	scp: &'a Scp,
-	functions: BTreeMap<Label, (u32, &'a Function)>,
+	functions: BTreeMap<Label, &'a Function>,
 	back_labels: HashMap<Label, usize>,
 
 	stack: VecDeque<Expr>,
@@ -405,8 +407,7 @@ pub fn stuff(scp: &Scp) {
 	let functions = scp
 		.functions
 		.iter()
-		.enumerate()
-		.map(|f| (f.1.start, (f.0 as u32, f.1)))
+		.map(|f| (f.start, f))
 		.collect::<BTreeMap<_, _>>();
 
 	let back_labels = scp
@@ -429,8 +430,8 @@ pub fn stuff(scp: &Scp) {
 	};
 
 	while let Some((start, _, _)) = ctx.peek() {
-		if let Some((i, f)) = ctx.functions.get(start) {
-			ctx.current_func = *i;
+		if let Some(f) = ctx.functions.get(start) {
+			ctx.current_func = f.index;
 			println!("\nfunction {} {:?} {:?}", f.name, (f.a0, f.a1, &f.a2, f.checksum), f.args);
 			assert_eq!(ctx.stack, &[]);
 			for _ in &f.args {
