@@ -32,7 +32,7 @@ fn process_file(file: &PathBuf) {
 		return;
 	};
 
-	match ingert::parse_da(&data) {
+	match ingert::parse_scp(&data) {
 		Ok(v) => ingert::stuff(&v),
 		Err(e) => tracing::error!("Error: {}", snafu::Report::from_error(e)),
 	}
