@@ -1,5 +1,5 @@
 #![feature(let_chains, is_sorted, is_none_or)]
-use std::collections::{BTreeMap, VecDeque};
+use std::{cell::Cell, collections::{BTreeMap, VecDeque}};
 
 mod scp;
 
@@ -226,27 +226,27 @@ fn stmt(ctx: &mut Ctx<'_>, i: Indent) {
 			let a = ctx.pop();
 			let cases = switch_cases(ctx);
 			println!("{i}switch {a:?} {{");
-			let mut the_end = None;
-			for (target, n) in cases {
-				assert_eq!(ctx.pos(), target);
+			let the_end = Cell::new(None);
+			let ends = cases.keys().copied().skip(1).chain(std::iter::once_with(|| the_end.get()).flatten());
+			for ((target, n), end) in std::iter::zip(&cases, ends) {
+				assert_eq!(ctx.pos(), *target);
 				for n in n {
 					match n {
 						Some(n) => println!("{i}  case {n}:"),
 						None => println!("{i}  default:"),
 					}
 				}
-				loop {
-					if let Some(Op::Goto(t)) = ctx.peek() {
-						ctx.next();
-						assert!(the_end.is_none_or(|e| e == *t));
-						the_end = Some(*t);
-						println!("{i}    break");
-						break
-					}
-					stmt(ctx, i.inc().inc());
+				let mut sub = ctx.sub(end);
+				let new_end = sub.last_goto(|l| l >= end);
+				if let Some(new_end) = new_end {
+					assert!(the_end.get().is_none_or(|e| e == new_end));
+					the_end.set(Some(new_end));
+				}
+				stmts(&mut sub, i.inc());
+				if new_end.is_some() {
+					println!("{i}    break");
 				}
 			}
-			assert_eq!(ctx.pos(), the_end.unwrap());
 			println!("{i}}}");
 		}
 		Op::SetGlobal(0) => {
