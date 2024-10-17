@@ -1,6 +1,6 @@
-#![feature(let_chains, is_sorted, is_none_or)]
+#![feature(is_sorted, is_none_or)]
 use std::cell::Cell;
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::{BTreeMap, VecDeque};
 
 use gospel::read::{Le as _, Reader};
 use snafu::ResultExt as _;
@@ -368,14 +368,21 @@ struct Ctx<'a> {
 }
 
 impl<'a> Ctx<'a> {
-	fn next(&mut self) -> Option<&'a (Label, Op, Label)> {
+	fn pos(&self) -> Label {
+		match self.scp.ops.get(self.pos) {
+			Some(t) => t.0,
+			None => self.scp.ops.last().unwrap().2,
+		}
+	}
+
+	fn next(&mut self) -> Option<&'a Op> {
 		let v = self.peek();
 		self.pos += 1;
 		v
 	}
 
-	fn peek(&self) -> Option<&'a (Label, Op, Label)> {
-		self.scp.ops.get(self.pos)
+	fn peek(&self) -> Option<&'a Op> {
+		self.scp.ops.get(self.pos).map(|(_, a, _)| a)
 	}
 
 	fn push(&mut self, e: Expr) {
@@ -392,7 +399,7 @@ impl<'a> Ctx<'a> {
 	}
 
 	fn push_call(&mut self, i: Indent, call: Expr) {
-		if self.peek().is_some_and(|a| a.1 == Op::GetGlobal(0)) {
+		if self.peek() == Some(&Op::GetGlobal(0)) {
 			self.next();
 			self.stack.push_front(call);
 		} else {
@@ -415,8 +422,8 @@ pub fn stuff(scp: &Scp) {
 		pos: 0,
 	};
 
-	while let Some((start, _, _)) = ctx.peek() {
-		if let Some(f) = functions.get(start) {
+	while ctx.peek().is_some() {
+		if let Some(f) = functions.get(&ctx.pos()) {
 			ctx.current_func = f.index;
 			println!("\nfunction {} {:?} {:?}", f.name, (f.a0, f.a1, &f.a2, f.checksum), f.args);
 			assert_eq!(ctx.stack, &[]);
@@ -556,12 +563,12 @@ impl std::fmt::Display for Indent {
 fn switch_cases(ctx: &mut Ctx<'_>) -> BTreeMap<Label, Vec<Option<i32>>> {
 	let mut cases = Vec::new();
 	let default = loop {
-		match &ctx.next().unwrap().1 {
+		match &ctx.next().unwrap() {
 			Op::GetGlobal(0) => {
-				let Op::Push(Value::Int(n)) = ctx.next().unwrap().1 else { unreachable!() };
-				let Op::Op(21) = ctx.next().unwrap().1 else { unreachable!() };
-				let Op::If2(target) = ctx.next().unwrap().1 else { unreachable!() };
-				cases.push((n, target));
+				let Op::Push(Value::Int(n)) = ctx.next().unwrap() else { unreachable!() };
+				let Op::Op(21) = ctx.next().unwrap() else { unreachable!() };
+				let Op::If2(target) = ctx.next().unwrap() else { unreachable!() };
+				cases.push((*n, *target));
 			}
 			Op::Goto(default) => break *default,
 			op => unreachable!("unexpected {op:?} in switch"),
@@ -577,8 +584,7 @@ fn switch_cases(ctx: &mut Ctx<'_>) -> BTreeMap<Label, Vec<Option<i32>>> {
 }
 
 fn stmt(ctx: &mut Ctx<'_>, i: Indent) {
-	let (_, op, end) = ctx.next().unwrap();
-	match op {
+	match ctx.next().unwrap() {
 		Op::Push(v) => {
 			ctx.push(Expr::Value(v.clone()));
 		}
@@ -596,13 +602,13 @@ fn stmt(ctx: &mut Ctx<'_>, i: Indent) {
 			let d = 4 * ctx.stack.len() as i32;
 			println!("{i}Var({}) = {:?}", *n + d, a);
 		}
-		Op::SetGlobal(0) if ctx.peek().is_some_and(|a| a.1 == Op::GetGlobal(0)) => {
+		Op::SetGlobal(0) if ctx.peek() == Some(&Op::GetGlobal(0)) => {
 			let a = ctx.pop();
 			let cases = switch_cases(ctx);
 			println!("{i}switch {a:?} {{");
 			let mut the_end = None;
 			for (target, n) in cases {
-				assert_eq!(ctx.peek().unwrap().0, target);
+				assert_eq!(ctx.pos(), target);
 				for n in n {
 					match n {
 						Some(n) => println!("{i}  case {n}:"),
@@ -610,17 +616,17 @@ fn stmt(ctx: &mut Ctx<'_>, i: Indent) {
 					}
 				}
 				loop {
-					if let Some(&(_, Op::Goto(t), _)) = ctx.peek() {
+					if let Some(Op::Goto(t)) = ctx.peek() {
 						ctx.next();
-						assert!(the_end.is_none_or(|e| e == t));
-						the_end = Some(t);
+						assert!(the_end.is_none_or(|e| e == *t));
+						the_end = Some(*t);
 						println!("{i}    break");
 						break
 					}
 					stmt(ctx, i.inc().inc());
 				}
 			}
-			assert_eq!(ctx.peek().unwrap().0, the_end.unwrap());
+			assert_eq!(ctx.pos(), the_end.unwrap());
 			println!("{i}}}");
 		}
 		Op::SetGlobal(0) => {
@@ -631,10 +637,10 @@ fn stmt(ctx: &mut Ctx<'_>, i: Indent) {
 			let pos = ctx
 				.stack
 				.iter()
-				.position(|v| v == &Expr::Value(Value::Uint(end.0)))
+				.position(|v| v == &Expr::Value(Value::Uint(ctx.pos().0)))
 				.unwrap();
 			let it = ctx.pop_n(pos);
-			assert_eq!(ctx.pop(), Expr::Value(Value::Uint(end.0)));
+			assert_eq!(ctx.pop(), Expr::Value(Value::Uint(ctx.pos().0)));
 			assert_eq!(ctx.pop(), Expr::Value(Value::Uint(ctx.current_func)));
 			ctx.push_call(i, Expr::Syscall(*n, it));
 		}
@@ -647,15 +653,15 @@ fn stmt(ctx: &mut Ctx<'_>, i: Indent) {
 			let has_else = false;
 			println!("{i}if {a:?} {{");
 			loop {
-				if let Some(&(p, _, _)) = ctx.peek() && p >= target {
-					assert_eq!(p, target);
+				if ctx.pos() >= target {
+					assert_eq!(ctx.pos(), target);
 					break
 				}
-				if let Some(&(_, Op::Goto(t), gend)) = ctx.peek() && gend == target {
+				if let Some(Op::Goto(t)) = ctx.peek() {
 					if !has_else {
 						ctx.next();
 						println!("{i}}} else {{");
-						target = t;
+						target = *t;
 						continue
 					} else {
 						unreachable!();
@@ -690,8 +696,8 @@ fn stmt(ctx: &mut Ctx<'_>, i: Indent) {
 		&Op::_25(target) => {
 			println!("{i}_25 {{");
 			loop {
-				if let Some(&(p, _, _)) = ctx.peek() && p >= target {
-					assert_eq!(p, target);
+				if ctx.pos() >= target {
+					assert_eq!(ctx.pos(), target);
 					break
 				}
 				stmt(ctx, i.inc());
@@ -699,7 +705,7 @@ fn stmt(ctx: &mut Ctx<'_>, i: Indent) {
 			println!("{i}}}");
 		}
 		Op::Line(_) => {}
-		_ => {
+		op => {
 			println!("{i}!!{op:?} {:?}", ctx.stack);
 			unimplemented!("{op:?} {:?}", ctx.stack);
 		}
