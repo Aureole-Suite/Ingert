@@ -238,7 +238,8 @@ pub enum Op {
 pub struct Scp {
 	pub functions: Vec<Function>,
 	pub extras: Vec<TaggedValue>,
-	pub ops: Vec<(Label, Op, Label)>,
+	pub code: Vec<(Label, Op)>,
+	pub code_end: Label,
 }
 
 pub fn parse_da(data: &[u8]) -> Result<Scp, ScpError> {
@@ -313,7 +314,7 @@ pub fn parse_da(data: &[u8]) -> Result<Scp, ScpError> {
 			40.. => return scp::Op { op, pos: start }.fail(),
 		};
 		let end = op == Op::Return && f.pos() > last_offset.get() as usize;
-		ops.push((Label(start as u32), op, Label(f.pos() as u32)));
+		ops.push((Label(start as u32), op));
 		if end {
 			break;
 		}
@@ -322,7 +323,8 @@ pub fn parse_da(data: &[u8]) -> Result<Scp, ScpError> {
 	Ok(Scp {
 		functions,
 		extras,
-		ops,
+		code: ops,
+		code_end: Label(f.pos() as u32)
 	})
 }
 
@@ -369,9 +371,9 @@ struct Ctx<'a> {
 
 impl<'a> Ctx<'a> {
 	fn pos(&self) -> Label {
-		match self.scp.ops.get(self.pos) {
+		match self.scp.code.get(self.pos) {
 			Some(t) => t.0,
-			None => self.scp.ops.last().unwrap().2,
+			None => self.scp.code_end,
 		}
 	}
 
@@ -382,7 +384,7 @@ impl<'a> Ctx<'a> {
 	}
 
 	fn peek(&self) -> Option<&'a Op> {
-		self.scp.ops.get(self.pos).map(|(_, a, _)| a)
+		self.scp.code.get(self.pos).map(|(_, a)| a)
 	}
 
 	fn push(&mut self, e: Expr) {
