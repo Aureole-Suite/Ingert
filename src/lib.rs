@@ -109,7 +109,11 @@ impl<'a> Ctx<'a> {
 	}
 
 	fn last_goto(&mut self, target: impl Fn(Label) -> bool) -> Option<Label> {
-		if let [code@.., (code_end, Op::Goto(t))] = self.code && target(*t) {
+		if let [code@.., (code_end, Op::Goto(t))] = self.code
+			&& target(*t)
+			&& self.cont != Some(*t)
+			&& self.brk != Some(*t)
+		{
 			self.code = code;
 			self.code_end = *code_end;
 			Some(*t)
