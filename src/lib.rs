@@ -2,7 +2,6 @@
 use std::{cell::Cell, collections::{BTreeMap, HashMap, VecDeque}};
 
 mod scp;
-mod names;
 
 use scp::{Label, Op, Scp, Value};
 pub use scp::parse_scp;
