@@ -1,5 +1,5 @@
 use gospel::read::{Le as _, Reader};
-use std::cell::Cell;
+use std::{cell::Cell, collections::BTreeSet};
 use snafu::{OptionExt as _, ResultExt as _};
 
 #[derive(Debug, snafu::Snafu)]
@@ -396,3 +396,18 @@ pub fn parse_scp(data: &[u8]) -> Result<Scp, ScpError> {
 	})
 }
 
+pub fn dump_ops(code: &[(Label, Op)]) {
+	let mut labels = BTreeSet::new();
+	for (_, op) in code {
+		if let Op::Goto(l) | Op::If(l) | Op::If2(l) | Op::_25(l) = op {
+			labels.insert(l);
+		}
+	}
+	println!("start");
+	for line in code {
+		if let Some(l) = labels.get(&line.0) {
+			println!("{l:?}");
+		}
+		println!("  {:?}", line.1);
+	}
+}

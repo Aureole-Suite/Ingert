@@ -173,6 +173,9 @@ pub fn stuff(scp: &Scp) {
 		ctx.current_func = f.index;
 		let mut sub = ctx.sub(end);
 
+		// println!("\n{f}");
+		// scp::dump_ops(sub.code);
+
 		println!("\n{f}");
 		for _ in &f.args {
 			sub.stack.push_front(Expr::Arg);
