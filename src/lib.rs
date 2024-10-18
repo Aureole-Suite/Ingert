@@ -10,6 +10,7 @@ pub use scp::parse_scp;
 enum Expr {
 	Value(Value),
 	Var(i32),
+	Var2(i32),
 	Syscall(u16, Vec<Expr>),
 	Syscall2(u8, u8, Vec<Expr>),
 	CallFunc(String, String, Vec<Expr>),
@@ -23,6 +24,7 @@ impl std::fmt::Debug for Expr {
 		match self {
 			Expr::Value(v) => v.fmt(f),
 			Expr::Var(n) => f.debug_tuple("Var").field(n).finish(),
+			Expr::Var2(n) => f.debug_tuple("Var2").field(n).finish(),
 			Expr::Syscall(n, v) => f.debug_tuple("Syscall").field(n).field(v).finish(),
 			Expr::Syscall2(a, b, v) => f.debug_tuple("Syscall2").field(a).field(b).field(v).finish(),
 			Expr::CallFunc(a, b, v) => f.debug_tuple("CallFunc").field(a).field(b).field(v).finish(),
@@ -243,6 +245,10 @@ fn stmt(ctx: &mut Ctx<'_>) {
 			let a = ctx.pop();
 			let d = 4 * ctx.stack.len() as i32;
 			println!("{i}Var({}) = {:?}", *n + d, a);
+		}
+		Op::_04(n) => {
+			let d = 4 * ctx.stack.len() as i32;
+			ctx.push(Expr::Var2(*n + d));
 		}
 		Op::Return => {
 			println!("{i}(end)");
