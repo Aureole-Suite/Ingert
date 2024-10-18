@@ -344,7 +344,7 @@ fn stmt(ctx: &mut Ctx<'_>) {
 			let a = ctx.pop();
 			println!("{i}{:?} = {:?}", Expr::Global(*n), a);
 		}
-		Op::Op(n @ (16..=30)) => {
+		Op::Op(n @ (16..=31 | 33)) => {
 			// 16: + (probably)
 			// 21: == (certain)
 			// 29: &
@@ -354,7 +354,7 @@ fn stmt(ctx: &mut Ctx<'_>) {
 			let a = ctx.pop();
 			ctx.push(Expr::Binop(*n, a.into(), b.into()));
 		}
-		Op::Op(n @ (32 | 33)) => {
+		Op::Op(n @ 32) => {
 			let a = ctx.pop();
 			ctx.push(Expr::Unop(*n, a.into()));
 		}
