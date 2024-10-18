@@ -2,6 +2,7 @@
 use std::{cell::Cell, collections::{BTreeMap, HashMap, VecDeque}};
 
 mod scp;
+mod names;
 
 use scp::{Label, Op, Scp, Value};
 pub use scp::parse_scp;
@@ -26,7 +27,15 @@ impl std::fmt::Debug for Expr {
 			Expr::Var(n) => f.debug_tuple("Var").field(n).finish(),
 			Expr::Var2(n) => f.debug_tuple("Var2").field(n).finish(),
 			Expr::Syscall(n, v) => f.debug_tuple("Syscall").field(n).field(v).finish(),
-			Expr::Syscall2(a, b, v) => f.debug_tuple("Syscall2").field(a).field(b).field(v).finish(),
+			Expr::Syscall2(a, b, v) => {
+				let mut t = f.debug_tuple("Syscall2");
+				match names::syscall(*a, *b) {
+					Some((name, Some(sub))) => t.field(&name).field(&sub),
+					Some((name, None)) => t.field(&name).field(b),
+					None => t.field(a).field(b),
+				};
+				t.field(v).finish()
+			},
 			Expr::CallFunc(a, b, v) => f.debug_tuple("CallFunc").field(a).field(b).field(v).finish(),
 			Expr::Unop(v, a) => f.debug_tuple("Unop").field(v).field(a).finish(),
 			Expr::Binop(v, a, b) => f.debug_tuple("Binop").field(v).field(a).field(b).finish(),
