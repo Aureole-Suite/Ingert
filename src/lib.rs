@@ -44,6 +44,7 @@ struct Ctx<'a> {
 	indent: Indent,
 	cont: Option<Label>,
 	brk: Option<Label>,
+	popped_last: bool,
 }
 
 impl<'a> Ctx<'a> {
@@ -61,7 +62,11 @@ impl<'a> Ctx<'a> {
 	}
 
 	fn peek(&self) -> Option<&'a Op> {
-		self.code.get(self.pos).map(|(_, a)| a)
+		if self.pos == self.code.len() || (self.popped_last && self.pos == self.code.len() - 1) {
+			None
+		} else {
+			Some(&self.code[self.pos].1)
+		}
 	}
 
 	fn push(&mut self, e: Expr) {
@@ -103,6 +108,7 @@ impl<'a> Ctx<'a> {
 			indent: self.indent.inc(),
 			cont: self.cont,
 			brk: self.brk,
+			popped_last: self.popped_last && index == self.code.len(),
 		};
 		self.pos = index;
 		new
@@ -114,8 +120,7 @@ impl<'a> Ctx<'a> {
 			&& self.cont != Some(*t)
 			&& self.brk != Some(*t)
 		{
-			self.code = code;
-			self.code_end = *code_end;
+			self.popped_last = true;
 			Some(*t)
 		} else {
 			None
@@ -140,6 +145,7 @@ pub fn stuff(scp: &Scp) {
 		indent: Indent(0),
 		cont: None,
 		brk: None,
+		popped_last: false,
 	};
 
 	let ends = scp
