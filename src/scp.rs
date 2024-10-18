@@ -23,6 +23,12 @@ pub enum ScpError {
 	BadValue {
 		value: Value,
 	},
+	#[snafu(display("invalid checksum for function {name}: expected {expected:#X}, got {actual:#X}"))]
+	Checksum {
+		name: String,
+		expected: u32,
+		actual: u32,
+	},
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -33,7 +39,6 @@ pub struct Function {
 	pub a2: Vec<Value>,
 	pub args: Vec<Value>,
 	pub called: Vec<(i32, u16, Vec<TaggedValue>)>,
-	pub checksum: u32,
 	pub name: String,
 	pub index: u32,
 }
@@ -61,6 +66,13 @@ fn parse_functions(f: &mut Reader<'_>, n_entries: u32) -> Result<Vec<Function>, 
 		let checksum = f.u32()?;
 		let name = string_value(f)?;
 
+		let name_checksum = !crc32fast::hash(name.as_bytes());
+		snafu::ensure!(checksum == name_checksum, scp::Checksum {
+			name,
+			expected: checksum,
+			actual: name_checksum,
+		});
+
 		let a2 = multi(&mut f.at(a2p)?, a2c, value)?;
 		let args = multi(&mut f.at(argp)?, argc, value)?;
 		let called = multi(&mut f.at(calledp)?, calledc, |f| {
@@ -78,7 +90,6 @@ fn parse_functions(f: &mut Reader<'_>, n_entries: u32) -> Result<Vec<Function>, 
 			a2,
 			args,
 			called,
-			checksum,
 			name,
 			index,
 		});
