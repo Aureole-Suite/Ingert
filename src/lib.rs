@@ -12,7 +12,6 @@ enum Expr {
 	Value(Value),
 	Var(i32),
 	Var2(i32),
-	Syscall(u16, Vec<Expr>),
 	Syscall2(u8, u8, Vec<Expr>),
 	CallFunc(String, String, Vec<Expr>),
 	Unop(u8, Box<Expr>),
@@ -26,7 +25,6 @@ impl std::fmt::Debug for Expr {
 			Expr::Value(v) => v.fmt(f),
 			Expr::Var(n) => f.debug_tuple("Var").field(n).finish(),
 			Expr::Var2(n) => f.debug_tuple("Var2").field(n).finish(),
-			Expr::Syscall(n, v) => f.debug_tuple("Syscall").field(n).field(v).finish(),
 			Expr::Syscall2(a, b, v) => {
 				let mut t = f.debug_tuple("Syscall2");
 				match names::syscall(*a, *b) {
@@ -45,6 +43,7 @@ impl std::fmt::Debug for Expr {
 }
 
 struct Ctx<'a> {
+	functions: &'a [scp::Function],
 	code: &'a [(Label, Op)],
 	code_end: Label,
 
@@ -110,6 +109,7 @@ impl<'a> Ctx<'a> {
 		};
 		assert!(index >= self.pos);
 		let new = Ctx {
+			functions: self.functions,
 			code: &self.code[self.pos..index],
 			code_end: target,
 			loops: self.loops,
@@ -126,7 +126,7 @@ impl<'a> Ctx<'a> {
 	}
 
 	fn last_goto(&mut self, target: impl Fn(Label) -> bool) -> Option<Label> {
-		if let [code@.., (code_end, Op::Goto(t))] = self.code
+		if let Some((_, Op::Goto(t))) = self.code.last()
 			&& target(*t)
 			&& self.cont != Some(*t)
 			&& self.brk != Some(*t)
@@ -147,6 +147,7 @@ pub fn stuff(scp: &Scp) {
 		}
 	}
 	let mut ctx = Ctx {
+		functions: &scp.functions,
 		code: &scp.code,
 		code_end: scp.code_end,
 		loops: &loops,
@@ -333,7 +334,7 @@ fn stmt(ctx: &mut Ctx<'_>) {
 			let it = ctx.pop_n(pos);
 			assert_eq!(ctx.pop(), Expr::Value(Value::Uint(ctx.pos().0)));
 			assert_eq!(ctx.pop(), Expr::Value(Value::Uint(ctx.current_func)));
-			ctx.push_call(i, Expr::Syscall(*n, it));
+			ctx.push_call(i, Expr::CallFunc(String::new(), ctx.functions[*n as usize].name.clone(), it));
 		}
 		Op::Op(n @ (16..=30)) => {
 			// 16: + (probably)
@@ -351,6 +352,7 @@ fn stmt(ctx: &mut Ctx<'_>) {
 		}
 		Op::CallFunc(a, b, n) => {
 			let it = ctx.pop_n(*n as usize);
+			assert_ne!(a, "");
 			ctx.push_call(i, Expr::CallFunc(a.clone(), b.clone(), it));
 		}
 		Op::Syscall2(a, b, c) => {
