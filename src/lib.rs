@@ -173,7 +173,7 @@ pub fn stuff(scp: &Scp) {
 		ctx.current_func = f.index;
 		let mut sub = ctx.sub(end);
 
-		println!("\nfunction {}{:?} {:?}", f.name, f.args, (f.a0, f.a1));
+		println!("\n{f}");
 		for _ in &f.args {
 			sub.stack.push_front(Expr::Arg);
 		}

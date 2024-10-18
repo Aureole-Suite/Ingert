@@ -29,12 +29,23 @@ pub enum ScpError {
 		expected: u32,
 		actual: u32,
 	},
+	#[snafu(display("invalid type {ty}"))]
+	BadType {
+		ty: u32,
+	},
 	BadDefaults,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Type {
+	Number,
+	String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Arg {
-	pub ty: u8,
+	pub out: bool,
+	pub ty: Type,
 	pub default: Option<Value>,
 }
 
@@ -47,6 +58,39 @@ pub struct Function {
 	pub called: Vec<(i32, u16, Vec<TaggedValue>)>,
 	pub name: String,
 	pub index: u32,
+}
+
+impl std::fmt::Display for Arg {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		if self.out {
+			write!(f, "out ")?;
+		}
+		match self.ty {
+			Type::Number => write!(f, "num")?,
+			Type::String => write!(f, "str")?,
+		}
+		if let Some(default) = &self.default {
+			write!(f, "={:?}", default)?;
+		}
+		Ok(())
+	}
+}
+
+impl std::fmt::Display for Function {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		if self.a0 == 1 {
+			write!(f, "thunk ")?;
+		}
+		write!(f, "function {}(", self.name)?;
+		for (i, arg) in self.args.iter().enumerate() {
+			if i != 0 {
+				write!(f, ", ")?;
+			}
+			arg.fmt(f)?;
+		}
+		write!(f, ")")?;
+		Ok(())
+	}
 }
 
 fn multi<T>(
@@ -84,13 +128,20 @@ fn parse_functions(f: &mut Reader<'_>, n_entries: u32) -> Result<Vec<Function>, 
 		let mut defaults = defaults.into_iter();
 		let mut args = Vec::with_capacity(types.len());
 		for ty in types {
+			let out = ty & 4 != 0;
 			let default = if ty & 8 != 0 {
 				Some(defaults.next().context(scp::BadDefaults)?)
 			} else {
 				None
 			};
+
+			let ty = match ty & !(4 | 8) {
+				1 => Type::Number,
+				2 => Type::String,
+				_ => return scp::BadType { ty }.fail(),
+			};
 			
-			args.push(Arg { ty: (ty & 7) as u8, default });
+			args.push(Arg { out, ty, default });
 		}
 		snafu::ensure!(defaults.next().is_none(), scp::BadDefaults);
 
