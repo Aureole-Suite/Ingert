@@ -12,7 +12,7 @@ enum Expr {
 	Value(Value),
 	Var(i32),
 	Var2(i32),
-	Syscall2(u8, u8, Vec<Expr>),
+	CallSystem(u8, u8, Vec<Expr>),
 	CallFunc(String, String, Vec<Expr>),
 	Unop(u8, Box<Expr>),
 	Binop(u8, Box<Expr>, Box<Expr>),
@@ -25,7 +25,7 @@ impl std::fmt::Debug for Expr {
 			Expr::Value(v) => v.fmt(f),
 			Expr::Var(n) => f.debug_tuple("Var").field(n).finish(),
 			Expr::Var2(n) => f.debug_tuple("Var2").field(n).finish(),
-			Expr::Syscall2(a, b, v) => {
+			Expr::CallSystem(a, b, v) => {
 				let mut t = f.debug_tuple("Syscall2");
 				match names::syscall(*a, *b) {
 					Some((name, Some(sub))) => t.field(&name).field(&sub),
@@ -325,17 +325,6 @@ fn stmt(ctx: &mut Ctx<'_>) {
 		Op::Goto(t) if ctx.brk == Some(*t) => {
 			println!("{i}break");
 		}
-		Op::Syscall(n) => {
-			let pos = ctx
-				.stack
-				.iter()
-				.position(|v| v == &Expr::Value(Value::Uint(ctx.pos().0)))
-				.unwrap();
-			let it = ctx.pop_n(pos);
-			assert_eq!(ctx.pop(), Expr::Value(Value::Uint(ctx.pos().0)));
-			assert_eq!(ctx.pop(), Expr::Value(Value::Uint(ctx.current_func)));
-			ctx.push_call(i, Expr::CallFunc(String::new(), ctx.functions[*n as usize].name.clone(), it));
-		}
 		Op::Op(n @ (16..=30)) => {
 			// 16: + (probably)
 			// 21: == (certain)
@@ -350,14 +339,25 @@ fn stmt(ctx: &mut Ctx<'_>) {
 			let a = ctx.pop();
 			ctx.push(Expr::Unop(*n, a.into()));
 		}
-		Op::CallFunc(a, b, n) => {
+		Op::Call(n) => {
+			let pos = ctx
+				.stack
+				.iter()
+				.position(|v| v == &Expr::Value(Value::Uint(ctx.pos().0)))
+				.unwrap();
+			let it = ctx.pop_n(pos);
+			assert_eq!(ctx.pop(), Expr::Value(Value::Uint(ctx.pos().0)));
+			assert_eq!(ctx.pop(), Expr::Value(Value::Uint(ctx.current_func)));
+			ctx.push_call(i, Expr::CallFunc(String::new(), ctx.functions[*n as usize].name.clone(), it));
+		}
+		Op::CallExtern(a, b, n) => {
 			let it = ctx.pop_n(*n as usize);
 			assert_ne!(a, "");
 			ctx.push_call(i, Expr::CallFunc(a.clone(), b.clone(), it));
 		}
-		Op::Syscall2(a, b, c) => {
+		Op::CallSystem(a, b, c) => {
 			let it = ctx.pop_n(*c as usize);
-			ctx.push_call(i, Expr::Syscall2(*a, *b, it));
+			ctx.push_call(i, Expr::CallSystem(*a, *b, it));
 		}
 		Op::_25(target) => {
 			// Always wraps a complete CallFunc

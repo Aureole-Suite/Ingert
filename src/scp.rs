@@ -221,14 +221,14 @@ pub enum Op {
 	GetGlobal(u8),
 	SetGlobal(u8),
 	Goto(Label),
-	Syscall(u16),
+	Call(u16),
 	Return,
 	If2(Label),
 	If(Label),
 	Op(u8),
-	CallFunc(String, String, u8),
+	CallExtern(String, String, u8),
 	_23(Value, Value, u8),
-	Syscall2(u8, u8, u8),
+	CallSystem(u8, u8, u8),
 	_25(Label),
 	Line(u16),
 	Debug(u8),
@@ -290,12 +290,12 @@ pub fn parse_scp(data: &[u8]) -> Result<Scp, ScpError> {
 			9 => Op::GetGlobal(f.u8()?),
 			10 => Op::SetGlobal(f.u8()?),
 			11 => Op::Goto(label(&mut f)?),
-			12 => Op::Syscall(f.u16()?),
+			12 => Op::Call(f.u16()?),
 			13 => Op::Return,
 			14 => Op::If2(label(&mut f)?),
 			15 => Op::If(label(&mut f)?),
 			16..=33 => Op::Op(op),
-			34 => Op::CallFunc(string_value(&mut f)?, string_value(&mut f)?, f.u8()?),
+			34 => Op::CallExtern(string_value(&mut f)?, string_value(&mut f)?, f.u8()?),
 			35 => Op::_23(value(&mut f)?, value(&mut f)?, f.u8()?),
 			36 => {
 				let a = f.u8()?;
@@ -305,7 +305,7 @@ pub fn parse_scp(data: &[u8]) -> Result<Scp, ScpError> {
 					f.check_u8(1)?;
 					f.check_u8(4 * c)?;
 				}
-				Op::Syscall2(a, b, c)
+				Op::CallSystem(a, b, c)
 			}
 			37 => Op::_25(label(&mut f)?),
 			38 => Op::Line(f.u16()?),
