@@ -347,10 +347,11 @@ fn stmt(ctx: &mut Ctx<'_>) {
 			ctx.push_call(i, Expr::Syscall2(*a, *b, it));
 		}
 		Op::_25(target) => {
-			println!("{i}_25 {{");
-			let sub = ctx.sub(*target);
-			stmts(sub);
-			println!("{i}}}");
+			// Always wraps a complete CallFunc
+			while ctx.pos() < *target {
+				stmt(ctx);
+			}
+			// assert_eq!(ctx.pos(), *target); // assert is currently invalid because of GetGlobal(0)
 		}
 		Op::Line(_) => {}
 		Op::Debug(n) => {
