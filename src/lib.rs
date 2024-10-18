@@ -244,31 +244,11 @@ fn stmt(ctx: &mut Ctx<'_>) {
 		return;
 	}
 	match ctx.next().unwrap() {
-		Op::Push(v) => {
-			ctx.push(Expr::Value(v.clone()));
-		}
-		Op::Pop(n) => {
-			for _ in 0..*n / 4 {
-				ctx.pop(); // TODO must be Local or Arg
-			}
-		}
-		Op::GetVar(n) => {
-			let d = 4 * ctx.stack.len() as i32;
-			ctx.push(Expr::Var(*n + d));
-		}
-		Op::SetVar(n) => {
-			let a = ctx.pop();
-			let d = 4 * ctx.stack.len() as i32;
-			println!("{i}Var({}) = {:?}", *n + d, a);
-		}
-		Op::RefVar(n) => {
-			let d = 4 * ctx.stack.len() as i32;
-			ctx.push(Expr::VarRef(*n + d));
-		}
 		Op::Return => {
 			println!("{i}(end)");
 			assert_eq!(ctx.stack, &[]);
 		}
+
 		Op::If(target) => {
 			let a = ctx.pop();
 			let mut sub = ctx.sub(*target);
@@ -286,6 +266,7 @@ fn stmt(ctx: &mut Ctx<'_>) {
 				println!("{i}}}");
 			}
 		}
+
 		Op::SetGlobal(0) if ctx.peek() == Some(&Op::GetGlobal(0)) => {
 			let a = ctx.pop();
 			let cases = switch_cases(ctx);
@@ -318,6 +299,7 @@ fn stmt(ctx: &mut Ctx<'_>) {
 			}
 			println!("{i}}}");
 		}
+
 		Op::SetGlobal(0) => {
 			let a = ctx.pop();
 			println!("{i}return {a:?}");
@@ -327,6 +309,28 @@ fn stmt(ctx: &mut Ctx<'_>) {
 		}
 		Op::Goto(t) if ctx.brk == Some(*t) => {
 			println!("{i}break");
+		}
+
+		Op::Push(v) => {
+			ctx.push(Expr::Value(v.clone()));
+		}
+		Op::Pop(n) => {
+			for _ in 0..*n / 4 {
+				ctx.pop(); // TODO must be Local or Arg
+			}
+		}
+		Op::GetVar(n) => {
+			let d = 4 * ctx.stack.len() as i32;
+			ctx.push(Expr::Var(*n + d));
+		}
+		Op::SetVar(n) => {
+			let a = ctx.pop();
+			let d = 4 * ctx.stack.len() as i32;
+			println!("{i}Var({}) = {:?}", *n + d, a);
+		}
+		Op::RefVar(n) => {
+			let d = 4 * ctx.stack.len() as i32;
+			ctx.push(Expr::VarRef(*n + d));
 		}
 		Op::Op(n @ (16..=30)) => {
 			// 16: + (probably)
@@ -342,6 +346,7 @@ fn stmt(ctx: &mut Ctx<'_>) {
 			let a = ctx.pop();
 			ctx.push(Expr::Unop(*n, a.into()));
 		}
+
 		Op::Call(n) => {
 			let pos = ctx
 				.stack
@@ -369,6 +374,7 @@ fn stmt(ctx: &mut Ctx<'_>) {
 			}
 			// assert_eq!(ctx.pos(), *target); // assert is currently invalid because of GetGlobal(0)
 		}
+
 		Op::Line(_) => {}
 		Op::Debug(n) => {
 			assert_eq!(*n, 1);
