@@ -159,13 +159,15 @@ pub fn stuff(scp: &Scp) {
 		popped_last: false,
 	};
 
-	let ends = scp
-		.functions
+	let mut functions = scp.functions.iter().collect::<Vec<_>>();
+	functions.sort_by_key(|f| f.start);
+
+	let ends = functions
 		.iter()
 		.skip(1)
 		.map(|f| f.start)
 		.chain(Some(scp.code_end));
-	for (f, end) in std::iter::zip(&scp.functions, ends) {
+	for (f, end) in std::iter::zip(&functions, ends) {
 		assert_eq!(ctx.pos(), f.start);
 		ctx.current_func = f.index;
 		let mut sub = ctx.sub(end);

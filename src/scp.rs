@@ -94,8 +94,6 @@ fn parse_functions(f: &mut Reader<'_>, n_entries: u32) -> Result<Vec<Function>, 
 			index,
 		});
 	}
-	// they're sorted by name, but that's not useful here
-	entries.sort_by_key(|e| e.start);
 	Ok(entries)
 }
 
