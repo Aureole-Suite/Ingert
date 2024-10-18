@@ -12,6 +12,7 @@ enum Expr {
 	Value(Value),
 	Var(i32),
 	VarRef(i32),
+	ReadRef(i32),
 	Local(u32),
 	Global(u8),
 	CallSystem(u8, u8, Vec<Expr>),
@@ -28,6 +29,7 @@ impl std::fmt::Debug for Expr {
 			Expr::Value(v) => v.fmt(f),
 			Expr::Var(n) => f.debug_tuple("Var").field(n).finish(),
 			Expr::VarRef(n) => f.debug_tuple("VarRef").field(n).finish(),
+			Expr::ReadRef(n) => f.debug_tuple("ReadRef").field(n).finish(),
 			Expr::Local(n) => f.debug_tuple("Local").field(n).finish(),
 			Expr::Global(n) => f.debug_tuple("Global").field(n).finish(),
 			Expr::CallSystem(a, b, v) => f.debug_tuple("CallSystem").field(a).field(b).field(v).finish(),
@@ -308,6 +310,9 @@ fn stmt(ctx: &mut Ctx<'_>) {
 		Op::Goto(t) if ctx.brk == Some(*t) => {
 			println!("{i}break");
 		}
+		Op::Goto(t) if ctx.pos() == *t => {
+			println!("{i}pass");
+		}
 
 		Op::Push(v) => {
 			ctx.push(Expr::Value(v.clone()));
@@ -317,7 +322,7 @@ fn stmt(ctx: &mut Ctx<'_>) {
 				// ctx.pop(); // TODO must be Local or Arg
 			}
 		}
-		Op::GetVar(n) => {
+		Op::PushVar(n) => {
 			let d = 4 * ctx.stack.len() as i32;
 			ctx.push(Expr::Var(*n + d));
 		}
@@ -326,9 +331,17 @@ fn stmt(ctx: &mut Ctx<'_>) {
 			let d = 4 * ctx.stack.len() as i32;
 			println!("{i}{:?} = {:?}", Expr::Var(*n + d), a);
 		}
-		Op::RefVar(n) => {
+		Op::PushRef(n) => {
 			let d = 4 * ctx.stack.len() as i32;
 			ctx.push(Expr::VarRef(*n + d));
+		}
+		Op::ReadRef(n) => {
+			let d = 4 * ctx.stack.len() as i32;
+			ctx.push(Expr::ReadRef(*n + d));
+		}
+		Op::_06(n) => {
+			let a = ctx.pop();
+			println!("{i}_06({:?}) = {:?}", n, a);
 		}
 		Op::_07(n) => {
 			ctx.push(Expr::Local(*n));
