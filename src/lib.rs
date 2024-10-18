@@ -273,6 +273,9 @@ fn stmt(ctx: &mut Ctx<'_>) {
 			let ends = cases.keys().copied().skip(1).chain(std::iter::once_with(|| the_end.get()).flatten());
 			for ((target, n), end) in std::iter::zip(&cases, ends) {
 				assert_eq!(ctx.pos(), *target);
+				if Some(ctx.pos()) == the_end.get() && n == &[None] {
+					continue
+				}
 				for n in n {
 					match n {
 						Some(n) => println!("{i}  case {n}:"),
