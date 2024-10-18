@@ -250,16 +250,20 @@ fn stmt(ctx: &mut Ctx<'_>) {
 		}
 		Op::If(target) => {
 			let a = ctx.pop();
-			println!("{i}if {a:?} {{");
 			let mut sub = ctx.sub(*target);
-			let the_else = sub.last_goto(|l| l >= *target);
-			stmts(sub);
+			let the_else = sub.last_goto(|l| l >= *target && l <= ctx.code_end);
 			if let Some(the_else) = the_else {
+				println!("{i}if {a:?} {{");
+				stmts(sub);
 				println!("{i}}} else {{");
 				let sub = ctx.sub(the_else);
 				stmts(sub);
+				println!("{i}}}");
+			} else {
+				println!("{i}if {a:?} {{");
+				stmts(sub);
+				println!("{i}}}");
 			}
-			println!("{i}}}");
 		}
 		Op::SetGlobal(0) if ctx.peek() == Some(&Op::GetGlobal(0)) => {
 			let a = ctx.pop();
