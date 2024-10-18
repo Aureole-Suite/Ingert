@@ -37,7 +37,7 @@ pub enum ScpError {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Type {
+pub enum Type {
 	Number,
 	String,
 }

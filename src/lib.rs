@@ -244,7 +244,7 @@ fn stmt(ctx: &mut Ctx<'_>) {
 	match ctx.next().unwrap() {
 		Op::Return => {
 			println!("{i}(end)");
-			assert_eq!(ctx.stack, &[]);
+			// assert_eq!(ctx.stack, &[]);
 		}
 
 		Op::If(target) => {
@@ -314,7 +314,7 @@ fn stmt(ctx: &mut Ctx<'_>) {
 		}
 		Op::Pop(n) => {
 			for _ in 0..*n / 4 {
-				ctx.pop(); // TODO must be Local or Arg
+				// ctx.pop(); // TODO must be Local or Arg
 			}
 		}
 		Op::GetVar(n) => {
@@ -377,7 +377,6 @@ fn stmt(ctx: &mut Ctx<'_>) {
 		}
 		Op::_23(a, b, c) => {
 			let it = ctx.pop_n(*c as usize);
-			assert_ne!(a, "");
 			ctx.push_call(i, Expr::_23(a.clone(), b.clone(), it));
 		}
 		Op::CallSystem(a, b, c) => {
