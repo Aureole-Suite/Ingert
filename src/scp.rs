@@ -1,6 +1,6 @@
 use gospel::read::{Le as _, Reader};
 use std::cell::Cell;
-use snafu::ResultExt as _;
+use snafu::{OptionExt as _, ResultExt as _};
 
 #[derive(Debug, snafu::Snafu)]
 #[snafu(module(scp), context(suffix(false)))]
@@ -29,6 +29,13 @@ pub enum ScpError {
 		expected: u32,
 		actual: u32,
 	},
+	BadDefaults,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Arg {
+	pub ty: u8,
+	pub default: Option<Value>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -36,8 +43,7 @@ pub struct Function {
 	pub start: Label,
 	pub a0: u8,
 	pub a1: u8,
-	pub a2: Vec<Value>,
-	pub args: Vec<Value>,
+	pub args: Vec<Arg>,
 	pub called: Vec<(i32, u16, Vec<TaggedValue>)>,
 	pub name: String,
 	pub index: u32,
@@ -73,8 +79,21 @@ fn parse_functions(f: &mut Reader<'_>, n_entries: u32) -> Result<Vec<Function>, 
 			actual: name_checksum,
 		});
 
-		let a2 = multi(&mut f.at(a2p)?, a2c, value)?;
-		let args = multi(&mut f.at(argp)?, argc, value)?;
+		let defaults = multi(&mut f.at(a2p)?, a2c, value)?;
+		let types = multi(&mut f.at(argp)?, argc, |f| Ok(f.u32()?))?;
+		let mut defaults = defaults.into_iter();
+		let mut args = Vec::with_capacity(types.len());
+		for ty in types {
+			let default = if ty & 8 != 0 {
+				Some(defaults.next().context(scp::BadDefaults)?)
+			} else {
+				None
+			};
+			
+			args.push(Arg { ty: (ty & 7) as u8, default });
+		}
+		snafu::ensure!(defaults.next().is_none(), scp::BadDefaults);
+
 		let called = multi(&mut f.at(calledp)?, calledc, |f| {
 			let x = f.i32()?;
 			let y = f.u16()?;
@@ -87,7 +106,6 @@ fn parse_functions(f: &mut Reader<'_>, n_entries: u32) -> Result<Vec<Function>, 
 			start,
 			a0,
 			a1,
-			a2,
 			args,
 			called,
 			name,
