@@ -296,7 +296,7 @@ pub enum Op {
 	If(Label),
 	Op(u8),
 	CallExtern(String, String, u8),
-	_23(Value, Value, u8),
+	_23(String, String, u8),
 	CallSystem(u8, u8, u8),
 	_25(Label),
 	Line(u16),
@@ -365,7 +365,7 @@ pub fn parse_scp(data: &[u8]) -> Result<Scp, ScpError> {
 			15 => Op::If(label(&mut f)?),
 			16..=33 => Op::Op(op),
 			34 => Op::CallExtern(string_value(&mut f)?, string_value(&mut f)?, f.u8()?),
-			35 => Op::_23(value(&mut f)?, value(&mut f)?, f.u8()?),
+			35 => Op::_23(string_value(&mut f)?, string_value(&mut f)?, f.u8()?),
 			36 => {
 				let a = f.u8()?;
 				let b = f.u8()?;

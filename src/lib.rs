@@ -12,8 +12,11 @@ enum Expr {
 	Value(Value),
 	Var(i32),
 	VarRef(i32),
+	Local(u32),
+	Global(u8),
 	CallSystem(u8, u8, Vec<Expr>),
 	CallFunc(String, String, Vec<Expr>),
+	_23(String, String, Vec<Expr>),
 	Unop(u8, Box<Expr>),
 	Binop(u8, Box<Expr>, Box<Expr>),
 	Arg,
@@ -24,17 +27,12 @@ impl std::fmt::Debug for Expr {
 		match self {
 			Expr::Value(v) => v.fmt(f),
 			Expr::Var(n) => f.debug_tuple("Var").field(n).finish(),
-			Expr::VarRef(n) => f.debug_tuple("Var2").field(n).finish(),
-			Expr::CallSystem(a, b, v) => {
-				let mut t = f.debug_tuple("Syscall2");
-				match names::syscall(*a, *b) {
-					Some((name, Some(sub))) => t.field(&name).field(&sub),
-					Some((name, None)) => t.field(&name).field(b),
-					None => t.field(a).field(b),
-				};
-				t.field(v).finish()
-			},
+			Expr::VarRef(n) => f.debug_tuple("VarRef").field(n).finish(),
+			Expr::Local(n) => f.debug_tuple("Local").field(n).finish(),
+			Expr::Global(n) => f.debug_tuple("Global").field(n).finish(),
+			Expr::CallSystem(a, b, v) => f.debug_tuple("CallSystem").field(a).field(b).field(v).finish(),
 			Expr::CallFunc(a, b, v) => f.debug_tuple("CallFunc").field(a).field(b).field(v).finish(),
+			Expr::_23(a, b, v) => f.debug_tuple("_23").field(a).field(b).field(v).finish(),
 			Expr::Unop(v, a) => f.debug_tuple("Unop").field(v).field(a).finish(),
 			Expr::Binop(v, a, b) => f.debug_tuple("Binop").field(v).field(a).field(b).finish(),
 			Expr::Arg => f.write_str("Arg"),
@@ -326,11 +324,25 @@ fn stmt(ctx: &mut Ctx<'_>) {
 		Op::SetVar(n) => {
 			let a = ctx.pop();
 			let d = 4 * ctx.stack.len() as i32;
-			println!("{i}Var({}) = {:?}", *n + d, a);
+			println!("{i}{:?} = {:?}", Expr::Var(*n + d), a);
 		}
 		Op::RefVar(n) => {
 			let d = 4 * ctx.stack.len() as i32;
 			ctx.push(Expr::VarRef(*n + d));
+		}
+		Op::_07(n) => {
+			ctx.push(Expr::Local(*n));
+		}
+		Op::_08(n) => {
+			let a = ctx.pop();
+			println!("{i}{:?} = {:?}", Expr::Local(*n), a);
+		}
+		Op::GetGlobal(n) => {
+			ctx.push(Expr::Global(*n));
+		}
+		Op::SetGlobal(n) => {
+			let a = ctx.pop();
+			println!("{i}{:?} = {:?}", Expr::Global(*n), a);
 		}
 		Op::Op(n @ (16..=30)) => {
 			// 16: + (probably)
@@ -342,7 +354,7 @@ fn stmt(ctx: &mut Ctx<'_>) {
 			let a = ctx.pop();
 			ctx.push(Expr::Binop(*n, a.into(), b.into()));
 		}
-		Op::Op(n @ 32) => {
+		Op::Op(n @ (32 | 33)) => {
 			let a = ctx.pop();
 			ctx.push(Expr::Unop(*n, a.into()));
 		}
@@ -363,6 +375,11 @@ fn stmt(ctx: &mut Ctx<'_>) {
 			assert_ne!(a, "");
 			ctx.push_call(i, Expr::CallFunc(a.clone(), b.clone(), it));
 		}
+		Op::_23(a, b, c) => {
+			let it = ctx.pop_n(*c as usize);
+			assert_ne!(a, "");
+			ctx.push_call(i, Expr::_23(a.clone(), b.clone(), it));
+		}
 		Op::CallSystem(a, b, c) => {
 			let it = ctx.pop_n(*c as usize);
 			ctx.push_call(i, Expr::CallSystem(*a, *b, it));
@@ -377,8 +394,7 @@ fn stmt(ctx: &mut Ctx<'_>) {
 
 		Op::Line(_) => {}
 		Op::Debug(n) => {
-			assert_eq!(*n, 1);
-			let a = ctx.pop();
+			let a = ctx.pop_n(*n as usize);
 			println!("{i}debug {a:?}");
 		}
 		op => {
