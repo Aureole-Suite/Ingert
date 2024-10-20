@@ -49,7 +49,7 @@ pub enum Lvalue<T> {
 pub enum CallKind {
 	System(u8, u8),
 	Func(String, String),
-	_23(String, String),
+	Become(String, String),
 }
 
 macro_rules! pat {
@@ -206,8 +206,25 @@ impl<'a> Ctx<'a> {
 				self.do_pop(&mut push)?;
 				push(Stmt::Goto(*l));
 			},
-			Op::Call(..) | Op::_23(..) | Op::CallExtern(..) | Op::CallSystem(..) => {
+			Op::Call(..) | Op::CallExtern(..) | Op::CallSystem(..) => {
 				let expr = self.rewind().call()?;
+				let expr = self.maybe_wrap_line(expr);
+				push(Stmt::Expr(expr));
+			}
+			Op::_23(a, b, c) => {
+				for i in 1..=*c {
+					self.expect(&Op::GetTemp(i));
+				}
+				self.do_pop(&mut push)?;
+				for i in (1..=*c).rev() {
+					self.expect(&Op::SetTemp(i));
+				}
+				let mut args = Vec::new();
+				for _ in 0..*c {
+					args.push(self.expr()?);
+				}
+				args.reverse();
+				let expr = Expr::Call(CallKind::Become(a.clone(), b.clone()), args);
 				let expr = self.maybe_wrap_line(expr);
 				push(Stmt::Expr(expr));
 			}
