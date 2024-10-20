@@ -123,7 +123,6 @@ struct Ctx<'a> {
 	code: &'a [(Label, Op)],
 	code_end: Label,
 
-	loops: &'a HashMap<Label, Label>,
 	stack: VecDeque<Expr>,
 	current_func: u32,
 	pos: usize,
@@ -189,7 +188,6 @@ impl<'a> Ctx<'a> {
 			functions: self.functions,
 			code: &self.code[self.pos..index],
 			code_end: target,
-			loops: self.loops,
 			stack: self.stack.clone(),
 			current_func: self.current_func,
 			pos: 0,
@@ -226,17 +224,10 @@ impl<'a> Ctx<'a> {
 }
 
 pub fn stuff(scp: &Scp) {
-	let mut loops = HashMap::new();
-	for (i, (_, op)) in scp.code.iter().enumerate() {
-		if let Op::Goto(start) = op && *start < scp.code[i + 1].0 {
-			loops.insert(*start, scp.code[i + 1].0);
-		}
-	}
 	let mut ctx = Ctx {
 		functions: &scp.functions,
 		code: &scp.code,
 		code_end: scp.code_end,
-		loops: &loops,
 		stack: VecDeque::new(),
 		current_func: 0,
 		pos: 0,
@@ -313,16 +304,6 @@ fn stmts(mut ctx: Ctx<'_>) {
 
 fn stmt(ctx: &mut Ctx<'_>) {
 	let i = ctx.indent;
-	if let Some(&brk) = ctx.loops.get(&ctx.pos()) && (ctx.indent == Indent(0) || ctx.pos != 0) {
-		let cont = ctx.pos();
-		println!("{i}loop {{");
-		let mut sub = ctx.sub(brk);
-		sub.cont = Some(cont);
-		sub.brk = Some(brk);
-		stmts(sub);
-		println!("{i}}}");
-		return;
-	}
 	match ctx.next().unwrap() {
 		Op::Return => {
 			println!("{i}(end)");
@@ -332,8 +313,15 @@ fn stmt(ctx: &mut Ctx<'_>) {
 		Op::If(target) => {
 			let a = ctx.pop();
 			let mut sub = ctx.sub(*target);
-			let the_else = sub.last_goto(|l| l >= *target && l <= ctx.code_end);
-			if let Some(the_else) = the_else {
+			let the_else = sub.last_goto(|l| (l >= *target && l <= ctx.code_end) || l < ctx.pos());
+			if let Some(the_cont) = the_else && the_cont < ctx.pos() {
+				// This check is not correct really; I need to know where the arg actually started
+				println!("{i}while {a} {{");
+				sub.brk = Some(*target);
+				sub.cont = Some(the_cont);
+				stmts(sub);
+				println!("{i}}}");
+			} else if let Some(the_else) = the_else {
 				println!("{i}if {a} {{");
 				stmts(sub);
 				println!("{i}}} else {{");
