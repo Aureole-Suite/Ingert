@@ -251,8 +251,13 @@ pub fn stuff(out: &mut Write, scp: &Scp) {
 		ctx.nargs = f.args.len();
 		let sub = ctx.sub(end);
 
-		// writeln!(out, "\n{f}");
-		// scp::dump_ops(sub.code);
+		writeln!(out, "\n{f}");
+		for line in &f.called {
+			writeln!(out, "- {line:?}");
+		}
+		for line in scp::dump_ops(sub.code) {
+			writeln!(out, "{line}");
+		}
 
 		writeln!(out, "\n{f}");
 		stmts(out, sub);
@@ -404,7 +409,12 @@ fn stmt(out: &mut Write, ctx: &mut Ctx<'_>) {
 			ctx.push(Expr::Value(v.clone()));
 		}
 		Op::Pop(n) => {
-			writeln!(out, "{i}pop{n}/{} {}", ctx.nargs, Args(ctx.stack.make_contiguous()));
+			if ctx.peek() == Some(&Op::Return) {
+				writeln!(out, "{i}popret {n}/{} {}", ctx.nargs, Args(ctx.stack.make_contiguous()));
+			} else {
+				writeln!(out, "{i}popcont {n}/{} {}", ctx.nargs, Args(ctx.stack.make_contiguous()));
+				// assert_eq!(ctx.peek(), None);
+			}
 		}
 		Op::PushVar(n) => {
 			let var = Lvalue::Stack(ctx.resolve(*n));
