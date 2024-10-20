@@ -294,13 +294,74 @@ pub enum Op {
 	Return,
 	If2(Label),
 	If(Label),
-	Op(u8),
+	Binop(Binop),
+	Unop(Unop),
 	CallExtern(String, String, u8),
 	_23(String, String, u8),
 	CallSystem(u8, u8, u8),
 	_25(Label),
 	Line(u16),
 	Debug(u8),
+}
+
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, strum::FromRepr)]
+pub enum Binop {
+	Add = 16,
+	Minus = 17,
+	Mul = 18,
+	Div = 19,
+	Mod = 20,
+	Eq = 21,
+	Ne = 22,
+	Gt = 23,
+	Ge = 24,
+	Lt = 25,
+	Le = 26,
+	BitAnd = 27,
+	BitOr = 28,
+	BoolAnd = 29,
+	BoolOr = 30,
+}
+
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, strum::FromRepr)]
+pub enum Unop {
+	Neg = 31,
+	BoolNot = 32,
+	BitNot = 33,
+}
+
+impl std::fmt::Display for Binop {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.write_str(match self {
+			Binop::Add => "+",
+			Binop::Minus => "-",
+			Binop::Mul => "*",
+			Binop::Div => "/",
+			Binop::Mod => "%",
+			Binop::Eq => "==",
+			Binop::Ne => "!=",
+			Binop::Gt => ">",
+			Binop::Ge => ">=",
+			Binop::Lt => "<",
+			Binop::Le => "<=",
+			Binop::BitAnd => "&",
+			Binop::BitOr => "|",
+			Binop::BoolAnd => "&&",
+			Binop::BoolOr => "||",
+		})
+	}
+}
+
+impl std::fmt::Display for Unop {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.write_str(match self {
+			Unop::Neg => "-",
+			Unop::BoolNot => "!",
+			Unop::BitNot => "~",
+		})
+	}
 }
 
 pub struct Scp {
@@ -363,7 +424,8 @@ pub fn parse_scp(data: &[u8]) -> Result<Scp, ScpError> {
 			13 => Op::Return,
 			14 => Op::If2(label(&mut f)?),
 			15 => Op::If(label(&mut f)?),
-			16..=33 => Op::Op(op),
+			16..=30 => Op::Binop(Binop::from_repr(op).unwrap()),
+			31..=33 => Op::Unop(Unop::from_repr(op).unwrap()),
 			34 => Op::CallExtern(string_value(&mut f)?, string_value(&mut f)?, f.u8()?),
 			35 => Op::_23(string_value(&mut f)?, string_value(&mut f)?, f.u8()?),
 			36 => {

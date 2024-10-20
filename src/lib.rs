@@ -3,7 +3,8 @@ use std::{cell::Cell, collections::{BTreeMap, HashMap, VecDeque}};
 
 mod scp;
 
-use scp::{Label, Op, Scp, Value};
+use scp::{Label, Op, Scp};
+pub use scp::{Value, Binop, Unop};
 pub use scp::parse_scp;
 
 #[derive(Clone, PartialEq)]
@@ -12,8 +13,8 @@ pub enum Expr {
 	Var(Var),
 	VarRef(i32),
 	Call(CallKind, Vec<Expr>),
-	Unop(u8, Box<Expr>),
-	Binop(u8, Box<Expr>, Box<Expr>),
+	Unop(Unop, Box<Expr>),
+	Binop(Binop, Box<Expr>, Box<Expr>),
 	Arg,
 }
 
@@ -32,15 +33,44 @@ pub enum CallKind {
 	_23(String, String),
 }
 
+impl std::fmt::Display for CallKind {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			CallKind::System(a, b) => write!(f, "system[{}, {}]", a, b),
+			CallKind::Func(a, b) => write!(f, "_22 {}.{}", a, b),
+			CallKind::_23(a, b) => write!(f, "_23 {}.{}", a, b),
+		}
+	}
+}
+
 impl std::fmt::Debug for Expr {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
 			Expr::Value(v) => v.fmt(f),
-			Expr::Var(n) => f.debug_tuple("Var").field(n).finish(),
+			Expr::Var(n) => n.fmt(f),
 			Expr::VarRef(n) => f.debug_tuple("VarRef").field(n).finish(),
-			Expr::Call(k, a) => f.debug_tuple("Call").field(k).field(a).finish(),
-			Expr::Unop(v, a) => f.debug_tuple("Unop").field(v).field(a).finish(),
-			Expr::Binop(v, a, b) => f.debug_tuple("Binop").field(v).field(a).field(b).finish(),
+			Expr::Call(k, a) => {
+				let mut t = f.debug_tuple(&k.to_string());
+				for a in a {
+					t.field(a);
+				}
+				t.finish()
+			}
+			Expr::Unop(v, a) => {
+				std::fmt::Display::fmt(v, f)?;
+				f.write_str("(")?;
+				a.fmt(f)?;
+				f.write_str(")")
+			}
+			Expr::Binop(v, a, b) => {
+				f.write_str("(")?;
+				a.fmt(f)?;
+				f.write_str(" ")?;
+				std::fmt::Display::fmt(v, f)?;
+				f.write_str(" ")?;
+				b.fmt(f)?;
+				f.write_str(")")
+			}
 			Expr::Arg => f.write_str("Arg"),
 		}
 	}
@@ -211,7 +241,7 @@ fn switch_cases(ctx: &mut Ctx<'_>) -> BTreeMap<Label, Vec<Option<i32>>> {
 		match &ctx.next().unwrap() {
 			Op::GetGlobal(0) => {
 				let Op::Push(Value::Int(n)) = ctx.next().unwrap() else { unreachable!() };
-				let Op::Op(21) = ctx.next().unwrap() else { unreachable!() };
+				let Op::Binop(Binop::Eq) = ctx.next().unwrap() else { unreachable!() };
 				let Op::If2(target) = ctx.next().unwrap() else { unreachable!() };
 				cases.push((*n, *target));
 			}
@@ -363,19 +393,14 @@ fn stmt(ctx: &mut Ctx<'_>) {
 			let a = ctx.pop();
 			println!("{i}{:?} = {:?}", Expr::Var(Var::Global(*n)), a);
 		}
-		Op::Op(n @ (16..=31 | 33)) => {
-			// 16: + (probably)
-			// 21: == (certain)
-			// 29: &
-			// 30: |
-			// 32: !
+		Op::Binop(op) => {
 			let b = ctx.pop();
 			let a = ctx.pop();
-			ctx.push(Expr::Binop(*n, a.into(), b.into()));
+			ctx.push(Expr::Binop(*op, a.into(), b.into()));
 		}
-		Op::Op(n @ 32) => {
+		Op::Unop(op) => {
 			let a = ctx.pop();
-			ctx.push(Expr::Unop(*n, a.into()));
+			ctx.push(Expr::Unop(*op, a.into()));
 		}
 
 		Op::Call(n) => {

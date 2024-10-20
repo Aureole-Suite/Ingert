@@ -14,6 +14,7 @@ tracing = "0.1.40"
 glam = "0.29.0"
 extend = "1.2.0"
 crc32fast = "1.4.2"
+strum = { version = "0.26", features = ["derive"] }
 
 [profile.dev.package."*"]
 opt-level = 3
