@@ -42,8 +42,7 @@ pub enum StackVar {
 pub enum Lvalue<T> {
 	Stack(T),
 	Deref(T),
-	Local(u32),
-	Global(u8),
+	Global(u32),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -221,6 +220,10 @@ impl<'a> Ctx<'a> {
 				let expr = self.expr()?;
 				push(Stmt::Set(Lvalue::Stack(*n), expr));
 			}
+			Op::SetGlobal(n) => {
+				let expr = self.expr()?;
+				push(Stmt::Set(Lvalue::Global(*n), expr));
+			}
 			Op::Debug(n) => {
 				let mut args = Vec::new();
 				for _ in 0..*n {
@@ -258,6 +261,7 @@ impl<'a> Ctx<'a> {
 			Op::Push(value) => Expr::Value(value.clone()),
 			Op::PushRef(n) => Expr::Ref(*n),
 			Op::GetVar(n) => Expr::Var(Lvalue::Stack(*n)),
+			Op::GetGlobal(n) => Expr::Var(Lvalue::Global(*n)),
 			Op::Binop(op) => {
 				let b = self.expr()?;
 				let a = self.expr()?;
