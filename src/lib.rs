@@ -40,6 +40,13 @@ pub enum CallKind {
 	_23(String, String),
 }
 
+struct Args<'a>(&'a [Expr]);
+impl Display for Args<'_> {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		format_exprs(f, self.0)
+	}
+}
+
 fn format_exprs(f: &mut std::fmt::Formatter<'_>, args: &[Expr]) -> std::fmt::Result {
 	f.write_str("(")?;
 	let mut it = args.iter();
@@ -130,6 +137,7 @@ struct Ctx<'a> {
 	cont: Option<Label>,
 	brk: Option<Label>,
 	popped_last: bool,
+	nargs: usize,
 }
 
 impl<'a> Ctx<'a> {
@@ -195,6 +203,7 @@ impl<'a> Ctx<'a> {
 			cont: self.cont,
 			brk: self.brk,
 			popped_last: self.popped_last && index == self.code.len(),
+			nargs: self.nargs,
 		};
 		self.pos = index;
 		new
@@ -235,6 +244,7 @@ pub fn stuff(scp: &Scp) {
 		cont: None,
 		brk: None,
 		popped_last: false,
+		nargs: 0,
 	};
 
 	let mut functions = scp.functions.iter().collect::<Vec<_>>();
@@ -248,6 +258,7 @@ pub fn stuff(scp: &Scp) {
 	for (f, end) in std::iter::zip(&functions, ends) {
 		assert_eq!(ctx.pos(), f.start);
 		ctx.current_func = f.index;
+		ctx.nargs = f.args.len();
 		let sub = ctx.sub(end);
 
 		// println!("\n{f}");
@@ -384,9 +395,7 @@ fn stmt(ctx: &mut Ctx<'_>) {
 			ctx.push(Expr::Value(v.clone()));
 		}
 		Op::Pop(n) => {
-			for _ in 0..*n / 4 {
-				// ctx.pop(); // TODO must be Local or Arg
-			}
+			println!("{i}pop{n}/{} {}", ctx.nargs, Args(ctx.stack.make_contiguous()));
 		}
 		Op::PushVar(n) => {
 			let var = Lvalue::Stack(ctx.resolve(*n));
@@ -475,12 +484,6 @@ fn stmt(ctx: &mut Ctx<'_>) {
 
 		Op::Line(_) => {}
 		Op::Debug(n) => {
-			struct Args<'a>(&'a [Expr]);
-			impl Display for Args<'_> {
-				fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-					format_exprs(f, self.0)
-				}
-			}
 			let a = ctx.pop_n(*n as usize);
 			println!("{i}debug {}", Args(&a));
 		}
