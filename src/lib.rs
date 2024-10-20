@@ -216,7 +216,7 @@ impl<'a> Ctx<'a> {
 	}
 
 	fn resolve(&self, n: scp::StackSlot) -> StackVar {
-		let v = (n.0 as usize + self.stack.len()) as i32;
+		let v = n.0 + self.stack.len() as i32;
 		if v < 0 {
 			StackVar::Arg(!v as u32)
 		} else {
