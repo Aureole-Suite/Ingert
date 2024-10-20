@@ -10,7 +10,7 @@ tracing-subscriber = "0.3.18"
 
 gospel = "0.3.1"
 snafu = "0.8.5"
-tracing = "0.1.40"
+tracing = { version = "0.1.40", features = ["attributes"] }
 glam = "0.29.0"
 crc32fast = "1.4.2"
 strum = { version = "0.26", features = ["derive"] }

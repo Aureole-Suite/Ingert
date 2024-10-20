@@ -9,6 +9,8 @@ use scp::{Label, Op, Scp};
 pub use scp::{Value, Binop, Unop};
 pub use scp::parse_scp;
 
+pub mod decompile;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
 	Value(Value),
