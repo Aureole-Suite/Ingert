@@ -281,9 +281,9 @@ impl<'a> Ctx<'a> {
 	#[tracing::instrument(skip(self), fields(pos = ?self.pos()))]
 	fn call(&mut self) -> Option<Expr<StackSlot>> {
 		let pos = self.pos();
-		Some(match self.next()? {
+		let mut args = Vec::new();
+		let kind = match self.next()? {
 			Op::Call(n) => {
-				let mut args = Vec::new();
 				loop {
 					if self.peek() == Some(&Op::Push(Value::Uint(pos.0))) {
 						break;
@@ -292,29 +292,28 @@ impl<'a> Ctx<'a> {
 				}
 				self.expect(&Op::Push(Value::Uint(pos.0)))?;
 				self.expect(&Op::Push(Value::Uint(self.function.index)))?;
-				Expr::Call(CallKind::Func(String::new(), n.clone()), args)
+				CallKind::Func(String::new(), n.clone())
 			}
 			Op::CallSystem(a, b, c) => {
-				let mut args = Vec::new();
 				for _ in 0..*c {
 					args.push(self.expr()?);
 				}
-				Expr::Call(CallKind::System(*a, *b), args)
+				CallKind::System(*a, *b)
 			}
 			Op::CallExtern(a, b, c) => {
-				let mut args = Vec::new();
 				for _ in 0..*c {
 					args.push(self.expr()?);
 				}
 				self.expect(&Op::_25(pos))?;
-				Expr::Call(CallKind::Func(a.clone(), b.clone()), args)
+				CallKind::Func(a.clone(), b.clone())
 			}
 			op => {
 				self.rewind();
 				tracing::info!("unexpected {:?}", op);
 				return None
 			}
-		})
+		};
+		Some(Expr::Call(kind, args))
 	}
 
 	fn maybe_line(&mut self) -> Option<u16> {
