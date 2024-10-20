@@ -10,7 +10,7 @@ pub use scp::parse_scp;
 #[derive(Clone, PartialEq)]
 pub enum Expr {
 	Value(Value),
-	Var(Var),
+	Var(Lvalue),
 	Ref(StackVar),
 	Call(CallKind, Vec<Expr>),
 	Unop(Unop, Box<Expr>),
@@ -22,15 +22,28 @@ pub enum Expr {
 pub enum StackVar {
 	Stack(u32),
 	Arg(u32),
-	Error(u32),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Var {
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Lvalue {
 	Stack(StackVar),
-	StackRef(StackVar),
+	Deref(StackVar),
 	Local(u32),
 	Global(u8),
+}
+
+impl std::fmt::Debug for Lvalue {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			Self::Stack(v) => v.fmt(f),
+			Self::Deref(v) => {
+				f.write_str("*")?;
+				v.fmt(f)
+			}
+			Self::Local(v) => f.debug_tuple("Local").field(v).finish(),
+			Self::Global(v) => f.debug_tuple("Global").field(v).finish(),
+		}
+	}
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -369,42 +382,42 @@ fn stmt(ctx: &mut Ctx<'_>) {
 			}
 		}
 		Op::PushVar(n) => {
-			let var = Var::Stack(ctx.resolve(*n));
+			let var = Lvalue::Stack(ctx.resolve(*n));
 			ctx.push(Expr::Var(var));
 		}
 		Op::SetVar(n) => {
 			let a = ctx.pop();
-			let var = Var::Stack(ctx.resolve(*n));
+			let var = Lvalue::Stack(ctx.resolve(*n));
 			println!("{i}{:?} = {:?}", Expr::Var(var), a);
 		}
 		Op::PushRef(n) => {
 			ctx.push(Expr::Ref(ctx.resolve(*n)));
 		}
 		Op::ReadRef(n) => {
-			let var = Var::StackRef(ctx.resolve(*n));
+			let var = Lvalue::Deref(ctx.resolve(*n));
 			ctx.push(Expr::Var(var));
 		}
 		Op::WriteRef(n) => {
 			let a = ctx.pop();
-			let var = Var::StackRef(ctx.resolve(*n));
+			let var = Lvalue::Deref(ctx.resolve(*n));
 			println!("{i}{:?} = {:?}", Expr::Var(var), a);
 		}
 		Op::_07(n) => {
-			let var = Var::Local(*n);
+			let var = Lvalue::Local(*n);
 			ctx.push(Expr::Var(var));
 		}
 		Op::_08(n) => {
 			let a = ctx.pop();
-			let var = Var::Local(*n);
+			let var = Lvalue::Local(*n);
 			println!("{i}{:?} = {:?}", Expr::Var(var), a);
 		}
 		Op::GetGlobal(n) => {
-			let var = Var::Global(*n);
+			let var = Lvalue::Global(*n);
 			ctx.push(Expr::Var(var));
 		}
 		Op::SetGlobal(n) => {
 			let a = ctx.pop();
-			let var = Var::Global(*n);
+			let var = Lvalue::Global(*n);
 			println!("{i}{:?} = {:?}", Expr::Var(var), a);
 		}
 		Op::Binop(op) => {
