@@ -1,5 +1,5 @@
 use clap::Parser;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(clap::Parser)]
 struct Args {
@@ -32,8 +32,14 @@ fn process_file(file: &PathBuf) {
 		return;
 	};
 
-	match ingert::parse_scp(&data) {
-		Ok(v) => ingert::stuff(&v),
-		Err(e) => tracing::error!("Error: {}", snafu::Report::from_error(e)),
-	}
+	let _ = std::panic::catch_unwind(|| {
+		let out = Path::new("out").join(file.file_name().unwrap());
+		let out = std::fs::File::create(&out).unwrap();
+		let out = std::io::BufWriter::new(out);
+		let mut out = ingert::Write(Box::new(out));
+		match ingert::parse_scp(&data) {
+			Ok(v) => ingert::stuff(&mut out, &v),
+			Err(e) => tracing::error!("Error: {}", snafu::Report::from_error(e)),
+		}
+	});
 }

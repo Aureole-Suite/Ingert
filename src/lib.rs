@@ -175,16 +175,6 @@ impl<'a> Ctx<'a> {
 		self.stack.drain(..n).collect()
 	}
 
-	fn push_call(&mut self, call: CallKind, args: Vec<Expr>) {
-		let call = Expr::Call(call, args);
-		if self.peek() == Some(&Op::GetGlobal(0)) {
-			self.next();
-			self.stack.push_front(call);
-		} else {
-			println!("{i}{call}", i=self.indent);
-		}
-	}
-
 	fn sub(&mut self, target: Label) -> Ctx<'a> {
 		let index = if target == self.code_end {
 			self.code.len()
@@ -232,7 +222,7 @@ impl<'a> Ctx<'a> {
 	}
 }
 
-pub fn stuff(scp: &Scp) {
+pub fn stuff(out: &mut Write, scp: &Scp) {
 	let mut ctx = Ctx {
 		functions: &scp.functions,
 		code: &scp.code,
@@ -261,11 +251,11 @@ pub fn stuff(scp: &Scp) {
 		ctx.nargs = f.args.len();
 		let sub = ctx.sub(end);
 
-		// println!("\n{f}");
+		// writeln!(out, "\n{f}");
 		// scp::dump_ops(sub.code);
 
-		println!("\n{f}");
-		stmts(sub);
+		writeln!(out, "\n{f}");
+		stmts(out, sub);
 	}
 }
 
@@ -305,19 +295,38 @@ fn switch_cases(ctx: &mut Ctx<'_>) -> Vec<(Option<i32>, Label)> {
 	cases
 }
 
-fn stmts(mut ctx: Ctx<'_>) {
+fn stmts(out: &mut Write, mut ctx: Ctx<'_>) {
 	// let depth = ctx.stack.len();
 	while ctx.peek().is_some() {
-		stmt(&mut ctx);
+		stmt(out, &mut ctx);
 	}
 	// assert_eq!(ctx.stack.len(), depth);
 }
 
-fn stmt(ctx: &mut Ctx<'_>) {
+
+#[repr(transparent)]
+pub struct Write(pub Box<dyn std::io::Write>);
+impl Write {
+	fn write_fmt(&mut self, args: std::fmt::Arguments<'_>) {
+		self.0.write_fmt(args).unwrap()
+	}
+}
+
+fn stmt(out: &mut Write, ctx: &mut Ctx<'_>) {
+	fn push_call(ctx: &mut Ctx<'_>, out: &mut Write, call: CallKind, args: Vec<Expr>) {
+		let call = Expr::Call(call, args);
+		if ctx.peek() == Some(&Op::GetGlobal(0)) {
+			ctx.next();
+			ctx.stack.push_front(call);
+		} else {
+			writeln!(out, "{i}{call}", i=ctx.indent);
+		}
+	}
+
 	let i = ctx.indent;
 	match ctx.next().unwrap() {
 		Op::Return => {
-			println!("{i}(end)");
+			writeln!(out, "{i}(end)");
 			// assert_eq!(ctx.stack, &[]);
 		}
 
@@ -327,29 +336,29 @@ fn stmt(ctx: &mut Ctx<'_>) {
 			let the_else = sub.last_goto(|l| (l >= *target && l <= ctx.code_end) || l < ctx.pos());
 			if let Some(the_cont) = the_else && the_cont < ctx.pos() {
 				// This check is not correct really; I need to know where the arg actually started
-				println!("{i}while {a} {{");
+				writeln!(out, "{i}while {a} {{");
 				sub.brk = Some(*target);
 				sub.cont = Some(the_cont);
-				stmts(sub);
-				println!("{i}}}");
+				stmts(out, sub);
+				writeln!(out, "{i}}}");
 			} else if let Some(the_else) = the_else {
-				println!("{i}if {a} {{");
-				stmts(sub);
-				println!("{i}}} else {{");
+				writeln!(out, "{i}if {a} {{");
+				stmts(out, sub);
+				writeln!(out, "{i}}} else {{");
 				let sub = ctx.sub(the_else);
-				stmts(sub);
-				println!("{i}}}");
+				stmts(out, sub);
+				writeln!(out, "{i}}}");
 			} else {
-				println!("{i}if {a} {{");
-				stmts(sub);
-				println!("{i}}}");
+				writeln!(out, "{i}if {a} {{");
+				stmts(out, sub);
+				writeln!(out, "{i}}}");
 			}
 		}
 
 		Op::SetGlobal(0) if ctx.peek() == Some(&Op::GetGlobal(0)) => {
 			let a = ctx.pop();
 			let cases = switch_cases(ctx);
-			println!("{i}switch {a} {{");
+			writeln!(out, "{i}switch {a} {{");
 			let the_end = Cell::new(None);
 			let ends = cases.iter().skip(1).map(|i| i.1).chain(std::iter::once_with(|| the_end.get()).flatten());
 			for ((key, target), end) in std::iter::zip(&cases, ends) {
@@ -358,8 +367,8 @@ fn stmt(ctx: &mut Ctx<'_>) {
 					continue
 				}
 				match key {
-					Some(key) => println!("{i}  case {key}:"),
-					None => println!("{i}  default:"),
+					Some(key) => writeln!(out, "{i}  case {key}:"),
+					None => writeln!(out, "{i}  default:"),
 				}
 				let mut sub = ctx.sub(end);
 				let new_end = sub.last_goto(|l| l >= end);
@@ -369,33 +378,33 @@ fn stmt(ctx: &mut Ctx<'_>) {
 				}
 				sub.indent.0 += 1;
 				sub.brk = the_end.get();
-				stmts(sub);
+				stmts(out, sub);
 				if new_end.is_some() {
-					println!("{i}    break");
+					writeln!(out, "{i}    break");
 				}
 			}
-			println!("{i}}}");
+			writeln!(out, "{i}}}");
 		}
 
 		Op::SetGlobal(0) => {
 			let a = ctx.pop();
-			println!("{i}return {a}");
+			writeln!(out, "{i}return {a}");
 		}
 		Op::Goto(t) if ctx.cont == Some(*t) => {
-			println!("{i}continue");
+			writeln!(out, "{i}continue");
 		}
 		Op::Goto(t) if ctx.brk == Some(*t) => {
-			println!("{i}break");
+			writeln!(out, "{i}break");
 		}
 		Op::Goto(t) if ctx.pos() == *t => {
-			println!("{i}pass");
+			writeln!(out, "{i}pass");
 		}
 
 		Op::Push(v) => {
 			ctx.push(Expr::Value(v.clone()));
 		}
 		Op::Pop(n) => {
-			println!("{i}pop{n}/{} {}", ctx.nargs, Args(ctx.stack.make_contiguous()));
+			writeln!(out, "{i}pop{n}/{} {}", ctx.nargs, Args(ctx.stack.make_contiguous()));
 		}
 		Op::PushVar(n) => {
 			let var = Lvalue::Stack(ctx.resolve(*n));
@@ -404,7 +413,7 @@ fn stmt(ctx: &mut Ctx<'_>) {
 		Op::SetVar(n) => {
 			let a = ctx.pop();
 			let var = Lvalue::Stack(ctx.resolve(*n));
-			println!("{i}{} = {}", Expr::Var(var), a);
+			writeln!(out, "{i}{} = {}", Expr::Var(var), a);
 		}
 		Op::PushRef(n) => {
 			ctx.push(Expr::Ref(ctx.resolve(*n)));
@@ -416,7 +425,7 @@ fn stmt(ctx: &mut Ctx<'_>) {
 		Op::WriteRef(n) => {
 			let a = ctx.pop();
 			let var = Lvalue::Deref(ctx.resolve(*n));
-			println!("{i}{} = {}", Expr::Var(var), a);
+			writeln!(out, "{i}{} = {}", Expr::Var(var), a);
 		}
 		Op::_07(n) => {
 			let var = Lvalue::Local(*n);
@@ -425,7 +434,7 @@ fn stmt(ctx: &mut Ctx<'_>) {
 		Op::_08(n) => {
 			let a = ctx.pop();
 			let var = Lvalue::Local(*n);
-			println!("{i}{} = {}", Expr::Var(var), a);
+			writeln!(out, "{i}{} = {}", Expr::Var(var), a);
 		}
 		Op::GetGlobal(n) => {
 			let var = Lvalue::Global(*n);
@@ -434,7 +443,7 @@ fn stmt(ctx: &mut Ctx<'_>) {
 		Op::SetGlobal(n) => {
 			let a = ctx.pop();
 			let var = Lvalue::Global(*n);
-			println!("{i}{} = {}", Expr::Var(var), a);
+			writeln!(out, "{i}{} = {}", Expr::Var(var), a);
 		}
 		Op::Binop(op) => {
 			let b = ctx.pop();
@@ -456,28 +465,28 @@ fn stmt(ctx: &mut Ctx<'_>) {
 			assert_eq!(ctx.pop(), Expr::Value(Value::Uint(ctx.pos().0)));
 			assert_eq!(ctx.pop(), Expr::Value(Value::Uint(ctx.current_func)));
 			let call = CallKind::Func(String::new(), ctx.functions[*n as usize].name.clone());
-			ctx.push_call(call, it);
+			push_call(ctx, out, call, it);
 		}
 		Op::CallExtern(a, b, n) => {
 			let it = ctx.pop_n(*n as usize);
 			assert_ne!(a, "");
 			let call = CallKind::Func(a.clone(), b.clone());
-			ctx.push_call(call, it);
+			push_call(ctx, out, call, it);
 		}
 		Op::_23(a, b, c) => {
 			let it = ctx.pop_n(*c as usize);
 			let call = CallKind::_23(a.clone(), b.clone());
-			ctx.push_call(call, it);
+			push_call(ctx, out, call, it);
 		}
 		Op::CallSystem(a, b, c) => {
 			let it = ctx.pop_n(*c as usize);
 			let call = CallKind::System(*a, *b);
-			ctx.push_call(call, it);
+			push_call(ctx, out, call, it);
 		}
 		Op::_25(target) => {
 			// Always wraps a complete CallFunc
 			while ctx.pos() < *target {
-				stmt(ctx);
+				stmt(out, ctx);
 			}
 			// assert_eq!(ctx.pos(), *target); // assert is currently invalid because of GetGlobal(0)
 		}
@@ -485,10 +494,10 @@ fn stmt(ctx: &mut Ctx<'_>) {
 		Op::Line(_) => {}
 		Op::Debug(n) => {
 			let a = ctx.pop_n(*n as usize);
-			println!("{i}debug {}", Args(&a));
+			writeln!(out, "{i}debug {}", Args(&a));
 		}
 		op => {
-			println!("{i}!!{op:?} {:?}", ctx.stack);
+			writeln!(out, "{i}!!{op:?} {:?}", ctx.stack);
 			unimplemented!("{op:?} {:?}", ctx.stack);
 		}
 	}
