@@ -38,7 +38,7 @@ fn process_file(file: &PathBuf) {
 		let out = std::io::BufWriter::new(out);
 		let mut out = ingert::Write(Box::new(out));
 		match ingert::parse_scp(&data) {
-			Ok(v) => ingert::decompile::decompile(&mut out, &v),
+			Ok(v) => ingert::nest::decompile(&mut out, &v),
 			Err(e) => tracing::error!("Error: {}", snafu::Report::from_error(e)),
 		}
 	});
