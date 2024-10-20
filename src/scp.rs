@@ -486,15 +486,15 @@ pub fn parse_scp(data: &[u8]) -> Result<Scp, ScpError> {
 pub fn dump_ops(code: &[(Label, Op)]) -> Vec<String> {
 	let mut lines = Vec::new();
 	let mut labels = BTreeSet::new();
+	labels.insert(code[0].0);
 	for (_, op) in code {
 		if let Op::Goto(l) | Op::If(l) | Op::If2(l) | Op::_25(l) = op {
-			labels.insert(l);
+			labels.insert(*l);
 		}
 	}
-	lines.push("start".to_string());
 	for line in code {
-		if let Some(l) = labels.get(&line.0) {
-			lines.push(format!("{:?}", l));
+		if labels.contains(&line.0) {
+			lines.push(format!("{:?}", line.0));
 		}
 		lines.push(format!("  {:?}", line.1));
 	}
