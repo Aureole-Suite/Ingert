@@ -175,13 +175,13 @@ impl<'a> Ctx<'a> {
 		self.stack.drain(..n).collect()
 	}
 
-	fn push_call(&mut self, i: Indent, call: CallKind, args: Vec<Expr>) {
+	fn push_call(&mut self, call: CallKind, args: Vec<Expr>) {
 		let call = Expr::Call(call, args);
 		if self.peek() == Some(&Op::GetGlobal(0)) {
 			self.next();
 			self.stack.push_front(call);
 		} else {
-			println!("{i}{call}");
+			println!("{i}{call}", i=self.indent);
 		}
 	}
 
@@ -456,23 +456,23 @@ fn stmt(ctx: &mut Ctx<'_>) {
 			assert_eq!(ctx.pop(), Expr::Value(Value::Uint(ctx.pos().0)));
 			assert_eq!(ctx.pop(), Expr::Value(Value::Uint(ctx.current_func)));
 			let call = CallKind::Func(String::new(), ctx.functions[*n as usize].name.clone());
-			ctx.push_call(i, call, it);
+			ctx.push_call(call, it);
 		}
 		Op::CallExtern(a, b, n) => {
 			let it = ctx.pop_n(*n as usize);
 			assert_ne!(a, "");
 			let call = CallKind::Func(a.clone(), b.clone());
-			ctx.push_call(i, call, it);
+			ctx.push_call(call, it);
 		}
 		Op::_23(a, b, c) => {
 			let it = ctx.pop_n(*c as usize);
 			let call = CallKind::_23(a.clone(), b.clone());
-			ctx.push_call(i, call, it);
+			ctx.push_call(call, it);
 		}
 		Op::CallSystem(a, b, c) => {
 			let it = ctx.pop_n(*c as usize);
 			let call = CallKind::System(*a, *b);
-			ctx.push_call(i, call, it);
+			ctx.push_call(call, it);
 		}
 		Op::_25(target) => {
 			// Always wraps a complete CallFunc
