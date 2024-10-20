@@ -203,7 +203,6 @@ impl<'a> Ctx<'a> {
 				push(Stmt::Case(expr, *l));
 			}
 			Op::Goto(l) => {
-				self.do_pop(&mut push)?;
 				push(Stmt::Goto(*l));
 			},
 			Op::Call(..) | Op::CallExtern(..) | Op::CallSystem(..) => {
@@ -334,7 +333,11 @@ impl<'a> Ctx<'a> {
 	}
 
 	fn maybe_line(&mut self) -> Option<u16> {
-		self.next_if(pat!(Op::Line(n) => *n))
+		if self.labels.contains(&self.pos()) {
+			None
+		} else {
+			self.next_if(pat!(Op::Line(n) => *n))
+		}
 	}
 
 	fn maybe_wrap_line(&mut self, expr: Expr<StackSlot>) -> Expr<StackSlot> {
