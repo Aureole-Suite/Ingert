@@ -1,6 +1,6 @@
 #![feature(let_chains, is_sorted, is_none_or)]
 use std::cell::Cell;
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 use std::fmt::Display;
 
 mod scp;
