@@ -11,7 +11,7 @@ pub use scp::parse_scp;
 pub enum Expr {
 	Value(Value),
 	Var(Var),
-	Ref(Var), // Can only hold Stack but I'm making it like this anyway
+	Ref(StackVar),
 	Call(CallKind, Vec<Expr>),
 	Unop(Unop, Box<Expr>),
 	Binop(Binop, Box<Expr>, Box<Expr>),
@@ -19,9 +19,16 @@ pub enum Expr {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum StackVar {
+	Stack(u32),
+	Arg(u32),
+	Error(u32),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Var {
-	Stack(i32),
-	StackRef(i32),
+	Stack(StackVar),
+	StackRef(StackVar),
 	Local(u32),
 	Global(u8),
 }
@@ -175,6 +182,15 @@ impl<'a> Ctx<'a> {
 			None
 		}
 	}
+
+	fn resolve(&self, n: scp::StackSlot) -> StackVar {
+		let v = (n.0 as usize + self.stack.len()) as i32;
+		if v < 0 {
+			StackVar::Arg(!v as u32)
+		} else {
+			StackVar::Stack(v as u32)
+		}
+	}
 }
 
 pub fn stuff(scp: &Scp) {
@@ -209,15 +225,12 @@ pub fn stuff(scp: &Scp) {
 	for (f, end) in std::iter::zip(&functions, ends) {
 		assert_eq!(ctx.pos(), f.start);
 		ctx.current_func = f.index;
-		let mut sub = ctx.sub(end);
+		let sub = ctx.sub(end);
 
 		// println!("\n{f}");
 		// scp::dump_ops(sub.code);
 
 		println!("\n{f}");
-		for _ in &f.args {
-			sub.stack.push_front(Expr::Arg);
-		}
 		stmts(sub);
 	}
 }
@@ -356,25 +369,24 @@ fn stmt(ctx: &mut Ctx<'_>) {
 			}
 		}
 		Op::PushVar(n) => {
-			let var = Var::Stack(*n + 4 * ctx.stack.len() as i32);
+			let var = Var::Stack(ctx.resolve(*n));
 			ctx.push(Expr::Var(var));
 		}
 		Op::SetVar(n) => {
 			let a = ctx.pop();
-			let var = Var::Stack(*n + 4 * ctx.stack.len() as i32);
+			let var = Var::Stack(ctx.resolve(*n));
 			println!("{i}{:?} = {:?}", Expr::Var(var), a);
 		}
 		Op::PushRef(n) => {
-			let var = Var::StackRef(*n + 4 * ctx.stack.len() as i32);
-			ctx.push(Expr::Ref(var));
+			ctx.push(Expr::Ref(ctx.resolve(*n)));
 		}
 		Op::ReadRef(n) => {
-			let var = Var::StackRef(*n + 4 * ctx.stack.len() as i32);
+			let var = Var::StackRef(ctx.resolve(*n));
 			ctx.push(Expr::Var(var));
 		}
 		Op::WriteRef(n) => {
 			let a = ctx.pop();
-			let var = Var::StackRef(*n + 4 * ctx.stack.len() as i32);
+			let var = Var::StackRef(ctx.resolve(*n));
 			println!("{i}{:?} = {:?}", Expr::Var(var), a);
 		}
 		Op::_07(n) => {

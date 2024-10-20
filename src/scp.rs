@@ -19,8 +19,9 @@ pub enum ScpError {
 	},
 	#[snafu(display("invalid opcode {op:02X} at {pos}"))]
 	Op { op: u8, pos: usize },
-	#[snafu(display("invalid value {value:?}"))]
+	#[snafu(display("invalid value {value:?}: {reason}"))]
 	BadValue {
+		reason: &'static str,
 		value: Value,
 	},
 	#[snafu(display("invalid checksum for function {name}: expected {expected:#X}, got {actual:#X}"))]
@@ -259,7 +260,10 @@ fn value(f: &mut Reader) -> Result<Value, ScpError> {
 fn string_value(f: &mut Reader) -> Result<String, ScpError> {
 	match value(f)? {
 		Value::String(s) => Ok(s),
-		value => scp::BadValue { value }.fail(),
+		value => scp::BadValue {
+			reason: "expected string",
+			value
+		}.fail(),
 	}
 }
 
@@ -276,15 +280,29 @@ impl std::fmt::Debug for Label {
 	}
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct StackSlot(pub i32);
+
+fn stack_slot(f: &mut Reader) -> Result<StackSlot, ScpError> {
+	let v = f.i32()?;
+	if v % 4 != 0 {
+		return scp::BadValue {
+			reason: "stack slot not aligned",
+			value: Value::Int(v)
+		}.fail();
+	}
+	Ok(StackSlot(v / 4))
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Op {
 	Push(Value),
 	Pop(u8),
-	PushVar(i32),
-	ReadRef(i32),
-	PushRef(i32),
-	SetVar(i32),
-	WriteRef(i32),
+	PushVar(StackSlot),
+	ReadRef(StackSlot),
+	PushRef(StackSlot),
+	SetVar(StackSlot),
+	WriteRef(StackSlot),
 	_07(u32),
 	_08(u32),
 	GetGlobal(u8),
@@ -410,11 +428,11 @@ pub fn parse_scp(data: &[u8]) -> Result<Scp, ScpError> {
 				Op::Push(value(&mut f)?)
 			}
 			1 => Op::Pop(f.u8()?),
-			2 => Op::PushVar(f.i32()?),
-			3 => Op::ReadRef(f.i32()?),
-			4 => Op::PushRef(f.i32()?),
-			5 => Op::SetVar(f.i32()?),
-			6 => Op::WriteRef(f.i32()?),
+			2 => Op::PushVar(stack_slot(&mut f)?),
+			3 => Op::ReadRef(stack_slot(&mut f)?),
+			4 => Op::PushRef(stack_slot(&mut f)?),
+			5 => Op::SetVar(stack_slot(&mut f)?),
+			6 => Op::WriteRef(stack_slot(&mut f)?),
 			7 => Op::_07(f.u32()?),
 			8 => Op::_08(f.u32()?),
 			9 => Op::GetGlobal(f.u8()?),
