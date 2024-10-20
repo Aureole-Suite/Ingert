@@ -1,5 +1,7 @@
 #![feature(let_chains, is_sorted, is_none_or)]
-use std::{cell::Cell, collections::{HashMap, VecDeque}};
+use std::cell::Cell;
+use std::collections::{HashMap, VecDeque};
+use std::fmt::Display;
 
 mod scp;
 
@@ -7,7 +9,7 @@ use scp::{Label, Op, Scp};
 pub use scp::{Value, Binop, Unop};
 pub use scp::parse_scp;
 
-#[derive(Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
 	Value(Value),
 	Var(Lvalue),
@@ -15,7 +17,6 @@ pub enum Expr {
 	Call(CallKind, Vec<Expr>),
 	Unop(Unop, Box<Expr>),
 	Binop(Binop, Box<Expr>, Box<Expr>),
-	Arg,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -24,26 +25,12 @@ pub enum StackVar {
 	Arg(u32),
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Lvalue {
 	Stack(StackVar),
 	Deref(StackVar),
 	Local(u32),
 	Global(u8),
-}
-
-impl std::fmt::Debug for Lvalue {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		match self {
-			Self::Stack(v) => v.fmt(f),
-			Self::Deref(v) => {
-				f.write_str("*")?;
-				v.fmt(f)
-			}
-			Self::Local(v) => f.debug_tuple("Local").field(v).finish(),
-			Self::Global(v) => f.debug_tuple("Global").field(v).finish(),
-		}
-	}
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -53,17 +40,20 @@ pub enum CallKind {
 	_23(String, String),
 }
 
-impl std::fmt::Display for CallKind {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		match self {
-			CallKind::System(a, b) => write!(f, "system[{}, {}]", a, b),
-			CallKind::Func(a, b) => write!(f, "_22 {}.{}", a, b),
-			CallKind::_23(a, b) => write!(f, "_23 {}.{}", a, b),
+fn format_exprs(f: &mut std::fmt::Formatter<'_>, args: &[Expr]) -> std::fmt::Result {
+	f.write_str("(")?;
+	let mut it = args.iter();
+	if let Some(a) = it.next() {
+		a.fmt(f)?;
+		for a in it {
+			f.write_str(", ")?;
+			a.fmt(f)?;
 		}
 	}
+	f.write_str(")")
 }
 
-impl std::fmt::Debug for Expr {
+impl Display for Expr {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
 			Expr::Value(v) => v.fmt(f),
@@ -73,14 +63,11 @@ impl std::fmt::Debug for Expr {
 				n.fmt(f)
 			}
 			Expr::Call(k, a) => {
-				let mut t = f.debug_tuple(&k.to_string());
-				for a in a {
-					t.field(a);
-				}
-				t.finish()
+				k.fmt(f)?;
+				format_exprs(f, a)
 			}
 			Expr::Unop(v, a) => {
-				std::fmt::Display::fmt(v, f)?;
+				v.fmt(f)?;
 				f.write_str("(")?;
 				a.fmt(f)?;
 				f.write_str(")")
@@ -89,12 +76,44 @@ impl std::fmt::Debug for Expr {
 				f.write_str("(")?;
 				a.fmt(f)?;
 				f.write_str(" ")?;
-				std::fmt::Display::fmt(v, f)?;
+				v.fmt(f)?;
 				f.write_str(" ")?;
 				b.fmt(f)?;
 				f.write_str(")")
 			}
-			Expr::Arg => f.write_str("Arg"),
+		}
+	}
+}
+
+impl Display for Lvalue {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			Self::Stack(v) => v.fmt(f),
+			Self::Deref(v) => {
+				f.write_str("*")?;
+				v.fmt(f)
+			}
+			Self::Local(v) => write!(f, "local[{}]", v),
+			Self::Global(v) => write!(f, "global[{}]", v),
+		}
+	}
+}
+
+impl Display for StackVar {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			Self::Stack(v) => write!(f, "stack[{}]", v),
+			Self::Arg(v) => write!(f, "arg[{}]", v),
+		}
+	}
+}
+
+impl Display for CallKind {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			CallKind::System(a, b) => write!(f, "system[{}, {}]", a, b),
+			CallKind::Func(a, b) => write!(f, "_22 {}.{}", a, b),
+			CallKind::_23(a, b) => write!(f, "_23 {}.{}", a, b),
 		}
 	}
 }
@@ -155,7 +174,7 @@ impl<'a> Ctx<'a> {
 			self.next();
 			self.stack.push_front(call);
 		} else {
-			println!("{i}{call:?}");
+			println!("{i}{call}");
 		}
 	}
 
@@ -255,7 +274,7 @@ impl Indent {
 		Self(self.0 + 1)
 	}
 }
-impl std::fmt::Display for Indent {
+impl Display for Indent {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		for _ in 0..self.0 {
 			write!(f, "  ")?;
@@ -315,14 +334,14 @@ fn stmt(ctx: &mut Ctx<'_>) {
 			let mut sub = ctx.sub(*target);
 			let the_else = sub.last_goto(|l| l >= *target && l <= ctx.code_end);
 			if let Some(the_else) = the_else {
-				println!("{i}if {a:?} {{");
+				println!("{i}if {a} {{");
 				stmts(sub);
 				println!("{i}}} else {{");
 				let sub = ctx.sub(the_else);
 				stmts(sub);
 				println!("{i}}}");
 			} else {
-				println!("{i}if {a:?} {{");
+				println!("{i}if {a} {{");
 				stmts(sub);
 				println!("{i}}}");
 			}
@@ -331,7 +350,7 @@ fn stmt(ctx: &mut Ctx<'_>) {
 		Op::SetGlobal(0) if ctx.peek() == Some(&Op::GetGlobal(0)) => {
 			let a = ctx.pop();
 			let cases = switch_cases(ctx);
-			println!("{i}switch {a:?} {{");
+			println!("{i}switch {a} {{");
 			let the_end = Cell::new(None);
 			let ends = cases.iter().skip(1).map(|i| i.1).chain(std::iter::once_with(|| the_end.get()).flatten());
 			for ((key, target), end) in std::iter::zip(&cases, ends) {
@@ -361,7 +380,7 @@ fn stmt(ctx: &mut Ctx<'_>) {
 
 		Op::SetGlobal(0) => {
 			let a = ctx.pop();
-			println!("{i}return {a:?}");
+			println!("{i}return {a}");
 		}
 		Op::Goto(t) if ctx.cont == Some(*t) => {
 			println!("{i}continue");
@@ -388,7 +407,7 @@ fn stmt(ctx: &mut Ctx<'_>) {
 		Op::SetVar(n) => {
 			let a = ctx.pop();
 			let var = Lvalue::Stack(ctx.resolve(*n));
-			println!("{i}{:?} = {:?}", Expr::Var(var), a);
+			println!("{i}{} = {}", Expr::Var(var), a);
 		}
 		Op::PushRef(n) => {
 			ctx.push(Expr::Ref(ctx.resolve(*n)));
@@ -400,7 +419,7 @@ fn stmt(ctx: &mut Ctx<'_>) {
 		Op::WriteRef(n) => {
 			let a = ctx.pop();
 			let var = Lvalue::Deref(ctx.resolve(*n));
-			println!("{i}{:?} = {:?}", Expr::Var(var), a);
+			println!("{i}{} = {}", Expr::Var(var), a);
 		}
 		Op::_07(n) => {
 			let var = Lvalue::Local(*n);
@@ -409,7 +428,7 @@ fn stmt(ctx: &mut Ctx<'_>) {
 		Op::_08(n) => {
 			let a = ctx.pop();
 			let var = Lvalue::Local(*n);
-			println!("{i}{:?} = {:?}", Expr::Var(var), a);
+			println!("{i}{} = {}", Expr::Var(var), a);
 		}
 		Op::GetGlobal(n) => {
 			let var = Lvalue::Global(*n);
@@ -418,7 +437,7 @@ fn stmt(ctx: &mut Ctx<'_>) {
 		Op::SetGlobal(n) => {
 			let a = ctx.pop();
 			let var = Lvalue::Global(*n);
-			println!("{i}{:?} = {:?}", Expr::Var(var), a);
+			println!("{i}{} = {}", Expr::Var(var), a);
 		}
 		Op::Binop(op) => {
 			let b = ctx.pop();
@@ -468,8 +487,14 @@ fn stmt(ctx: &mut Ctx<'_>) {
 
 		Op::Line(_) => {}
 		Op::Debug(n) => {
+			struct Args<'a>(&'a [Expr]);
+			impl Display for Args<'_> {
+				fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+					format_exprs(f, self.0)
+				}
+			}
 			let a = ctx.pop_n(*n as usize);
-			println!("{i}debug {a:?}");
+			println!("{i}debug {}", Args(&a));
 		}
 		op => {
 			println!("{i}!!{op:?} {:?}", ctx.stack);
