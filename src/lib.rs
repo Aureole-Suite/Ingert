@@ -1,5 +1,5 @@
 #![feature(let_chains, is_sorted, is_none_or)]
-use std::{cell::Cell, collections::{BTreeMap, HashMap, VecDeque}};
+use std::{cell::Cell, collections::{HashMap, VecDeque}};
 
 mod scp;
 
@@ -235,7 +235,7 @@ impl std::fmt::Display for Indent {
 	}
 }
 
-fn switch_cases(ctx: &mut Ctx<'_>) -> BTreeMap<Label, Vec<Option<i32>>> {
+fn switch_cases(ctx: &mut Ctx<'_>) -> Vec<(Option<i32>, Label)> {
 	let mut cases = Vec::new();
 	let default = loop {
 		match &ctx.next().unwrap() {
@@ -243,19 +243,16 @@ fn switch_cases(ctx: &mut Ctx<'_>) -> BTreeMap<Label, Vec<Option<i32>>> {
 				let Op::Push(Value::Int(n)) = ctx.next().unwrap() else { unreachable!() };
 				let Op::Binop(Binop::Eq) = ctx.next().unwrap() else { unreachable!() };
 				let Op::If2(target) = ctx.next().unwrap() else { unreachable!() };
-				cases.push((*n, *target));
+				cases.push((Some(*n), *target));
 			}
 			Op::Goto(default) => break *default,
 			op => unreachable!("unexpected {op:?} in switch"),
 		}
 	};
 	assert!(cases.is_sorted_by_key(|(_, a)| a));
-	let mut inv_cases = BTreeMap::<Label, Vec<Option<i32>>>::new();
-	for (n, target) in cases {
-		inv_cases.entry(target).or_default().push(Some(n));
-	}
-	inv_cases.entry(default).or_default().push(None);
-	inv_cases
+	let default_pos = cases.partition_point(|(_, a)| *a < default);
+	cases.insert(default_pos, (None, default));
+	cases
 }
 
 fn stmts(mut ctx: Ctx<'_>) {
@@ -307,17 +304,15 @@ fn stmt(ctx: &mut Ctx<'_>) {
 			let cases = switch_cases(ctx);
 			println!("{i}switch {a:?} {{");
 			let the_end = Cell::new(None);
-			let ends = cases.keys().copied().skip(1).chain(std::iter::once_with(|| the_end.get()).flatten());
-			for ((target, n), end) in std::iter::zip(&cases, ends) {
+			let ends = cases.iter().skip(1).map(|i| i.1).chain(std::iter::once_with(|| the_end.get()).flatten());
+			for ((key, target), end) in std::iter::zip(&cases, ends) {
 				assert_eq!(ctx.pos(), *target);
-				if Some(ctx.pos()) == the_end.get() && n == &[None] {
+				if Some(ctx.pos()) == the_end.get() && key.is_none() {
 					continue
 				}
-				for n in n {
-					match n {
-						Some(n) => println!("{i}  case {n}:"),
-						None => println!("{i}  default:"),
-					}
+				match key {
+					Some(key) => println!("{i}  case {key}:"),
+					None => println!("{i}  default:"),
 				}
 				let mut sub = ctx.sub(end);
 				let new_end = sub.last_goto(|l| l >= end);
