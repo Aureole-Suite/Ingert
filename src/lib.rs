@@ -11,7 +11,7 @@ pub use scp::parse_scp;
 pub enum Expr {
 	Value(Value),
 	Var(Var),
-	VarRef(i32),
+	Ref(Var), // Can only hold Stack but I'm making it like this anyway
 	Call(CallKind, Vec<Expr>),
 	Unop(Unop, Box<Expr>),
 	Binop(Binop, Box<Expr>, Box<Expr>),
@@ -48,7 +48,10 @@ impl std::fmt::Debug for Expr {
 		match self {
 			Expr::Value(v) => v.fmt(f),
 			Expr::Var(n) => n.fmt(f),
-			Expr::VarRef(n) => f.debug_tuple("VarRef").field(n).finish(),
+			Expr::Ref(n) => {
+				f.write_str("&")?;
+				n.fmt(f)
+			}
 			Expr::Call(k, a) => {
 				let mut t = f.debug_tuple(&k.to_string());
 				for a in a {
@@ -363,7 +366,7 @@ fn stmt(ctx: &mut Ctx<'_>) {
 		}
 		Op::PushRef(n) => {
 			let d = 4 * ctx.stack.len() as i32;
-			ctx.push(Expr::VarRef(*n + d));
+			ctx.push(Expr::Ref(Var::Stack(*n + d)));
 		}
 		Op::ReadRef(n) => {
 			let d = 4 * ctx.stack.len() as i32;
