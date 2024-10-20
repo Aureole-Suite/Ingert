@@ -7,19 +7,29 @@ use scp::{Label, Op, Scp, Value};
 pub use scp::parse_scp;
 
 #[derive(Clone, PartialEq)]
-enum Expr {
+pub enum Expr {
 	Value(Value),
-	Var(i32),
+	Var(Var),
 	VarRef(i32),
-	ReadRef(i32),
-	Local(u32),
-	Global(u8),
-	CallSystem(u8, u8, Vec<Expr>),
-	CallFunc(String, String, Vec<Expr>),
-	_23(String, String, Vec<Expr>),
+	Call(CallKind, Vec<Expr>),
 	Unop(u8, Box<Expr>),
 	Binop(u8, Box<Expr>, Box<Expr>),
 	Arg,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Var {
+	Stack(i32),
+	StackRef(i32),
+	Local(u32),
+	Global(u8),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum CallKind {
+	System(u8, u8),
+	Func(String, String),
+	_23(String, String),
 }
 
 impl std::fmt::Debug for Expr {
@@ -28,12 +38,7 @@ impl std::fmt::Debug for Expr {
 			Expr::Value(v) => v.fmt(f),
 			Expr::Var(n) => f.debug_tuple("Var").field(n).finish(),
 			Expr::VarRef(n) => f.debug_tuple("VarRef").field(n).finish(),
-			Expr::ReadRef(n) => f.debug_tuple("ReadRef").field(n).finish(),
-			Expr::Local(n) => f.debug_tuple("Local").field(n).finish(),
-			Expr::Global(n) => f.debug_tuple("Global").field(n).finish(),
-			Expr::CallSystem(a, b, v) => f.debug_tuple("CallSystem").field(a).field(b).field(v).finish(),
-			Expr::CallFunc(a, b, v) => f.debug_tuple("CallFunc").field(a).field(b).field(v).finish(),
-			Expr::_23(a, b, v) => f.debug_tuple("_23").field(a).field(b).field(v).finish(),
+			Expr::Call(k, a) => f.debug_tuple("Call").field(k).field(a).finish(),
 			Expr::Unop(v, a) => f.debug_tuple("Unop").field(v).field(a).finish(),
 			Expr::Binop(v, a, b) => f.debug_tuple("Binop").field(v).field(a).field(b).finish(),
 			Expr::Arg => f.write_str("Arg"),
@@ -91,7 +96,8 @@ impl<'a> Ctx<'a> {
 		self.stack.drain(..n).collect()
 	}
 
-	fn push_call(&mut self, i: Indent, call: Expr) {
+	fn push_call(&mut self, i: Indent, call: CallKind, args: Vec<Expr>) {
+		let call = Expr::Call(call, args);
 		if self.peek() == Some(&Op::GetGlobal(0)) {
 			self.next();
 			self.stack.push_front(call);
@@ -323,12 +329,12 @@ fn stmt(ctx: &mut Ctx<'_>) {
 		}
 		Op::PushVar(n) => {
 			let d = 4 * ctx.stack.len() as i32;
-			ctx.push(Expr::Var(*n + d));
+			ctx.push(Expr::Var(Var::Stack(*n + d)));
 		}
 		Op::SetVar(n) => {
 			let a = ctx.pop();
 			let d = 4 * ctx.stack.len() as i32;
-			println!("{i}{:?} = {:?}", Expr::Var(*n + d), a);
+			println!("{i}{:?} = {:?}", Expr::Var(Var::Stack(*n + d)), a);
 		}
 		Op::PushRef(n) => {
 			let d = 4 * ctx.stack.len() as i32;
@@ -336,25 +342,26 @@ fn stmt(ctx: &mut Ctx<'_>) {
 		}
 		Op::ReadRef(n) => {
 			let d = 4 * ctx.stack.len() as i32;
-			ctx.push(Expr::ReadRef(*n + d));
+			ctx.push(Expr::Var(Var::StackRef(*n + d)));
 		}
-		Op::_06(n) => {
+		Op::WriteRef(n) => {
 			let a = ctx.pop();
-			println!("{i}_06({:?}) = {:?}", n, a);
+			let d = 4 * ctx.stack.len() as i32;
+			println!("{i}{:?} = {:?}", Expr::Var(Var::StackRef(*n + d)), a);
 		}
 		Op::_07(n) => {
-			ctx.push(Expr::Local(*n));
+			ctx.push(Expr::Var(Var::Local(*n)));
 		}
 		Op::_08(n) => {
 			let a = ctx.pop();
-			println!("{i}{:?} = {:?}", Expr::Local(*n), a);
+			println!("{i}{:?} = {:?}", Expr::Var(Var::Local(*n)), a);
 		}
 		Op::GetGlobal(n) => {
-			ctx.push(Expr::Global(*n));
+			ctx.push(Expr::Var(Var::Global(*n)));
 		}
 		Op::SetGlobal(n) => {
 			let a = ctx.pop();
-			println!("{i}{:?} = {:?}", Expr::Global(*n), a);
+			println!("{i}{:?} = {:?}", Expr::Var(Var::Global(*n)), a);
 		}
 		Op::Op(n @ (16..=31 | 33)) => {
 			// 16: + (probably)
@@ -380,20 +387,24 @@ fn stmt(ctx: &mut Ctx<'_>) {
 			let it = ctx.pop_n(pos);
 			assert_eq!(ctx.pop(), Expr::Value(Value::Uint(ctx.pos().0)));
 			assert_eq!(ctx.pop(), Expr::Value(Value::Uint(ctx.current_func)));
-			ctx.push_call(i, Expr::CallFunc(String::new(), ctx.functions[*n as usize].name.clone(), it));
+			let call = CallKind::Func(String::new(), ctx.functions[*n as usize].name.clone());
+			ctx.push_call(i, call, it);
 		}
 		Op::CallExtern(a, b, n) => {
 			let it = ctx.pop_n(*n as usize);
 			assert_ne!(a, "");
-			ctx.push_call(i, Expr::CallFunc(a.clone(), b.clone(), it));
+			let call = CallKind::Func(a.clone(), b.clone());
+			ctx.push_call(i, call, it);
 		}
 		Op::_23(a, b, c) => {
 			let it = ctx.pop_n(*c as usize);
-			ctx.push_call(i, Expr::_23(a.clone(), b.clone(), it));
+			let call = CallKind::_23(a.clone(), b.clone());
+			ctx.push_call(i, call, it);
 		}
 		Op::CallSystem(a, b, c) => {
 			let it = ctx.pop_n(*c as usize);
-			ctx.push_call(i, Expr::CallSystem(*a, *b, it));
+			let call = CallKind::System(*a, *b);
+			ctx.push_call(i, call, it);
 		}
 		Op::_25(target) => {
 			// Always wraps a complete CallFunc
