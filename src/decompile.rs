@@ -6,8 +6,7 @@ pub use scp::{Value, Binop, Unop};
 
 #[derive(Debug, Clone, PartialEq)]
 enum Stmt {
-	Return(Expr<StackSlot>),
-	ReturnVoid(Option<u16>),
+	Return(Option<Expr<StackSlot>>),
 	Expr(Expr<StackSlot>),
 	Set(Lvalue<StackSlot>, Expr<StackSlot>),
 	Label(Label),
@@ -15,7 +14,7 @@ enum Stmt {
 	Switch(Expr<StackSlot>),
 	Case(i32, Label),
 	Goto(Label),
-	PushVar(Option<u16>),
+	PushVar,
 	PopVar,
 	Line(u16),
 	Debug(Vec<Expr<StackSlot>>),
@@ -181,11 +180,10 @@ impl<'a> Ctx<'a> {
 				self.do_pop(&mut push)?;
 				self.expect(&Op::SetTemp(0))?;
 				if let Some(()) = self.next_if(pat!(Op::Push(Value::Uint(0)) => ())) {
-					let line = self.maybe_line();
-					push(Stmt::ReturnVoid(line));
+					push(Stmt::Return(None));
 				} else {
 					let expr = self.expr()?;
-					push(Stmt::Return(expr));
+					push(Stmt::Return(Some(expr)));
 				}
 			}
 			Op::If(l) => {
@@ -228,8 +226,7 @@ impl<'a> Ctx<'a> {
 				push(Stmt::Expr(expr));
 			}
 			Op::Push(Value::Uint(0)) => {
-				let line = self.maybe_line();
-				push(Stmt::PushVar(line));
+				push(Stmt::PushVar);
 			}
 			Op::Pop(..) => self.rewind().do_pop(&mut push)?,
 			Op::SetVar(n) => {
