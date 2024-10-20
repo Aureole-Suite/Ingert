@@ -97,7 +97,7 @@ pub fn decompile(out: &mut super::Write, scp: &Scp) {
 		writeln!(out, "function {f}");
 
 		let mut lines = VecDeque::new();
-		while ctx.line(|l| lines.push_front(l)).is_some() {}
+		ctx.decompile(|l| lines.push_front(l));
 
 
 		// for (pos, op) in code {
@@ -171,6 +171,13 @@ impl<'a> Ctx<'a> {
 	fn next_if<T>(&mut self, pat: impl Fn(&Op) -> Option<T>) -> Option<T> {
 		let next = self.peek()?;
 		pat(next).inspect(|_| self.index -= 1)
+	}
+
+
+	fn decompile(&mut self, mut l: impl FnMut(Stmt)) {
+		while self.index > 0 {
+			self.line(&mut l);
+		}
 	}
 
 	#[tracing::instrument(skip(self, push), fields(pos = ?self.pos()))]
