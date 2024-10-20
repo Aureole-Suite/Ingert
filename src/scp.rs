@@ -35,6 +35,8 @@ pub enum ScpError {
 		ty: u32,
 	},
 	BadDefaults,
+	#[snafu(display("invalid function index {index}"))]
+	FuncId { index: usize },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -315,7 +317,7 @@ pub enum Op {
 	GetGlobal(u8),
 	SetGlobal(u8),
 	Goto(Label),
-	Call(u16),
+	Call(String),
 	Return,
 	If2(Label),
 	If(Label),
@@ -445,7 +447,10 @@ pub fn parse_scp(data: &[u8]) -> Result<Scp, ScpError> {
 			9 => Op::GetGlobal(f.u8()?),
 			10 => Op::SetGlobal(f.u8()?),
 			11 => Op::Goto(label(&mut f)?),
-			12 => Op::Call(f.u16()?),
+			12 => {
+				let index = f.u16()? as usize;
+				Op::Call(functions.get(index).context(scp::FuncId { index })?.name.clone())
+			}
 			13 => Op::Return,
 			14 => Op::If2(label(&mut f)?),
 			15 => Op::If(label(&mut f)?),

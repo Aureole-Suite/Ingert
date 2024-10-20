@@ -474,7 +474,7 @@ fn stmt(out: &mut Write, ctx: &mut Ctx<'_>) {
 			let it = ctx.pop_n(pos);
 			assert_eq!(ctx.pop(), Expr::Value(Value::Uint(ctx.pos().0)));
 			assert_eq!(ctx.pop(), Expr::Value(Value::Uint(ctx.current_func)));
-			let call = CallKind::Func(String::new(), ctx.functions[*n as usize].name.clone());
+			let call = CallKind::Func(String::new(), n.clone());
 			push_call(ctx, out, call, it);
 		}
 		Op::CallExtern(a, b, n) => {
