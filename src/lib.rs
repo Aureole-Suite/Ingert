@@ -356,40 +356,44 @@ fn stmt(ctx: &mut Ctx<'_>) {
 			}
 		}
 		Op::PushVar(n) => {
-			let d = 4 * ctx.stack.len() as i32;
-			ctx.push(Expr::Var(Var::Stack(*n + d)));
+			let var = Var::Stack(*n + 4 * ctx.stack.len() as i32);
+			ctx.push(Expr::Var(var));
 		}
 		Op::SetVar(n) => {
 			let a = ctx.pop();
-			let d = 4 * ctx.stack.len() as i32;
-			println!("{i}{:?} = {:?}", Expr::Var(Var::Stack(*n + d)), a);
+			let var = Var::Stack(*n + 4 * ctx.stack.len() as i32);
+			println!("{i}{:?} = {:?}", Expr::Var(var), a);
 		}
 		Op::PushRef(n) => {
-			let d = 4 * ctx.stack.len() as i32;
-			ctx.push(Expr::Ref(Var::Stack(*n + d)));
+			let var = Var::StackRef(*n + 4 * ctx.stack.len() as i32);
+			ctx.push(Expr::Ref(var));
 		}
 		Op::ReadRef(n) => {
-			let d = 4 * ctx.stack.len() as i32;
-			ctx.push(Expr::Var(Var::StackRef(*n + d)));
+			let var = Var::StackRef(*n + 4 * ctx.stack.len() as i32);
+			ctx.push(Expr::Var(var));
 		}
 		Op::WriteRef(n) => {
 			let a = ctx.pop();
-			let d = 4 * ctx.stack.len() as i32;
-			println!("{i}{:?} = {:?}", Expr::Var(Var::StackRef(*n + d)), a);
+			let var = Var::StackRef(*n + 4 * ctx.stack.len() as i32);
+			println!("{i}{:?} = {:?}", Expr::Var(var), a);
 		}
 		Op::_07(n) => {
-			ctx.push(Expr::Var(Var::Local(*n)));
+			let var = Var::Local(*n);
+			ctx.push(Expr::Var(var));
 		}
 		Op::_08(n) => {
 			let a = ctx.pop();
-			println!("{i}{:?} = {:?}", Expr::Var(Var::Local(*n)), a);
+			let var = Var::Local(*n);
+			println!("{i}{:?} = {:?}", Expr::Var(var), a);
 		}
 		Op::GetGlobal(n) => {
-			ctx.push(Expr::Var(Var::Global(*n)));
+			let var = Var::Global(*n);
+			ctx.push(Expr::Var(var));
 		}
 		Op::SetGlobal(n) => {
 			let a = ctx.pop();
-			println!("{i}{:?} = {:?}", Expr::Var(Var::Global(*n)), a);
+			let var = Var::Global(*n);
+			println!("{i}{:?} = {:?}", Expr::Var(var), a);
 		}
 		Op::Binop(op) => {
 			let b = ctx.pop();
