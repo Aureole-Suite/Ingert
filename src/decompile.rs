@@ -101,7 +101,6 @@ pub fn decompile(out: &mut super::Write, scp: &Scp) {
 		let mut lines = VecDeque::new();
 		while ctx.line(|l| lines.push_front(l)).is_some() {}
 
-		println!("{f} {} {:?}", code.len(), ctx.labels);
 
 		// for (pos, op) in code {
 		// 	writeln!(out, "  {pos:?}: {op:?}");
@@ -114,6 +113,7 @@ pub fn decompile(out: &mut super::Write, scp: &Scp) {
 		writeln!(out);
 
 		if ctx.index != 0 {
+			println!("{f}");
 			for (pos, line) in code {
 				println!("  {pos:?}: {line:?}");
 			}
@@ -180,7 +180,7 @@ impl<'a> Ctx<'a> {
 		match self.next()? {
 			Op::Return => {
 				self.do_pop(&mut push)?;
-				self.expect(&Op::SetGlobal(0))?;
+				self.expect(&Op::SetTemp(0))?;
 				if let Some(()) = self.next_if(pat!(Op::Push(Value::Uint(0)) => ())) {
 					let line = self.maybe_line();
 					push(Stmt::ReturnVoid(line));
@@ -193,14 +193,14 @@ impl<'a> Ctx<'a> {
 				let expr = self.expr()?;
 				push(Stmt::If(expr, *l));
 			},
-			Op::SetGlobal(0) => {
+			Op::SetTemp(0) => {
 				let expr = self.expr()?;
 				push(Stmt::Switch(expr));
 			}
 			Op::If2(l) => {
 				self.expect(&Op::Binop(Binop::Eq))?;
 				let expr = self.next_if(pat!(Op::Push(Value::Int(n)) => *n))?;
-				self.expect(&Op::GetGlobal(0))?;
+				self.expect(&Op::GetTemp(0))?;
 				push(Stmt::Case(expr, *l));
 			}
 			Op::Goto(l) => {
@@ -257,14 +257,14 @@ impl<'a> Ctx<'a> {
 		let expr = match self.next()? {
 			Op::Push(value) => Expr::Value(value.clone()),
 			Op::PushRef(n) => Expr::Ref(*n),
-			Op::PushVar(n) => Expr::Var(Lvalue::Stack(*n)),
+			Op::GetVar(n) => Expr::Var(Lvalue::Stack(*n)),
 			Op::Binop(op) => {
 				let b = self.expr()?;
 				let a = self.expr()?;
 				Expr::Binop(*op, Box::new(a), Box::new(b))
 			},
 			Op::Unop(op) => Expr::Unop(*op, Box::new(self.expr()?)),
-			Op::GetGlobal(0) => self.call()?,
+			Op::GetTemp(0) => self.call()?,
 			op => {
 				self.rewind();
 				tracing::info!("unexpected {:?}", op);

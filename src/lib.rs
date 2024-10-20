@@ -286,7 +286,7 @@ fn switch_cases(ctx: &mut Ctx<'_>) -> Vec<(Option<i32>, Label)> {
 	let mut cases = Vec::new();
 	let default = loop {
 		match &ctx.next().unwrap() {
-			Op::GetGlobal(0) => {
+			Op::GetTemp(0) => {
 				let Op::Push(Value::Int(n)) = ctx.next().unwrap() else { unreachable!() };
 				let Op::Binop(Binop::Eq) = ctx.next().unwrap() else { unreachable!() };
 				let Op::If2(target) = ctx.next().unwrap() else { unreachable!() };
@@ -322,7 +322,7 @@ impl Write {
 fn stmt(out: &mut Write, ctx: &mut Ctx<'_>) {
 	fn push_call(ctx: &mut Ctx<'_>, out: &mut Write, call: CallKind, args: Vec<Expr>) {
 		let call = Expr::Call(call, args);
-		if ctx.peek() == Some(&Op::GetGlobal(0)) {
+		if ctx.peek() == Some(&Op::GetTemp(0)) {
 			ctx.next();
 			ctx.stack.push_front(call);
 		} else {
@@ -362,7 +362,7 @@ fn stmt(out: &mut Write, ctx: &mut Ctx<'_>) {
 			}
 		}
 
-		Op::SetGlobal(0) if ctx.peek() == Some(&Op::GetGlobal(0)) => {
+		Op::SetTemp(0) if ctx.peek() == Some(&Op::GetTemp(0)) => {
 			let a = ctx.pop();
 			let cases = switch_cases(ctx);
 			writeln!(out, "{i}switch {a} {{");
@@ -393,7 +393,7 @@ fn stmt(out: &mut Write, ctx: &mut Ctx<'_>) {
 			writeln!(out, "{i}}}");
 		}
 
-		Op::SetGlobal(0) => {
+		Op::SetTemp(0) => {
 			let a = ctx.pop();
 			writeln!(out, "{i}return {a}");
 		}
@@ -418,7 +418,7 @@ fn stmt(out: &mut Write, ctx: &mut Ctx<'_>) {
 				// assert_eq!(ctx.peek(), None);
 			}
 		}
-		Op::PushVar(n) => {
+		Op::GetVar(n) => {
 			let var = Lvalue::Stack(ctx.resolve(*n));
 			ctx.push(Expr::Var(var));
 		}
@@ -430,29 +430,29 @@ fn stmt(out: &mut Write, ctx: &mut Ctx<'_>) {
 		Op::PushRef(n) => {
 			ctx.push(Expr::Ref(ctx.resolve(*n)));
 		}
-		Op::ReadRef(n) => {
+		Op::GetRef(n) => {
 			let var = Lvalue::Deref(ctx.resolve(*n));
 			ctx.push(Expr::Var(var));
 		}
-		Op::WriteRef(n) => {
+		Op::SetRef(n) => {
 			let a = ctx.pop();
 			let var = Lvalue::Deref(ctx.resolve(*n));
-			writeln!(out, "{i}{} = {}", Expr::Var(var), a);
-		}
-		Op::_07(n) => {
-			let var = Lvalue::Local(*n);
-			ctx.push(Expr::Var(var));
-		}
-		Op::_08(n) => {
-			let a = ctx.pop();
-			let var = Lvalue::Local(*n);
 			writeln!(out, "{i}{} = {}", Expr::Var(var), a);
 		}
 		Op::GetGlobal(n) => {
-			let var = Lvalue::Global(*n);
+			let var = Lvalue::Local(*n);
 			ctx.push(Expr::Var(var));
 		}
 		Op::SetGlobal(n) => {
+			let a = ctx.pop();
+			let var = Lvalue::Local(*n);
+			writeln!(out, "{i}{} = {}", Expr::Var(var), a);
+		}
+		Op::GetTemp(n) => {
+			let var = Lvalue::Global(*n);
+			ctx.push(Expr::Var(var));
+		}
+		Op::SetTemp(n) => {
 			let a = ctx.pop();
 			let var = Lvalue::Global(*n);
 			writeln!(out, "{i}{} = {}", Expr::Var(var), a);
