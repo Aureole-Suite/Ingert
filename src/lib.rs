@@ -182,7 +182,7 @@ impl<'a> Ctx<'a> {
 		let index = if target == self.code_end {
 			self.code.len()
 		} else {
-			self.code.iter().position(|(l, _)| *l == target).unwrap()
+			self.code.binary_search_by_key(&target, |(l, _)| *l).unwrap()
 		};
 		assert!(index >= self.pos);
 		let new = Ctx {
