@@ -251,13 +251,13 @@ pub fn stuff(out: &mut Write, scp: &Scp) {
 		ctx.nargs = f.args.len();
 		let sub = ctx.sub(end);
 
-		writeln!(out, "\n{f}");
-		for line in &f.called {
-			writeln!(out, "- {line:?}");
-		}
-		for line in scp::dump_ops(sub.code) {
-			writeln!(out, "{line}");
-		}
+		// writeln!(out, "\n{f}");
+		// for line in &f.called {
+		// 	writeln!(out, "- {line:?}");
+		// }
+		// for line in scp::dump_ops(sub.code) {
+		// 	writeln!(out, "{line}");
+		// }
 
 		writeln!(out, "\n{f}");
 		stmts(out, sub);
