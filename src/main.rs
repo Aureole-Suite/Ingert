@@ -71,7 +71,7 @@ fn process_file(file: &PathBuf) {
 
 			let f = ingert::decompile::decompile(f.args.len(), &stmts).unwrap();
 			for stmt in f {
-				writeln!(out, "  {stmt:?}");
+				write!(out, "{stmt}");
 			}
 			writeln!(out);
 		}

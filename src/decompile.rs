@@ -2,7 +2,8 @@ use std::collections::HashMap;
 
 use crate::nest::{self, NStmt, Label};
 
-type StackVar = i32;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct StackVar(pub i32);
 // #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 // pub enum StackVar {
 // 	Stack(u32),
@@ -28,6 +29,92 @@ pub enum Stmt {
 	Break,
 	Continue,
 	Return(Option<Expr>),
+}
+
+mod display {
+	use super::*;
+	use std::fmt::{Display, Formatter, Result};
+
+	impl Display for StackVar {
+		fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+			write!(f, "v[{}]", self.0)
+		}
+	}
+
+	impl Display for Stmt {
+		fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+			self.display(f, 0)
+		}
+	}
+
+	impl Stmt {
+		pub fn display(&self, f: &mut Formatter, indent: usize) -> Result {
+			let i = "  ".repeat(indent);
+			match self {
+				Stmt::Expr(e) => writeln!(f, "{i}{e}"),
+				Stmt::PushVar(None) => writeln!(f, "{i}push"),
+				Stmt::PushVar(Some(e)) => writeln!(f, "{i}push {e}"),
+				Stmt::Set(v, e) => writeln!(f, "{i}{v} = {e}"),
+				Stmt::Line(l) => writeln!(f, "{i}line {l}"),
+				Stmt::Debug(args) => {
+					write!(f, "{i}debug(")?;
+					let mut it = args.iter();
+					if let Some(a) = it.next() {
+						a.fmt(f)?;
+						for a in it {
+							write!(f, ", ")?;
+							a.fmt(f)?;
+						}
+					}
+					writeln!(f, ")")
+				}
+				Stmt::If(e, yes, no) => {
+					writeln!(f, "{i}if {e} {{")?;
+					for stmt in yes {
+						stmt.display(f, indent + 1)?;
+					}
+					if let Some(no) = no {
+						if let [s@Stmt::If(..)] = no.as_slice() {
+							write!(f, "}} else ")?;
+							s.display(f, indent)?;
+						} else {
+							writeln!(f, "}} else {{")?;
+							for stmt in no {
+								stmt.display(f, indent + 1)?;
+							}
+						}
+					}
+					writeln!(f, "{i}}}")?;
+					Ok(())
+				}
+				Stmt::While(e, body) => {
+					writeln!(f, "{i}while {e} {{")?;
+					for stmt in body {
+						stmt.display(f, indent + 1)?;
+					}
+					writeln!(f, "{i}}}")
+				}
+				Stmt::Switch(e, cases) => {
+					writeln!(f, "{i}switch {e} {{")?;
+					for (c, body) in cases {
+						if let Some(c) = c {
+							writeln!(f, "{i}  case {c}:")?;
+						} else {
+							writeln!(f, "{i}  default:")?;
+						}
+						for stmt in body {
+							stmt.display(f, indent + 2)?;
+						}
+					}
+					writeln!(f, "{i}}}")
+				}
+				Stmt::Break => writeln!(f, "{i}break"),
+				Stmt::Continue => writeln!(f, "{i}continue"),
+				Stmt::Return(None) => writeln!(f, "{i}return"),
+				Stmt::Return(Some(e)) => writeln!(f, "{i}return {e}"),
+			}
+		}
+	}
 }
 
 #[derive(Debug, snafu::Snafu)]
@@ -208,6 +295,6 @@ fn lvalue(stack: usize, l: &nest::Lvalue<crate::scp::StackSlot>) -> Result<Lvalu
 }
 
 fn stack_slot(stack: usize, v: &crate::scp::StackSlot) -> Result<StackVar> {
-	Ok(v.0 + stack as i32)
+	Ok(StackVar(v.0 + stack as i32))
 }
 
