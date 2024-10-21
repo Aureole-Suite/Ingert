@@ -1,7 +1,7 @@
 use std::collections::{HashSet, VecDeque};
 
 use super::scp;
-use scp::{Label, Op, Scp, StackSlot};
+use scp::{Label, Op, StackSlot};
 pub use scp::{Value, Binop, Unop};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -74,39 +74,30 @@ pub struct NestedScp {
 	pub functions: Vec<(scp::Function, Vec<NStmt>)>,
 }
 
-pub fn decompile(scp: &Scp) -> Result<NestedScp> {
-	let mut functions = scp.functions.iter().collect::<Vec<_>>();
-	functions.sort_by_key(|f| f.start);
+pub fn decompile(f: &scp::Function) -> Result<Vec<NStmt>> {
+	let _span = tracing::info_span!("function", name = f.name.clone()).entered();
 
-	let mut out = Vec::new();
+	let labels = f.code.iter()
+		.map(|a| &a.1)
+		.filter_map(pat!(Op::If(l) | Op::If2(l) | Op::Goto(l) => *l))
+		.collect();
 
-	for f in &functions {
-		let _span = tracing::info_span!("function", name = f.name.clone()).entered();
+	let mut ctx = Ctx {
+		function: f,
+		labels,
+		code: &f.code,
+		end: f.code_end,
+		index: f.code.len(),
+	};
 
-		let labels = f.code.iter()
-			.map(|a| &a.1)
-			.filter_map(pat!(Op::If(l) | Op::If2(l) | Op::Goto(l) => *l))
-			.collect();
+	let mut lines = VecDeque::new();
+	ctx.decompile(|l| lines.push_front(l))?;
 
-		let mut ctx = Ctx {
-			function: f,
-			labels,
-			code: &f.code,
-			end: f.code_end,
-			index: f.code.len(),
-		};
-
-		let mut lines = VecDeque::new();
-		ctx.decompile(|l| lines.push_front(l))?;
-
-		if let Some(label) = ctx.labels.into_iter().next() {
-			return e::MissingLabel { label }.fail();
-		}
-
-		out.push(((*f).clone(), Vec::from(lines)));
+	if let Some(label) = ctx.labels.into_iter().next() {
+		return e::MissingLabel { label }.fail();
 	}
 
-	Ok(NestedScp { functions: out })
+	Ok(Vec::from(lines))
 }
 
 struct Ctx<'a> {

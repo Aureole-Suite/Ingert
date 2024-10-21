@@ -38,10 +38,12 @@ fn process_file(file: &PathBuf) {
 		let out = std::io::BufWriter::new(out);
 		let mut out = ingert::Write(Box::new(out));
 		let scp = ingert::parse_scp(&data).unwrap();
-		let scp = ingert::nest::decompile(&scp).unwrap();
-		for (f, stmts) in scp.functions {
-			writeln!(out, "{f}");
-			for stmt in stmts {
+		let mut functions = scp.functions.iter().collect::<Vec<_>>();
+		functions.sort_by_key(|f| f.start);
+		for f in &functions {
+			writeln!(out, "{:?}", f);
+			let f = ingert::nest::decompile(f).unwrap();
+			for stmt in f {
 				writeln!(out, "  {stmt:?}");
 			}
 			writeln!(out);
