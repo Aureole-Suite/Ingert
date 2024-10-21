@@ -73,7 +73,7 @@ fn process_file(file: &PathBuf) {
 			struct Block<'a>(&'a [ingert::decompile::Stmt]);
 			impl std::fmt::Display for Block<'_> {
 				fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-					ingert::decompile::Stmt::display_block(self.0, f, 0)
+					ingert::decompile::Stmt::display_block(self.0, f, 1)
 				}
 			}
 			writeln!(out, "{}", Block(&f));

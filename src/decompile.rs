@@ -170,7 +170,8 @@ pub fn decompile(nargs: usize, stmts: &[nest::Stmt]) -> Result<Vec<Stmt>> {
 		labels,
 	};
 
-	block(Ctx::new(&gctx, nargs))
+	let (body, _) = block(&mut Ctx::new(&gctx, 0), GotoAllowed::No)?;
+	Ok(body)
 }
 
 struct Gctx<'a> {
@@ -191,7 +192,6 @@ struct Ctx<'a> {
 	stack: usize,
 	brk: Option<Label>,
 	cont: Option<Label>,
-	has_goto: bool
 }
 
 impl<'a> Ctx<'a> {
@@ -203,12 +203,11 @@ impl<'a> Ctx<'a> {
 			stack,
 			brk: None,
 			cont: None,
-			has_goto: false,
 		}
 	}
 
 	fn next(&mut self) -> Option<&'a nest::Stmt> {
-		if self.pos == self.end || (self.has_goto && self.pos == self.end - 1) {
+		if self.pos == self.end {
 			None
 		} else {
 			let stmt = self.gctx.stmts[self.pos];
@@ -222,28 +221,31 @@ impl<'a> Ctx<'a> {
 		snafu::ensure!((self.pos..=self.end).contains(&pos), LabelSnafu { label });
 		let sub = Self {
 			end: pos,
-			has_goto: self.has_goto && pos == self.end,
 			..*self
 		};
 		self.pos = pos;
 		Ok(sub)
 	}
 
-	fn last_goto(&mut self, pos: impl Fn(usize) -> bool) -> Result<Option<Label>> {
-		if self.pos == self.end {
-			return Ok(None);
-		}
-
-		if let nest::Stmt::Goto(l) = *self.gctx.stmts[self.end - 1] && pos(self.gctx.lookup(l)?) {
-			self.has_goto = true;
-			Ok(Some(l))
+	fn goto_before(&self, label: Label) -> Result<Option<Label>> {
+		let pos = self.gctx.lookup(label)?;
+		snafu::ensure!((self.pos..=self.end).contains(&pos), LabelSnafu { label });
+		if pos > 0 && let nest::Stmt::Goto(cont) = self.gctx.stmts[pos - 1] {
+			Ok(Some(*cont))
 		} else {
 			Ok(None)
 		}
 	}
 }
 
-fn block(mut ctx: Ctx) -> Result<Vec<Stmt>> {
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum GotoAllowed {
+	Anywhere,
+	Yes,
+	No,
+}
+
+fn block(ctx: &mut Ctx, goto_allowed: GotoAllowed) -> Result<(Vec<Stmt>, Option<Label>)> {
 	let mut stmts = Vec::new();
 	while let Some(stmt) = ctx.next() {
 		match stmt {
@@ -252,34 +254,120 @@ fn block(mut ctx: Ctx) -> Result<Vec<Stmt>> {
 			nest::Stmt::Expr(e) => stmts.push(Stmt::Expr(expr(ctx.stack, e)?)),
 			nest::Stmt::Set(l, e) => stmts.push(Stmt::Set(lvalue(ctx.stack, l)?, expr(ctx.stack, e)?)),
 			nest::Stmt::Label(_) => {}
+
 			nest::Stmt::If(e, l) => {
-				let start = ctx.pos;
 				let e = expr(ctx.stack, e)?;
-				let mut sub = ctx.sub(*l)?;
-				if let Some(cont) = sub.last_goto(|i| i == start - 1)? {
+
+				if let Some(cont) = ctx.goto_before(*l)? && ctx.gctx.lookup(cont)? == ctx.pos - 1 {
+					let mut sub = ctx.sub(*l)?;
 					sub.brk = Some(*l);
 					sub.cont = Some(cont);
-					let body = block(sub)?;
+					let (mut body, _) = block(&mut sub, GotoAllowed::No)?;
+					assert_eq!(body.pop(), Some(Stmt::Continue));
 					stmts.push(Stmt::While(e, body));
-				} else if let Some(els) = sub.last_goto(|i| i >= ctx.pos && i <= ctx.end)? {
-					let yes = block(sub)?;
-					let sub = ctx.sub(els)?;
-					let no = block(sub)?;
-					stmts.push(Stmt::If(e, yes, Some(no)));
+					continue
+				}
+
+				let (body, goto) = block(&mut ctx.sub(*l)?, GotoAllowed::Yes)?;
+
+				if let Some(goto) = goto {
+					let end = ctx.gctx.lookup(goto)?;
+					snafu::ensure!(end <= ctx.end, LabelSnafu { label: goto });
+					let (no, _) = block(&mut ctx.sub(goto)?, GotoAllowed::No)?;
+					stmts.push(Stmt::If(e, body, Some(no)));
 				} else {
-					let yes = block(sub)?;
-					stmts.push(Stmt::If(e, yes, None));
+					stmts.push(Stmt::If(e, body, None));
 				}
 			}
+
 			nest::Stmt::Switch(e) => {
 				let e = expr(ctx.stack, e)?;
-				let cases = parse_switch(&mut ctx, stmt)?;
-				stmts.push(Stmt::Switch(e, cases));
+
+				let mut cases = Vec::new();
+				let default = loop {
+					match ctx.next().with_context(|| SwitchSnafu { why: "unterminated", stmt: stmt.clone() })? {
+						nest::Stmt::Case(v, l) => cases.push((Some(*v), *l)),
+						nest::Stmt::Goto(l) => break *l,
+						stmt => return SwitchSnafu { why: "unexpected", stmt: stmt.clone() }.fail(),
+					}
+				};
+				snafu::ensure!(cases.is_sorted_by_key(|(_, a)| a), SwitchSnafu { why: "unsorted", stmt: stmt.clone() });
+				let default_pos = cases.partition_point(|(_, a)| *a < default);
+				cases.insert(default_pos, (None, default));
+
+				let mut brk = None;
+				for (_, l) in &cases {
+					if let Some(goto) = ctx.goto_before(*l)? && goto > *l {
+						brk = brk.max(Some(goto));
+					}
+				}
+
+				let mut cases2 = Vec::with_capacity(cases.len());
+				let ends = cases.iter().skip(1).map(|i| i.1).chain(brk);
+				for (&(key, target), end) in std::iter::zip(&cases, ends) {
+					let target = ctx.gctx.lookup(target)?;
+					assert_eq!(ctx.pos, target);
+					let mut sub = ctx.sub(end)?;
+					sub.brk = brk;
+					let (body, _) = block(&mut sub, GotoAllowed::No)?;
+					cases2.push((key, body));
+				}
+
+				if brk.is_some() {
+					// we know where the break is, so no need for that bullshit
+					stmts.push(Stmt::Switch(e, cases2));
+					continue;
+				}
+
+				let last = cases.last().unwrap();
+				assert!(ctx.gctx.lookup(last.1)? == ctx.pos);
+				let prev_brk = ctx.brk.take();
+				let (mut body, goto) = block(ctx, GotoAllowed::Anywhere)?;
+				ctx.brk = prev_brk;
+				if let Some(goto) = goto {
+					if ctx.gctx.lookup(goto)? == ctx.pos {
+						// finally found a break, but it's useless
+						body.push(Stmt::Break);
+						cases2.push((last.0, body));
+						stmts.push(Stmt::Switch(e, cases2));
+					} else if Some(goto) == ctx.brk {
+						// found a break from the parent element
+						if last.0.is_some() {
+							cases2.push((last.0, Vec::new()));
+						}
+						stmts.push(Stmt::Switch(e, cases2));
+						stmts.extend(body);
+						stmts.push(Stmt::Break);
+					} else {
+						// found weirdo goto
+						return JumpSnafu { label: goto }.fail();
+					}
+				} else {
+					// got to end of block without a break, so assume the last case is empty
+					if last.0.is_some() {
+						cases2.push((last.0, Vec::new()));
+					}
+					stmts.push(Stmt::Switch(e, cases2));
+					stmts.extend(body);
+				}
 			}
 			nest::Stmt::Case(_, _) => return SwitchSnafu { why: "stray case", stmt: stmt.clone() }.fail(),
+
 			nest::Stmt::Goto(l) if Some(*l) == ctx.brk => stmts.push(Stmt::Break),
 			nest::Stmt::Goto(l) if Some(*l) == ctx.cont => stmts.push(Stmt::Continue),
-			nest::Stmt::Goto(l) => return JumpSnafu { label: *l }.fail(),
+			nest::Stmt::Goto(l) => {
+				let ok = match goto_allowed {
+					GotoAllowed::Anywhere => true,
+					GotoAllowed::Yes => ctx.pos == ctx.end,
+					GotoAllowed::No => false,
+				};
+				return if ok {
+					Ok((stmts, Some(*l)))
+				} else {
+					JumpSnafu { label: *l }.fail()
+				}
+			}
+
 			nest::Stmt::PushVar => {
 				const LAST: nest::StackSlot = nest::StackSlot(-1);
 				ctx.stack += 1;
@@ -298,45 +386,7 @@ fn block(mut ctx: Ctx) -> Result<Vec<Stmt>> {
 			nest::Stmt::Debug(args) => stmts.push(Stmt::Debug(do_args(ctx.stack, args)?)),
 		}
 	}
-	Ok(stmts)
-}
-
-fn parse_switch(ctx: &mut Ctx, stmt: &nest::Stmt) -> Result<Vec<(Option<i32>, Vec<Stmt>)>> {
-	let mut cases = Vec::new();
-	let default = loop {
-		match ctx.next().with_context(|| SwitchSnafu { why: "unterminated", stmt: stmt.clone() })? {
-			nest::Stmt::Case(v, l) => cases.push((Some(*v), *l)),
-			nest::Stmt::Goto(l) => break *l,
-			stmt => return SwitchSnafu { why: "unexpected", stmt: stmt.clone() }.fail(),
-		}
-	};
-	snafu::ensure!(cases.is_sorted_by_key(|(_, a)| a), SwitchSnafu { why: "unsorted", stmt: stmt.clone() });
-	let default_pos = cases.partition_point(|(_, a)| *a < default);
-	cases.insert(default_pos, (None, default));
-
-	let mut cases2 = Vec::with_capacity(cases.len());
-	let the_end = Cell::new(None);
-	let ends = cases.iter().skip(1).map(|i| i.1).chain(std::iter::once_with(|| the_end.get()).flatten());
-	for (&(key, target), end) in std::iter::zip(&cases, ends) {
-		let target = ctx.gctx.lookup(target)?;
-		let end_pos = ctx.gctx.lookup(end)?;
-		assert_eq!(ctx.pos, target);
-		let mut sub = ctx.sub(end)?;
-		let new_end = sub.last_goto(|l| l >= end_pos)?;
-		if let Some(new_end) = new_end {
-			if let Some(the_end) = the_end.get() {
-				snafu::ensure!(the_end == new_end, SwitchSnafu { why: "wrong end", stmt: stmt.clone() });
-			}
-			the_end.set(Some(new_end));
-		}
-		sub.brk = the_end.get();
-		let mut body = block(sub)?;
-		if new_end.is_some() {
-			body.push(Stmt::Break);
-		}
-		cases2.push((key, body));
-	}
-	Ok(cases2)
+	Ok((stmts, None))
 }
 
 fn expr(stack: usize, e: &nest::Expr) -> Result<Expr> {
