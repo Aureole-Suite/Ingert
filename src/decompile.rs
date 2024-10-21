@@ -92,16 +92,24 @@ mod display {
 				Stmt::If(e, yes, no) => {
 					writeln!(f, "if {e} {{")?;
 					Self::display_block(yes, f, indent + 1)?;
-					if let Some(no) = no {
-						if let [s@Stmt::If(..)] = no.as_slice() {
+					match no.as_ref().map(Vec::as_slice) {
+						Some([s@Stmt::If(..)]) => {
 							write!(f, "{i}}} else ")?;
-							s.display(f, indent)?;
-						} else {
+							s.display_inline(f, indent)?;
+						}
+						Some([Stmt::Line(n), s@Stmt::If(..)]) => {
+							write!(f, "{i}}} else line {n} ")?;
+							s.display_inline(f, indent)?;
+						}
+						Some(no) => {
 							writeln!(f, "{i}}} else {{")?;
 							Self::display_block(no, f, indent + 1)?;
+							writeln!(f, "{i}}}")?;
+						}
+						None => {
+							writeln!(f, "{i}}}")?;
 						}
 					}
-					writeln!(f, "{i}}}")?;
 					Ok(())
 				}
 				Stmt::While(e, body) => {
