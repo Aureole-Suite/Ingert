@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{cell::Cell, collections::HashMap};
 
 use crate::nest::{self, NStmt, Label};
 
@@ -248,7 +248,44 @@ fn block(mut ctx: Ctx) -> Result<Vec<Stmt>> {
 					stmts.push(Stmt::If(e, yes, None));
 				}
 			}
-			NStmt::Switch(_) => todo!(),
+			NStmt::Switch(e) => {
+				let e = expr(ctx.stack, e)?;
+				let mut cases = Vec::new();
+				let default = loop {
+					match ctx.next().with_context(|| SwitchSnafu { stmt: stmt.clone() })? {
+						NStmt::Case(v, l) => cases.push((Some(*v), *l)),
+						NStmt::Goto(l) => break *l,
+						stmt => return SwitchSnafu { stmt: stmt.clone() }.fail(),
+					}
+				};
+				snafu::ensure!(cases.is_sorted_by_key(|(_, a)| a), SwitchSnafu { stmt: stmt.clone() });
+				let default_pos = cases.partition_point(|(_, a)| *a < default);
+				cases.insert(default_pos, (None, default));
+
+				let mut cases2 = Vec::with_capacity(cases.len());
+				let the_end = Cell::new(None);
+				let ends = cases.iter().skip(1).map(|i| i.1).chain(std::iter::once_with(|| the_end.get()).flatten());
+				for (&(key, target), end) in std::iter::zip(&cases, ends) {
+					let target = ctx.gctx.lookup(target)?;
+					let end_pos = ctx.gctx.lookup(end)?;
+					assert_eq!(ctx.pos, target);
+					let mut sub = ctx.sub(end)?;
+					let new_end = sub.last_goto(|l| l >= end_pos)?;
+					if let Some(new_end) = new_end {
+						if let Some(the_end) = the_end.get() {
+							snafu::ensure!(the_end == new_end, SwitchSnafu { stmt: stmt.clone() });
+						}
+						the_end.set(Some(new_end));
+					}
+					sub.brk = the_end.get();
+					let mut body = block(sub)?;
+					if new_end.is_some() {
+						body.push(Stmt::Break);
+					}
+					cases2.push((key, body));
+				}
+				stmts.push(Stmt::Switch(e.clone(), cases2));
+			}
 			NStmt::Case(_, _) => return SwitchSnafu { stmt: stmt.clone() }.fail(),
 			NStmt::Goto(_) => todo!(),
 			NStmt::PushVar => {
