@@ -51,28 +51,34 @@ mod display {
 	impl Stmt {
 		pub fn display(&self, f: &mut Formatter, indent: usize) -> Result {
 			let i = "  ".repeat(indent);
+			write!(f, "{i}")?;
+			self.display_inline(f, indent)
+		}
+
+		fn display_inline(&self, f: &mut Formatter, indent: usize) -> Result {
+			let i = "  ".repeat(indent);
 			match self {
-				Stmt::Expr(e) => writeln!(f, "{i}{e}"),
-				Stmt::PushVar(v, None) => writeln!(f, "{i}let {v}"),
-				Stmt::PushVar(v, Some(e)) => writeln!(f, "{i}let {v} = {e}"),
-				Stmt::Set(v, e) => writeln!(f, "{i}{v} = {e}"),
-				Stmt::Line(l) => writeln!(f, "{i}line {l}"),
+				Stmt::Expr(e) => writeln!(f, "{e}"),
+				Stmt::PushVar(v, None) => writeln!(f, "let {v}"),
+				Stmt::PushVar(v, Some(e)) => writeln!(f, "let {v} = {e}"),
+				Stmt::Set(v, e) => writeln!(f, "{v} = {e}"),
+				Stmt::Line(l) => writeln!(f, "line {l}"),
 				Stmt::Debug(args) => {
-					write!(f, "{i}debug")?;
+					write!(f, "debug")?;
 					expr::write_args(f, args)?;
 					writeln!(f)
 				}
 				Stmt::If(e, yes, no) => {
-					writeln!(f, "{i}if {e} {{")?;
+					writeln!(f, "if {e} {{")?;
 					for stmt in yes {
 						stmt.display(f, indent + 1)?;
 					}
 					if let Some(no) = no {
 						if let [s@Stmt::If(..)] = no.as_slice() {
-							write!(f, "}} else ")?;
+							write!(f, "{i}}} else ")?;
 							s.display(f, indent)?;
 						} else {
-							writeln!(f, "}} else {{")?;
+							writeln!(f, "{i}}} else {{")?;
 							for stmt in no {
 								stmt.display(f, indent + 1)?;
 							}
@@ -82,14 +88,14 @@ mod display {
 					Ok(())
 				}
 				Stmt::While(e, body) => {
-					writeln!(f, "{i}while {e} {{")?;
+					writeln!(f, "while {e} {{")?;
 					for stmt in body {
 						stmt.display(f, indent + 1)?;
 					}
 					writeln!(f, "{i}}}")
 				}
 				Stmt::Switch(e, cases) => {
-					writeln!(f, "{i}switch {e} {{")?;
+					writeln!(f, "switch {e} {{")?;
 					for (c, body) in cases {
 						if let Some(c) = c {
 							writeln!(f, "{i}  case {c}:")?;
@@ -102,10 +108,10 @@ mod display {
 					}
 					writeln!(f, "{i}}}")
 				}
-				Stmt::Break => writeln!(f, "{i}break"),
-				Stmt::Continue => writeln!(f, "{i}continue"),
-				Stmt::Return(None) => writeln!(f, "{i}return"),
-				Stmt::Return(Some(e)) => writeln!(f, "{i}return {e}"),
+				Stmt::Break => writeln!(f, "break"),
+				Stmt::Continue => writeln!(f, "continue"),
+				Stmt::Return(None) => writeln!(f, "return"),
+				Stmt::Return(Some(e)) => writeln!(f, "return {e}"),
 			}
 		}
 	}
