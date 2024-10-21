@@ -50,8 +50,22 @@ mod display {
 
 	impl Stmt {
 		pub fn display_block(stmts: &[Stmt], f: &mut Formatter, indent: usize) -> Result {
+			let mut was_line = false;
 			for stmt in stmts {
-				stmt.display(f, indent)?;
+				if let Stmt::Line(n) = stmt {
+					if !was_line {
+						write!(f, "{}", "  ".repeat(indent))?;
+					}
+					was_line = true;
+					write!(f, "line {n} ")?;
+				} else {
+					if was_line {
+						stmt.display_inline(f, indent)?;
+					} else {
+						stmt.display(f, indent)?;
+					}
+					was_line = false;
+				}
 			}
 			Ok(())
 		}
