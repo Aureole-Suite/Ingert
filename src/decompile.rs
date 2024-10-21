@@ -327,7 +327,7 @@ fn expr(stack: usize, e: &nest::Expr<crate::scp::StackSlot>) -> Result<Expr> {
 			let add = match call {
 				CallKind::System(..) => 0,
 				CallKind::Func(a, _) => if a.is_empty() { 2 } else { 5 },
-				CallKind::Become(..) => 0,
+				CallKind::Tail(..) => 0,
 			};
 			Expr::Call(call.clone(), do_args(stack + add, args)?)
 		}

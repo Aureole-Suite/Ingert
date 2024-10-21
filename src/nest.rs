@@ -42,7 +42,7 @@ pub enum Lvalue<T> {
 pub enum CallKind {
 	System(u8, u8),
 	Func(String, String),
-	Become(String, String),
+	Tail(String, String),
 }
 
 #[derive(Debug, snafu::Snafu)]
@@ -77,9 +77,9 @@ mod display {
 	impl Display for CallKind {
 		fn fmt(&self, f: &mut Formatter<'_>) -> Result {
 			match self {
-				CallKind::System(a, b) => write!(f, "system[{},{}]", a, b),
-				CallKind::Func(a, b) => write!(f, "{}.{}", a, b),
-				CallKind::Become(a, b) => write!(f, "become {}.{}", a, b),
+				CallKind::System(a, b) => write!(f, "system[{a},{b}]"),
+				CallKind::Func(a, b) => write!(f, "{a}.{b}"),
+				CallKind::Tail(a, b) => write!(f, "tail {a}.{b}"),
 			}
 		}
 	}
@@ -326,7 +326,7 @@ impl<'a> Ctx<'a> {
 				let expr = self.rewind().call()?;
 				push(NStmt::Expr(expr));
 			}
-			Op::_23(a, b, c) => {
+			Op::CallTail(a, b, c) => {
 				for i in 1..=*c {
 					self.expect(&Op::GetTemp(i))?;
 				}
@@ -339,7 +339,7 @@ impl<'a> Ctx<'a> {
 					args.push(self.expr()?);
 				}
 				args.reverse();
-				let expr = Expr::Call(CallKind::Become(a.clone(), b.clone()), args);
+				let expr = Expr::Call(CallKind::Tail(a.clone(), b.clone()), args);
 				push(NStmt::Expr(expr));
 			}
 			Op::Push(Value::Uint(0)) => {

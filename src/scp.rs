@@ -374,7 +374,7 @@ pub enum Op {
 	Binop(Binop),
 	Unop(Unop),
 	CallExtern(String, String, u8),
-	_23(String, String, u8),
+	CallTail(String, String, u8),
 	CallSystem(u8, u8, u8),
 	_25(Label),
 	Line(u16),
@@ -502,7 +502,7 @@ pub fn parse_scp(data: &[u8]) -> Result<Scp, ScpError> {
 			16..=30 => Op::Binop(Binop::from_repr(op).unwrap()),
 			31..=33 => Op::Unop(Unop::from_repr(op).unwrap()),
 			34 => Op::CallExtern(string_value(&mut f)?, string_value(&mut f)?, f.u8()?),
-			35 => Op::_23(string_value(&mut f)?, string_value(&mut f)?, f.u8()?),
+			35 => Op::CallTail(string_value(&mut f)?, string_value(&mut f)?, f.u8()?),
 			36 => {
 				let a = f.u8()?;
 				let b = f.u8()?;
