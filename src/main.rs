@@ -48,26 +48,26 @@ fn process_file(file: &PathBuf) {
 		functions.sort_by_key(|f| f.start);
 		for f in &functions {
 			writeln!(out, "{}", f);
-			for c in &f.code {
-				writeln!(out, "  {c:?}");
-			}
-			writeln!(out);
+			// for c in &f.code {
+			// 	writeln!(out, "  {c:?}");
+			// }
+			// writeln!(out);
 
-			let mut was_line = false;
+			// let mut was_line = false;
 			let stmts = ingert::nest::decompile(f).unwrap();
-			for stmt in &stmts {
-				if !was_line {
-					write!(out, "  ");
-				}
-				if let ingert::nest::Stmt::Line(_) = stmt {
-					was_line = true;
-					write!(out, "{stmt} ");
-				} else {
-					was_line = false;
-					writeln!(out, "{stmt}");
-				}
-			}
-			writeln!(out);
+			// for stmt in &stmts {
+			// 	if !was_line {
+			// 		write!(out, "  ");
+			// 	}
+			// 	if let ingert::nest::Stmt::Line(_) = stmt {
+			// 		was_line = true;
+			// 		write!(out, "{stmt} ");
+			// 	} else {
+			// 		was_line = false;
+			// 		writeln!(out, "{stmt}");
+			// 	}
+			// }
+			// writeln!(out);
 
 			let f = ingert::decompile::decompile(f.args.len(), &stmts).unwrap();
 			struct Block<'a>(&'a [ingert::decompile::Stmt]);
