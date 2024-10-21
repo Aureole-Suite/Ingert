@@ -266,9 +266,9 @@ fn expr(stack: usize, e: &nest::Expr<crate::scp::StackSlot>) -> Result<Expr> {
 		nest::Expr::Ref(v) => Expr::Ref(stack_slot(stack, v)?),
 		nest::Expr::Call(call, args) => {
 			let args = match call {
-				CallKind::System(..) => do_args(stack, args, 0..args.len())?,
-				CallKind::Func(..) => do_args(stack + 2, args, 0..args.len())?,
-				CallKind::Become(..) => do_args(stack, args, (0..args.len()).rev())?,
+				CallKind::System(..) => do_args(stack, args, (0..args.len()).rev())?,
+				CallKind::Func(a, _) => do_args(stack + if a.is_empty() { 2 } else { 5 }, args, (0..args.len()).rev())?,
+				CallKind::Become(..) => do_args(stack, args, 0..args.len())?,
 			};
 			Expr::Call(call.clone(), args)
 		}
