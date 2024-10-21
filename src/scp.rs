@@ -37,6 +37,11 @@ pub enum ScpError {
 	BadDefaults,
 	#[snafu(display("invalid {what} index {index}"))]
 	Id { what: &'static str, index: usize },
+	#[snafu(display("invalid call argument {value:?} with kind {kind}"))]
+	BadCallArg {
+		value: Value,
+		kind: u32,
+	},
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -58,7 +63,7 @@ pub struct Function {
 	pub a0: u8,
 	pub a1: u8,
 	pub args: Vec<Arg>,
-	pub called: Vec<(i32, u16, Vec<TaggedValue>)>,
+	pub called: Vec<(i32, u16, Vec<CallArg>)>,
 	pub name: String,
 	pub index: u32,
 	pub code: Vec<(Label, Op)>,
@@ -125,14 +130,20 @@ impl std::fmt::Debug for Value {
 }
 
 #[derive(Clone, PartialEq)]
-pub struct TaggedValue(Value, u32);
+pub enum CallArg {
+	Value(Value),
+	Call,
+	Var,
+	Expr,
+}
 
-impl std::fmt::Debug for TaggedValue {
+impl std::fmt::Debug for CallArg {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		if self.1 == 0 {
-			self.0.fmt(f)
-		} else {
-			write!(f, "{:?}:{}", self.0, self.1)
+		match self {
+			CallArg::Value(v) => v.fmt(f),
+			CallArg::Call => f.debug_tuple("Call").finish(),
+			CallArg::Var => f.debug_tuple("Var").finish(),
+			CallArg::Expr => f.debug_tuple("Expr").finish(),
 		}
 	}
 }
@@ -194,7 +205,7 @@ fn parse_functions(f: &mut Reader<'_>, n_entries: u32) -> Result<Vec<Function>, 
 			let y = f.u16()?;
 			let z = f.u16()? as usize;
 			let w = f.u32()? as usize;
-			let z = multi(&mut f.at(w)?, z, tagged_value)?;
+			let z = multi(&mut f.at(w)?, z, call_arg)?;
 			Ok((x, y, z))
 		})?;
 		entries.push(Function {
@@ -280,8 +291,15 @@ fn string_value(f: &mut Reader) -> Result<String, ScpError> {
 	}
 }
 
-fn tagged_value(f: &mut Reader) -> Result<TaggedValue, ScpError> {
-	Ok(TaggedValue(value(f)?, f.u32()?))
+fn call_arg(f: &mut Reader) -> Result<CallArg, ScpError> {
+	const V: Value = Value::Uint(0);
+	match (value(f)?, f.u32()?) {
+		(v, 0) => Ok(CallArg::Value(v)),
+		(V, 1) => Ok(CallArg::Call),
+		(V, 2) => Ok(CallArg::Var),
+		(V, 3) => Ok(CallArg::Expr),
+		(value, kind) => scp::BadCallArg { value, kind }.fail(),
+	}
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
