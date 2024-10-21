@@ -3,9 +3,10 @@ use std::collections::{HashSet, VecDeque};
 use super::scp;
 use scp::{Label, Op, Scp, StackSlot};
 pub use scp::{Value, Binop, Unop};
+use snafu::OptionExt as _;
 
 #[derive(Debug, Clone, PartialEq)]
-enum Stmt {
+pub enum Stmt {
 	Return(Option<Expr<StackSlot>>),
 	Expr(Expr<StackSlot>),
 	Set(Lvalue<StackSlot>, Expr<StackSlot>),
@@ -51,6 +52,21 @@ pub enum CallKind {
 	Become(String, String),
 }
 
+#[derive(Debug, snafu::Snafu)]
+#[snafu(module(e), context(suffix(false)))]
+pub enum Error {
+	#[snafu(display("unexpected {op:?} when parsing {what}"))]
+	Unexpected { op: Op, what: &'static str },
+	#[snafu(display("expected {expected:?}, got {got:?}"))]
+	Expected { expected: Op, got: Op },
+	#[snafu(display("unexpected end of code"))]
+	End,
+	#[snafu(display("missing label {label:?}"))]
+	MissingLabel { label: Label },
+}
+
+type Result<T, E = Error> = std::result::Result<T, E>;
+
 macro_rules! pat {
 	($($pat:pat $(if $cond:expr)? => $expr:expr),*) => {
 		|v| match v {
@@ -60,9 +76,16 @@ macro_rules! pat {
 	}
 }
 
-pub fn decompile(out: &mut super::Write, scp: &Scp) {
+#[derive(Debug)]
+pub struct NestedScp {
+	pub functions: Vec<(scp::Function, Vec<Stmt>)>,
+}
+
+pub fn decompile(scp: &Scp) -> Result<NestedScp> {
 	let mut functions = scp.functions.iter().collect::<Vec<_>>();
 	functions.sort_by_key(|f| f.start);
+
+	let mut out = Vec::new();
 
 	let mut start = 0;
 	let ends = functions
@@ -76,7 +99,7 @@ pub fn decompile(out: &mut super::Write, scp: &Scp) {
 		let length = if end == scp.code_end {
 			code.len()
 		} else {
-			code.binary_search_by_key(&end, |(l, _)| *l).unwrap()
+			code.binary_search_by_key(&end, |(l, _)| *l).ok().context(e::MissingLabel { label: end }).unwrap()
 		};
 		let code = &code[..length];
 		start += length;
@@ -94,33 +117,17 @@ pub fn decompile(out: &mut super::Write, scp: &Scp) {
 			index: code.len(),
 		};
 
-		writeln!(out, "function {f}");
-
 		let mut lines = VecDeque::new();
-		ctx.decompile(|l| lines.push_front(l));
+		ctx.decompile(|l| lines.push_front(l))?;
 
-
-		// for (pos, op) in code {
-		// 	writeln!(out, "  {pos:?}: {op:?}");
-		// }
-		// writeln!(out);
-
-		for line in lines.iter() {
-			writeln!(out, "  {line:?}");
+		if let Some(label) = ctx.labels.into_iter().next() {
+			return e::MissingLabel { label }.fail();
 		}
-		writeln!(out);
 
-		if ctx.index != 0 {
-			println!("{f}");
-			for (pos, line) in code {
-				println!("  {pos:?}: {line:?}");
-			}
-			println!();
-			for line in lines.iter() {
-				println!("  {line:?}");
-			}
-		}
+		out.push(((*f).clone(), Vec::from(lines)));
 	}
+
+	Ok(NestedScp { functions: out })
 }
 
 struct Ctx<'a> {
@@ -145,44 +152,44 @@ impl<'a> Ctx<'a> {
 		self
 	}
 
-	fn next_if<T>(&mut self, pat: impl Fn(&'a Op) -> Option<T>) -> Option<T> {
+	fn next_if<T>(&mut self, pat: impl Fn(&'a Op) -> Option<T>) -> Result<Option<T>> {
 		if self.index == 0 {
-			return None;
+			return e::End.fail();
 		}
 		if let Some(v) = pat(&self.code[self.index - 1].1) {
 			self.index -= 1;
-			Some(v)
+			Ok(Some(v))
 		} else {
-			None
+			Ok(None)
 		}
 	}
 
-	fn next(&mut self) -> Option<&'a Op> {
-		self.next_if(Some)
+	fn next(&mut self) -> Result<&'a Op> {
+		self.next_if(Some).map(Option::unwrap)
 	}
 
-	fn expect(&mut self, op: &Op) -> Option<()> {
+	fn expect(&mut self, op: &Op) -> Result<()> {
 		let next = self.next()?;
 		if next != op {
-			tracing::info!("expected {:?}, got {:?}", op, next);
-			return None;
+			return e::Expected { expected: op.clone(), got: next.clone() }.fail();
 		}
-		Some(())
+		Ok(())
 	}
 
-	fn decompile(&mut self, mut l: impl FnMut(Stmt)) {
+	fn decompile(&mut self, mut l: impl FnMut(Stmt)) -> Result<()> {
 		while self.index > 0 {
-			self.line(&mut l);
+			self.line(&mut l)?;
 		}
+		Ok(())
 	}
 
 	#[tracing::instrument(skip(self, push), fields(pos = ?self.pos()))]
-	fn line(&mut self, mut push: impl FnMut(Stmt)) -> Option<()> {
+	fn line(&mut self, mut push: impl FnMut(Stmt)) -> Result<()> {
 		match self.next()? {
 			Op::Return => {
-				self.do_pop(&mut push)?;
+				self.do_pop(&mut push);
 				self.expect(&Op::SetTemp(0))?;
-				if let Some(()) = self.next_if(pat!(Op::Push(Value::Uint(0)) => ())) {
+				if let Some(()) = self.next_if(pat!(Op::Push(Value::Uint(0)) => ()))? {
 					push(Stmt::Return(None));
 				} else {
 					let expr = self.expr()?;
@@ -199,7 +206,10 @@ impl<'a> Ctx<'a> {
 			}
 			Op::If2(l) => {
 				self.expect(&Op::Binop(Binop::Eq))?;
-				let expr = self.next_if(pat!(Op::Push(Value::Int(n)) => *n))?;
+				let expr = match self.next()? {
+					Op::Push(Value::Int(n)) => *n,
+					op => return e::Unexpected { op: op.clone(), what: "switch case" }.fail(),
+				};
 				self.expect(&Op::GetTemp(0))?;
 				push(Stmt::Case(expr, *l));
 			}
@@ -213,11 +223,11 @@ impl<'a> Ctx<'a> {
 			}
 			Op::_23(a, b, c) => {
 				for i in 1..=*c {
-					self.expect(&Op::GetTemp(i));
+					self.expect(&Op::GetTemp(i))?;
 				}
-				self.do_pop(&mut push)?;
+				self.do_pop(&mut push);
 				for i in (1..=*c).rev() {
-					self.expect(&Op::SetTemp(i));
+					self.expect(&Op::SetTemp(i))?;
 				}
 				let mut args = Vec::new();
 				for _ in 0..*c {
@@ -231,7 +241,7 @@ impl<'a> Ctx<'a> {
 			Op::Push(Value::Uint(0)) => {
 				push(Stmt::PushVar);
 			}
-			Op::Pop(..) => self.rewind().do_pop(&mut push)?,
+			Op::Pop(..) => self.rewind().do_pop(&mut push),
 			Op::SetVar(n) => {
 				let expr = self.expr()?;
 				push(Stmt::Set(Lvalue::Stack(*n), expr));
@@ -252,27 +262,25 @@ impl<'a> Ctx<'a> {
 			}
 			op => {
 				self.rewind();
-				tracing::info!("unexpected {:?}", op);
-				return None
+				return e::Unexpected { op: op.clone(), what: "statement" }.fail();
 			}
 		}
 		if self.labels.remove(&self.pos()) {
 			push(Stmt::Label(self.pos()));
 		}
-		Some(())
+		Ok(())
 	}
 
-	fn do_pop(&mut self, mut push: impl FnMut(Stmt)) -> Option<()> {
-		if let Some(pop) = self.next_if(pat!(Op::Pop(n) => *n)) {
+	fn do_pop(&mut self, mut push: impl FnMut(Stmt)) {
+		if let Some(pop) = self.next_if(pat!(Op::Pop(n) => *n)).ok().flatten() {
 			for _ in 0..pop/4 {
 				push(Stmt::PopVar);
 			}
 		}
-		Some(())
 	}
 
 	#[tracing::instrument(skip(self), fields(pos = ?self.pos()))]
-	fn expr(&mut self) -> Option<Expr<StackSlot>> {
+	fn expr(&mut self) -> Result<Expr<StackSlot>> {
 		let expr = match self.next()? {
 			Op::Push(value) => Expr::Value(value.clone()),
 			Op::PushRef(n) => Expr::Ref(*n),
@@ -287,20 +295,19 @@ impl<'a> Ctx<'a> {
 			Op::GetTemp(0) => self.call()?,
 			op => {
 				self.rewind();
-				tracing::info!("unexpected {:?}", op);
-				return None
+				return e::Unexpected { op: op.clone(), what: "expression" }.fail();
 			}
 		};
-		Some(self.maybe_wrap_line(expr))
+		Ok(self.maybe_wrap_line(expr))
 	}
 
 	#[tracing::instrument(skip(self), fields(pos = ?self.pos()))]
-	fn call(&mut self) -> Option<Expr<StackSlot>> {
+	fn call(&mut self) -> Result<Expr<StackSlot>> {
 		let pos = self.pos();
 		let mut args = Vec::new();
 		let kind = match self.next()? {
 			Op::Call(n) => {
-				while self.next_if(pat!(Op::Push(Value::Uint(n)) if *n == pos.0 => ())).is_none() {
+				while self.next_if(pat!(Op::Push(Value::Uint(n)) if *n == pos.0 => ()))?.is_none() {
 					args.push(self.expr()?);
 				}
 				self.expect(&Op::Push(Value::Uint(self.function.index)))?;
@@ -321,18 +328,17 @@ impl<'a> Ctx<'a> {
 			}
 			op => {
 				self.rewind();
-				tracing::info!("unexpected {:?}", op);
-				return None
+				return e::Unexpected { op: op.clone(), what: "call" }.fail();
 			}
 		};
-		Some(Expr::Call(kind, args))
+		Ok(Expr::Call(kind, args))
 	}
 
 	fn maybe_line(&mut self) -> Option<u16> {
 		if self.labels.contains(&self.pos()) {
 			None
 		} else {
-			self.next_if(pat!(Op::Line(n) => *n))
+			self.next_if(pat!(Op::Line(n) => *n)).ok().flatten()
 		}
 	}
 

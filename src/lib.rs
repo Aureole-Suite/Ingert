@@ -314,7 +314,7 @@ fn stmts(out: &mut Write, mut ctx: Ctx<'_>) {
 #[repr(transparent)]
 pub struct Write(pub Box<dyn std::io::Write>);
 impl Write {
-	fn write_fmt(&mut self, args: std::fmt::Arguments<'_>) {
+	pub fn write_fmt(&mut self, args: std::fmt::Arguments<'_>) {
 		self.0.write_fmt(args).unwrap()
 	}
 }
