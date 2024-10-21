@@ -266,7 +266,7 @@ fn block(mut ctx: Ctx) -> Result<Vec<Stmt>> {
 			}
 			NStmt::PopVar => {}, // only used at end of block
 			NStmt::Line(l) => stmts.push(Stmt::Line(*l)),
-			NStmt::Debug(args) => stmts.push(Stmt::Debug(do_args(ctx.stack, args, 0..args.len())?)),
+			NStmt::Debug(args) => stmts.push(Stmt::Debug(do_args(ctx.stack, args)?)),
 		}
 	}
 	Ok(stmts)
@@ -278,12 +278,12 @@ fn expr(stack: usize, e: &nest::Expr<crate::scp::StackSlot>) -> Result<Expr> {
 		nest::Expr::Var(v) => Expr::Var(lvalue(stack, v)?),
 		nest::Expr::Ref(v) => Expr::Ref(stack_slot(stack, v)?),
 		nest::Expr::Call(call, args) => {
-			let args = match call {
-				CallKind::System(..) => do_args(stack, args, (0..args.len()).rev())?,
-				CallKind::Func(a, _) => do_args(stack + if a.is_empty() { 2 } else { 5 }, args, (0..args.len()).rev())?,
-				CallKind::Become(..) => do_args(stack, args, 0..args.len())?,
+			let add = match call {
+				CallKind::System(..) => 0,
+				CallKind::Func(a, _) => if a.is_empty() { 2 } else { 5 },
+				CallKind::Become(..) => 0,
 			};
-			Expr::Call(call.clone(), args)
+			Expr::Call(call.clone(), do_args(stack + add, args)?)
 		}
 		nest::Expr::Unop(o, a) => Expr::Unop(*o, expr(stack, a)?.into()),
 		nest::Expr::Binop(o, a, b) => Expr::Binop(*o, expr(stack, a)?.into(), expr(stack + 1, b)?.into()),
@@ -291,9 +291,9 @@ fn expr(stack: usize, e: &nest::Expr<crate::scp::StackSlot>) -> Result<Expr> {
 	})
 }
 
-fn do_args(stack: usize, args: &[nest::Expr<crate::scp::StackSlot>], plus: impl IntoIterator<Item=usize>) -> Result<Vec<Expr>> {
+fn do_args(stack: usize, args: &[nest::Expr<crate::scp::StackSlot>]) -> Result<Vec<Expr>> {
 	let mut out = Vec::with_capacity(args.len());
-	for (a, plus) in args.iter().zip(plus) {
+	for (a, plus) in args.iter().zip((0..args.len()).rev()) {
 		out.push(expr(stack + plus, a)?);
 	}
 	Ok(out)
