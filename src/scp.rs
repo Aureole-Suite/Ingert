@@ -42,6 +42,8 @@ pub enum ScpError {
 		value: Value,
 		kind: u32,
 	},
+	#[snafu(display("bad function flags on function {name}: {flags:04X}"))]
+	BadFlags { name: String, flags: u16 },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -60,8 +62,7 @@ pub struct Arg {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Function {
 	pub start: Label,
-	pub a0: u8,
-	pub a1: u8,
+	pub is_prelude: bool,
 	pub args: Vec<Arg>,
 	pub called: Vec<Call>,
 	pub name: String,
@@ -88,8 +89,8 @@ impl std::fmt::Display for Arg {
 
 impl std::fmt::Display for Function {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		if self.a0 == 1 {
-			write!(f, "thunk ")?;
+		if self.is_prelude {
+			write!(f, "prelude ")?;
 		}
 		write!(f, "function {}(", self.name)?;
 		for (i, arg) in self.args.iter().enumerate() {
@@ -168,8 +169,7 @@ fn parse_functions(f: &mut Reader<'_>, n_entries: u32) -> Result<Vec<Function>, 
 	for index in 0..n_entries {
 		let start = Label(f.u32()?);
 		let argc = f.u8()? as usize;
-		let a0 = f.u8()?;
-		let a1 = f.u8()?;
+		let flags = f.u16()?;
 		let a2c = f.u8()? as usize;
 		let a2p = f.u32()? as usize;
 		let argp = f.u32()? as usize;
@@ -177,6 +177,9 @@ fn parse_functions(f: &mut Reader<'_>, n_entries: u32) -> Result<Vec<Function>, 
 		let calledp = f.u32()? as usize;
 		let checksum = f.u32()?;
 		let name = string_value(f)?;
+
+		let is_prelude = flags & 1 != 0;
+		snafu::ensure!(flags & !0x0001 == 0, scp::BadFlags { name: &name, flags });
 
 		let name_checksum = !crc32fast::hash(name.as_bytes());
 		snafu::ensure!(checksum == name_checksum, scp::Checksum {
@@ -211,8 +214,7 @@ fn parse_functions(f: &mut Reader<'_>, n_entries: u32) -> Result<Vec<Function>, 
 
 		entries.push(Function {
 			start,
-			a0,
-			a1,
+			is_prelude,
 			args,
 			called: Vec::new(),
 			name,
