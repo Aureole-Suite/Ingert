@@ -250,6 +250,10 @@ impl<'a> Ctx<'a> {
 				let expr = self.expr()?;
 				push(NStmt::Set(Lvalue::Global(*n), expr));
 			}
+			Op::SetRef(n) => {
+				let expr = self.expr()?;
+				push(NStmt::Set(Lvalue::Deref(*n), expr));
+			}
 			Op::Debug(n) => {
 				let mut args = Vec::new();
 				for _ in 0..*n {
@@ -286,6 +290,7 @@ impl<'a> Ctx<'a> {
 			Op::PushRef(n) => Expr::Ref(*n),
 			Op::GetVar(n) => Expr::Var(Lvalue::Stack(*n)),
 			Op::GetGlobal(n) => Expr::Var(Lvalue::Global(*n)),
+			Op::GetRef(n) => Expr::Var(Lvalue::Deref(*n)),
 			Op::Binop(op) => {
 				let b = self.expr()?;
 				let a = self.expr()?;
