@@ -1,6 +1,12 @@
 use std::{cell::Cell, collections::HashMap};
 
 use crate::nest::{self, NStmt, Label};
+pub use nest::CallKind;
+use snafu::OptionExt as _;
+
+use crate::expr;
+pub type Expr = expr::Expr<StackVar>;
+pub type Lvalue = expr::Lvalue<StackVar>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct StackVar(pub i32);
@@ -9,11 +15,6 @@ pub struct StackVar(pub i32);
 // 	Stack(u32),
 // 	Arg(u32),
 // }
-
-pub use nest::CallKind;
-use snafu::OptionExt as _;
-pub type Expr = nest::Expr<StackVar>;
-pub type Lvalue = nest::Lvalue<StackVar>;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Stmt {
@@ -57,16 +58,9 @@ mod display {
 				Stmt::Set(v, e) => writeln!(f, "{i}{v} = {e}"),
 				Stmt::Line(l) => writeln!(f, "{i}line {l}"),
 				Stmt::Debug(args) => {
-					write!(f, "{i}debug(")?;
-					let mut it = args.iter();
-					if let Some(a) = it.next() {
-						a.fmt(f)?;
-						for a in it {
-							write!(f, ", ")?;
-							a.fmt(f)?;
-						}
-					}
-					writeln!(f, ")")
+					write!(f, "{i}debug")?;
+					expr::write_args(f, args)?;
+					writeln!(f)
 				}
 				Stmt::If(e, yes, no) => {
 					writeln!(f, "{i}if {e} {{")?;
@@ -260,7 +254,7 @@ fn block(mut ctx: Ctx) -> Result<Vec<Stmt>> {
 			NStmt::Goto(l) if Some(*l) == ctx.cont => stmts.push(Stmt::Continue),
 			NStmt::Goto(l) => return JumpSnafu { label: *l }.fail(),
 			NStmt::PushVar => {
-				const LAST: crate::scp::StackSlot = crate::scp::StackSlot(-1);
+				const LAST: nest::StackSlot = nest::StackSlot(-1);
 				ctx.stack += 1;
 				let var = stack_slot(ctx.stack, &LAST)?;
 				if ctx.pos < ctx.end
@@ -318,7 +312,7 @@ fn parse_switch(ctx: &mut Ctx, stmt: &NStmt) -> Result<Vec<(Option<i32>, Vec<Stm
 	Ok(cases2)
 }
 
-fn expr(stack: usize, e: &nest::Expr<crate::scp::StackSlot>) -> Result<Expr> {
+fn expr(stack: usize, e: &nest::Expr) -> Result<Expr> {
 	Ok(match e {
 		nest::Expr::Value(v) => Expr::Value(v.clone()),
 		nest::Expr::Var(v) => Expr::Var(lvalue(stack, v)?),
@@ -337,7 +331,7 @@ fn expr(stack: usize, e: &nest::Expr<crate::scp::StackSlot>) -> Result<Expr> {
 	})
 }
 
-fn do_args(stack: usize, args: &[nest::Expr<crate::scp::StackSlot>]) -> Result<Vec<Expr>> {
+fn do_args(stack: usize, args: &[nest::Expr]) -> Result<Vec<Expr>> {
 	let mut out = Vec::with_capacity(args.len());
 	for (a, plus) in args.iter().zip((0..args.len()).rev()) {
 		out.push(expr(stack + plus, a)?);
@@ -345,7 +339,7 @@ fn do_args(stack: usize, args: &[nest::Expr<crate::scp::StackSlot>]) -> Result<V
 	Ok(out)
 }
 
-fn lvalue(stack: usize, l: &nest::Lvalue<crate::scp::StackSlot>) -> Result<Lvalue> {
+fn lvalue(stack: usize, l: &nest::Lvalue) -> Result<Lvalue> {
 	Ok(match l {
 		nest::Lvalue::Stack(s) => Lvalue::Stack(stack_slot(stack, s)?),
 		nest::Lvalue::Deref(s) => Lvalue::Deref(stack_slot(stack, s)?),
@@ -353,7 +347,7 @@ fn lvalue(stack: usize, l: &nest::Lvalue<crate::scp::StackSlot>) -> Result<Lvalu
 	})
 }
 
-fn stack_slot(stack: usize, v: &crate::scp::StackSlot) -> Result<StackVar> {
+fn stack_slot(stack: usize, v: &nest::StackSlot) -> Result<StackVar> {
 	Ok(StackVar(v.0 + stack as i32))
 }
 

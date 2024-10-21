@@ -1,48 +1,26 @@
 use std::collections::{HashSet, VecDeque};
 
-use super::scp;
-use scp::{Op, StackSlot};
-pub use scp::{Label, Value, Binop, Unop};
+use crate::scp::{self, Op};
+pub use scp::{Label, StackSlot, Value, Binop, Unop};
+
+pub type Expr = crate::expr::Expr<StackSlot>;
+pub type Lvalue = crate::expr::Lvalue<StackSlot>;
+pub use crate::expr::CallKind;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum NStmt {
-	Return(Option<Expr<StackSlot>>),
-	Expr(Expr<StackSlot>),
-	Set(Lvalue<StackSlot>, Expr<StackSlot>),
+	Return(Option<Expr>),
+	Expr(Expr),
+	Set(Lvalue, Expr),
 	Label(Label),
-	If(Expr<StackSlot>, Label),
-	Switch(Expr<StackSlot>),
+	If(Expr, Label),
+	Switch(Expr),
 	Case(i32, Label),
 	Goto(Label),
 	PushVar,
 	PopVar,
 	Line(u16),
-	Debug(Vec<Expr<StackSlot>>),
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum Expr<T> {
-	Value(Value),
-	Var(Lvalue<T>),
-	Ref(T),
-	Call(CallKind, Vec<Expr<T>>),
-	Unop(Unop, Box<Expr<T>>),
-	Binop(Binop, Box<Expr<T>>, Box<Expr<T>>),
-	Line(u16, Box<Expr<T>>),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum Lvalue<T> {
-	Stack(T),
-	Deref(T),
-	Global(String),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum CallKind {
-	System(u8, u8),
-	Func(String, String),
-	Tail(String, String),
+	Debug(Vec<Expr>),
 }
 
 #[derive(Debug, snafu::Snafu)]
@@ -74,16 +52,6 @@ mod display {
 		}
 	}
 
-	impl Display for CallKind {
-		fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-			match self {
-				CallKind::System(a, b) => write!(f, "system[{a},{b}]"),
-				CallKind::Func(a, b) => write!(f, "{a}.{b}"),
-				CallKind::Tail(a, b) => write!(f, "tail {a}.{b}"),
-			}
-		}
-	}
-
 	impl Display for NStmt {
 		fn fmt(&self, f: &mut Formatter<'_>) -> Result {
 			match self {
@@ -101,101 +69,11 @@ mod display {
 				NStmt::Line(l) => write!(f, "line {l}")?,
 				NStmt::Debug(args) => {
 					write!(f, "debug")?;
-					write_args(f, args)?;
+					crate::expr::write_args(f, args)?;
 				}
 			}
 			Ok(())
 		}
-	}
-
-	impl<T: Display> Display for Expr<T> {
-		fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-			self.display(f, 0)
-		}
-	}
-
-	impl<T: Display> Display for Lvalue<T> {
-		fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-			match self {
-				Lvalue::Stack(s) => write!(f, "{s}"),
-				Lvalue::Deref(v) => write!(f, "*{v}"),
-				Lvalue::Global(n) => write!(f, ":{n}"),
-			}
-		}
-	}
-
-	impl<T: Display> Expr<T> {
-		fn display(&self, f: &mut Formatter, prio: u32) -> Result {
-			match self {
-				Expr::Value(v) => write!(f, "{v:?}")?,
-				Expr::Var(v) => write!(f, "{v}")?,
-				Expr::Ref(v) => write!(f, "&{v}")?,
-				Expr::Call(c, args) => {
-					write!(f, "{c}")?;
-					write_args(f, args)?;
-				}
-				Expr::Unop(o, a) => {
-					write!(f, "{}", o)?;
-					a.display(f, 10)?;
-				}
-				Expr::Binop(o, a, b) => {
-					let p = op_prio(*o);
-					if p < prio {
-						write!(f, "(")?;
-					}
-					a.display(f, p)?;
-					write!(f, " {o} ")?;
-					b.display(f, p)?;
-					if p < prio {
-						write!(f, ")")?;
-					}
-				}
-				Expr::Line(l, e) => {
-					if let Expr::Binop(o, a, b) = &**e {
-						let p = op_prio(*o);
-						if p < prio {
-							write!(f, "(")?;
-						}
-						a.display(f, p)?;
-						write!(f, " {l}@{o} ")?;
-						b.display(f, p)?;
-						if p < prio {
-							write!(f, ")")?;
-						}
-					} else {
-						write!(f, "{l}@")?;
-						e.display(f, prio)?;
-					}
-				}
-			}
-			Ok(())
-		}
-	}
-
-	fn op_prio(op: Binop) -> u32 {
-		use Binop::*;
-		match op {
-			Mul | Div | Mod => 7,
-			Add | Sub => 6,
-			BitAnd => 5,
-			BitOr => 4,
-			Eq | Ne | Gt | Ge | Lt | Le => 3,
-			BoolAnd => 2,
-			BoolOr => 1,
-		}
-	}
-
-	fn write_args<T: Display>(f: &mut Formatter, args: &[Expr<T>]) -> Result {
-		f.write_str("(")?;
-		let mut it = args.iter();
-		if let Some(a) = it.next() {
-			a.display(f, 0)?;
-			for a in it {
-				f.write_str(", ")?;
-				a.display(f, 0)?;
-			}
-		}
-		f.write_str(")")
 	}
 }
 
@@ -388,7 +266,7 @@ impl<'a> Ctx<'a> {
 	}
 
 	#[tracing::instrument(skip(self), fields(pos = ?self.pos()))]
-	fn expr(&mut self) -> Result<Expr<StackSlot>> {
+	fn expr(&mut self) -> Result<Expr> {
 		let expr = match self.next()? {
 			Op::Push(value) => Expr::Value(value.clone()),
 			Op::PushRef(n) => Expr::Ref(*n),
@@ -413,7 +291,7 @@ impl<'a> Ctx<'a> {
 		Ok(expr)
 	}
 
-	fn expr_line(&mut self) -> Result<Expr<StackSlot>> {
+	fn expr_line(&mut self) -> Result<Expr> {
 		let expr = self.expr()?;
 		if let Some(line) = self.maybe_line() {
 			Ok(Expr::Line(line, Box::new(expr)))
@@ -423,7 +301,7 @@ impl<'a> Ctx<'a> {
 	}
 
 	#[tracing::instrument(skip(self), fields(pos = ?self.pos()))]
-	fn call(&mut self) -> Result<Expr<StackSlot>> {
+	fn call(&mut self) -> Result<Expr> {
 		let pos = self.pos();
 		let mut args = Vec::new();
 		let kind = match self.next()? {

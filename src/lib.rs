@@ -5,6 +5,7 @@ mod scp;
 pub use scp::{Value, Binop, Unop};
 pub use scp::parse_scp;
 
+pub mod expr;
 pub mod nest;
 pub mod decompile;
 
