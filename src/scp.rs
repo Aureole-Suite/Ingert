@@ -1,5 +1,5 @@
 use gospel::read::{Le as _, Reader};
-use std::{cell::Cell, collections::BTreeSet};
+use std::{cell::Cell, cmp::Reverse, collections::BTreeSet};
 use snafu::{OptionExt as _, ResultExt as _};
 
 #[derive(Debug, snafu::Snafu)]
@@ -61,6 +61,8 @@ pub struct Function {
 	pub called: Vec<(i32, u16, Vec<TaggedValue>)>,
 	pub name: String,
 	pub index: u32,
+	pub code: Vec<(Label, Op)>,
+	pub code_end: Label,
 }
 
 impl std::fmt::Display for Arg {
@@ -164,6 +166,8 @@ fn parse_functions(f: &mut Reader<'_>, n_entries: u32) -> Result<Vec<Function>, 
 			called,
 			name,
 			index,
+			code: Vec::new(),
+			code_end: Label(0),
 		});
 	}
 	Ok(entries)
@@ -394,8 +398,6 @@ impl std::fmt::Display for Unop {
 pub struct Scp {
 	pub functions: Vec<Function>,
 	pub extras: Vec<TaggedValue>,
-	pub code: Vec<(Label, Op)>,
-	pub code_end: Label,
 }
 
 pub fn parse_scp(data: &[u8]) -> Result<Scp, ScpError> {
@@ -408,7 +410,7 @@ pub fn parse_scp(data: &[u8]) -> Result<Scp, ScpError> {
 	let n3 = f.u32()?;
 	f.check_u32(0)?;
 
-	let functions = parse_functions(&mut f, n_entries)?;
+	let mut functions = parse_functions(&mut f, n_entries)?;
 	f.seek(code_start as usize)?;
 	let extras = multi(&mut f, n3 as usize, tagged_value)?;
 
@@ -480,11 +482,19 @@ pub fn parse_scp(data: &[u8]) -> Result<Scp, ScpError> {
 		}
 	}
 
+	let mut sorted_functions = functions.iter_mut().collect::<Vec<_>>();
+	sorted_functions.sort_by_key(|f| Reverse(f.start));
+	let mut end = Label(f.pos() as u32);
+	for func in sorted_functions {
+		let pos = ops.binary_search_by_key(&func.start, |(l, _)| *l).unwrap();
+		func.code = ops.split_off(pos);
+		func.code_end = end;
+		end = func.start;
+	}
+
 	Ok(Scp {
 		functions,
 		extras,
-		code: ops,
-		code_end: Label(f.pos() as u32)
 	})
 }
 

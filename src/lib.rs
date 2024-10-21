@@ -224,6 +224,7 @@ impl<'a> Ctx<'a> {
 	}
 }
 
+/*
 pub fn stuff(out: &mut Write, scp: &Scp) {
 	let mut ctx = Ctx {
 		functions: &scp.functions,
@@ -265,6 +266,7 @@ pub fn stuff(out: &mut Write, scp: &Scp) {
 		stmts(out, sub);
 	}
 }
+*/
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct Indent(usize);

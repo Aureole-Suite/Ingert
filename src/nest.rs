@@ -3,7 +3,6 @@ use std::collections::{HashSet, VecDeque};
 use super::scp;
 use scp::{Label, Op, Scp, StackSlot};
 pub use scp::{Value, Binop, Unop};
-use snafu::OptionExt as _;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum NStmt {
@@ -30,12 +29,6 @@ pub enum Expr<T> {
 	Unop(Unop, Box<Expr<T>>),
 	Binop(Binop, Box<Expr<T>>, Box<Expr<T>>),
 	Line(u16, Box<Expr<T>>),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum StackVar {
-	Stack(u32),
-	Arg(u32),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -87,24 +80,10 @@ pub fn decompile(scp: &Scp) -> Result<NestedScp> {
 
 	let mut out = Vec::new();
 
-	let mut start = 0;
-	let ends = functions
-		.iter()
-		.skip(1)
-		.map(|f| f.start)
-		.chain(Some(scp.code_end));
-	for (f, end) in std::iter::zip(&functions, ends) {
+	for f in &functions {
 		let _span = tracing::info_span!("function", name = f.name.clone()).entered();
-		let code = &scp.code[start..];
-		let length = if end == scp.code_end {
-			code.len()
-		} else {
-			code.binary_search_by_key(&end, |(l, _)| *l).ok().context(e::MissingLabel { label: end }).unwrap()
-		};
-		let code = &code[..length];
-		start += length;
 
-		let labels = code.iter()
+		let labels = f.code.iter()
 			.map(|a| &a.1)
 			.filter_map(pat!(Op::If(l) | Op::If2(l) | Op::Goto(l) => *l))
 			.collect();
@@ -112,9 +91,9 @@ pub fn decompile(scp: &Scp) -> Result<NestedScp> {
 		let mut ctx = Ctx {
 			function: f,
 			labels,
-			code,
-			end,
-			index: code.len(),
+			code: &f.code,
+			end: f.code_end,
+			index: f.code.len(),
 		};
 
 		let mut lines = VecDeque::new();
