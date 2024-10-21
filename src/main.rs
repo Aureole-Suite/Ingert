@@ -70,10 +70,13 @@ fn process_file(file: &PathBuf) {
 			writeln!(out);
 
 			let f = ingert::decompile::decompile(f.args.len(), &stmts).unwrap();
-			for stmt in f {
-				write!(out, "{stmt}");
+			struct Block<'a>(&'a [ingert::decompile::Stmt]);
+			impl std::fmt::Display for Block<'_> {
+				fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+					ingert::decompile::Stmt::display_block(self.0, f, 0)
+				}
 			}
-			writeln!(out);
+			writeln!(out, "{}", Block(&f));
 		}
 	});
 }

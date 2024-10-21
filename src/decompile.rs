@@ -49,6 +49,13 @@ mod display {
 	}
 
 	impl Stmt {
+		pub fn display_block(stmts: &[Stmt], f: &mut Formatter, indent: usize) -> Result {
+			for stmt in stmts {
+				stmt.display(f, indent)?;
+			}
+			Ok(())
+		}
+
 		pub fn display(&self, f: &mut Formatter, indent: usize) -> Result {
 			let i = "  ".repeat(indent);
 			write!(f, "{i}")?;
@@ -70,18 +77,14 @@ mod display {
 				}
 				Stmt::If(e, yes, no) => {
 					writeln!(f, "if {e} {{")?;
-					for stmt in yes {
-						stmt.display(f, indent + 1)?;
-					}
+					Self::display_block(yes, f, indent + 1)?;
 					if let Some(no) = no {
 						if let [s@Stmt::If(..)] = no.as_slice() {
 							write!(f, "{i}}} else ")?;
 							s.display(f, indent)?;
 						} else {
 							writeln!(f, "{i}}} else {{")?;
-							for stmt in no {
-								stmt.display(f, indent + 1)?;
-							}
+							Self::display_block(no, f, indent + 1)?;
 						}
 					}
 					writeln!(f, "{i}}}")?;
@@ -89,9 +92,7 @@ mod display {
 				}
 				Stmt::While(e, body) => {
 					writeln!(f, "while {e} {{")?;
-					for stmt in body {
-						stmt.display(f, indent + 1)?;
-					}
+					Self::display_block(body, f, indent + 1)?;
 					writeln!(f, "{i}}}")
 				}
 				Stmt::Switch(e, cases) => {
@@ -102,9 +103,7 @@ mod display {
 						} else {
 							writeln!(f, "{i}  default:")?;
 						}
-						for stmt in body {
-							stmt.display(f, indent + 2)?;
-						}
+						Self::display_block(body, f, indent + 2)?;
 					}
 					writeln!(f, "{i}}}")
 				}
