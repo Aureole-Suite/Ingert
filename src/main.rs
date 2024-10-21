@@ -54,7 +54,7 @@ fn process_file(file: &PathBuf) {
 			writeln!(out);
 			let f = ingert::nest::decompile(f).unwrap();
 			for stmt in f {
-				writeln!(out, "  {stmt:?}");
+				writeln!(out, "  {stmt}");
 			}
 			writeln!(out);
 		}

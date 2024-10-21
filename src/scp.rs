@@ -385,7 +385,7 @@ pub enum Op {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, strum::FromRepr)]
 pub enum Binop {
 	Add = 16,
-	Minus = 17,
+	Sub = 17,
 	Mul = 18,
 	Div = 19,
 	Mod = 20,
@@ -413,7 +413,7 @@ impl std::fmt::Display for Binop {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.write_str(match self {
 			Binop::Add => "+",
-			Binop::Minus => "-",
+			Binop::Sub => "-",
 			Binop::Mul => "*",
 			Binop::Div => "/",
 			Binop::Mod => "%",

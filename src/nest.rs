@@ -58,6 +58,147 @@ pub enum Error {
 	MissingLabel { label: Label },
 }
 
+mod display {
+	use super::*;
+	use std::fmt::{Display, Formatter, Result};
+
+	impl Display for Label {
+		fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+			std::fmt::Debug::fmt(self, f)
+		}
+	}
+
+	impl Display for StackSlot {
+		fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+			write!(f, "s[{}]", self.0)
+		}
+	}
+
+	impl Display for CallKind {
+		fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+			match self {
+				CallKind::System(a, b) => write!(f, "system[{},{}]", a, b),
+				CallKind::Func(a, b) => write!(f, "{}.{}", a, b),
+				CallKind::Become(a, b) => write!(f, "become {}.{}", a, b),
+			}
+		}
+	}
+
+	impl Display for NStmt {
+		fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+			match self {
+				NStmt::Return(None) => write!(f, "return")?,
+				NStmt::Return(Some(e)) => write!(f, "return {e}")?,
+				NStmt::Expr(e) => write!(f, "{e}")?,
+				NStmt::Set(v, e) => write!(f, "{v} = {e}")?,
+				NStmt::Label(l) => write!(f, "{l}:")?,
+				NStmt::If(e, l) => write!(f, "if {e} goto {l}")?,
+				NStmt::Switch(e) => write!(f, "switch {e}")?,
+				NStmt::Case(n, l) => write!(f, "case {n} goto {l}")?,
+				NStmt::Goto(l) => write!(f, "goto {l}")?,
+				NStmt::PushVar => write!(f, "push")?,
+				NStmt::PopVar => write!(f, "pop")?,
+				NStmt::Line(l) => write!(f, "line {l}")?,
+				NStmt::Debug(args) => {
+					write!(f, "debug")?;
+					write_args(f, args)?;
+				}
+			}
+			Ok(())
+		}
+	}
+
+	impl<T: Display> Display for Expr<T> {
+		fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+			self.display(f, 0)
+		}
+	}
+
+	impl<T: Display> Display for Lvalue<T> {
+		fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+			match self {
+				Lvalue::Stack(s) => write!(f, "{s}"),
+				Lvalue::Deref(v) => write!(f, "*{v}"),
+				Lvalue::Global(n) => write!(f, ":{n}"),
+			}
+		}
+	}
+
+	impl<T: Display> Expr<T> {
+		fn display(&self, f: &mut Formatter, prio: u32) -> Result {
+			match self {
+				Expr::Value(v) => write!(f, "{v:?}")?,
+				Expr::Var(v) => write!(f, "{v}")?,
+				Expr::Ref(v) => write!(f, "&{v}")?,
+				Expr::Call(c, args) => {
+					write!(f, "{c}")?;
+					write_args(f, args)?;
+				}
+				Expr::Unop(o, a) => {
+					write!(f, "{}", o)?;
+					a.display(f, 10)?;
+				}
+				Expr::Binop(o, a, b) => {
+					let p = op_prio(*o);
+					if p < prio {
+						write!(f, "(")?;
+					}
+					a.display(f, p)?;
+					write!(f, " {o} ")?;
+					b.display(f, p)?;
+					if p < prio {
+						write!(f, ")")?;
+					}
+				}
+				Expr::Line(l, e) => {
+					if let Expr::Binop(o, a, b) = &**e {
+						let p = op_prio(*o);
+						if p < prio {
+							write!(f, "(")?;
+						}
+						a.display(f, p)?;
+						write!(f, " {l}@{o} ")?;
+						b.display(f, p)?;
+						if p < prio {
+							write!(f, ")")?;
+						}
+					} else {
+						write!(f, "{l}@")?;
+						e.display(f, prio)?;
+					}
+				}
+			}
+			Ok(())
+		}
+	}
+
+	fn op_prio(op: Binop) -> u32 {
+		use Binop::*;
+		match op {
+			Mul | Div | Mod => 7,
+			Add | Sub => 6,
+			BitAnd => 5,
+			BitOr => 4,
+			Eq | Ne | Gt | Ge | Lt | Le => 3,
+			BoolAnd => 2,
+			BoolOr => 1,
+		}
+	}
+
+	fn write_args<T: Display>(f: &mut Formatter, args: &[Expr<T>]) -> Result {
+		f.write_str("(")?;
+		let mut it = args.iter();
+		if let Some(a) = it.next() {
+			a.display(f, 0)?;
+			for a in it {
+				f.write_str(", ")?;
+				a.display(f, 0)?;
+			}
+		}
+		f.write_str(")")
+	}
+}
+
 type Result<T, E = Error> = std::result::Result<T, E>;
 
 macro_rules! pat {
