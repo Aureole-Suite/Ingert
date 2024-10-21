@@ -119,10 +119,12 @@ mod display {
 
 #[derive(Debug, snafu::Snafu)]
 pub enum Error {
-	#[snafu(display("unknown label: {}", label))]
+	#[snafu(display("unknown label: {label}"))]
 	Label { label: Label },
-	#[snafu(display("unexpected stmt when parsing switch: {}", stmt))]
+	#[snafu(display("unexpected stmt when parsing switch: {stmt}"))]
 	Switch { stmt: NStmt },
+	#[snafu(display("Unexpected jump to {label}"))]
+	Jump { label: Label },
 }
 
 type Result<T, E = Error> = std::result::Result<T, E>;
@@ -254,7 +256,9 @@ fn block(mut ctx: Ctx) -> Result<Vec<Stmt>> {
 				stmts.push(Stmt::Switch(e, cases));
 			}
 			NStmt::Case(_, _) => return SwitchSnafu { stmt: stmt.clone() }.fail(),
-			NStmt::Goto(_) => todo!(),
+			NStmt::Goto(l) if Some(*l) == ctx.brk => stmts.push(Stmt::Break),
+			NStmt::Goto(l) if Some(*l) == ctx.cont => stmts.push(Stmt::Continue),
+			NStmt::Goto(l) => return JumpSnafu { label: *l }.fail(),
 			NStmt::PushVar => {
 				const LAST: crate::scp::StackSlot = crate::scp::StackSlot(-1);
 				ctx.stack += 1;
