@@ -41,7 +41,11 @@ fn process_file(file: &PathBuf) {
 		let mut functions = scp.functions.iter().collect::<Vec<_>>();
 		functions.sort_by_key(|f| f.start);
 		for f in &functions {
-			writeln!(out, "{:?}", f);
+			writeln!(out, "{}", f);
+			for c in &f.called {
+				writeln!(out, "  {c:?}");
+			}
+			writeln!(out);
 			let f = ingert::nest::decompile(f).unwrap();
 			for stmt in f {
 				writeln!(out, "  {stmt:?}");

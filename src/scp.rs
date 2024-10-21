@@ -98,6 +98,45 @@ impl std::fmt::Display for Function {
 	}
 }
 
+#[derive(Clone, PartialEq)]
+pub enum Value {
+	Uint(u32),
+	Int(i32),
+	Float(f32),
+	String(String),
+}
+
+
+impl std::fmt::Display for Value {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		std::fmt::Debug::fmt(self, f)
+	}
+}
+
+impl std::fmt::Debug for Value {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			Self::Uint(v) => write!(f, "{:#X}", v),
+			Self::Int(v) => write!(f, "{v}"),
+			Self::Float(v) => v.fmt(f),
+			Self::String(v) => v.fmt(f),
+		}
+	}
+}
+
+#[derive(Clone, PartialEq)]
+pub struct TaggedValue(Value, u32);
+
+impl std::fmt::Debug for TaggedValue {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		if self.1 == 0 {
+			self.0.fmt(f)
+		} else {
+			write!(f, "{:?}:{}", self.0, self.1)
+		}
+	}
+}
+
 fn multi<T>(
 	f: &mut Reader,
 	n: usize,
@@ -171,45 +210,6 @@ fn parse_functions(f: &mut Reader<'_>, n_entries: u32) -> Result<Vec<Function>, 
 		});
 	}
 	Ok(entries)
-}
-
-#[derive(Clone, PartialEq)]
-pub enum Value {
-	Uint(u32),
-	Int(i32),
-	Float(f32),
-	String(String),
-}
-
-
-impl std::fmt::Display for Value {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		std::fmt::Debug::fmt(self, f)
-	}
-}
-
-impl std::fmt::Debug for Value {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		match self {
-			Self::Uint(v) => write!(f, "{:#X}", v),
-			Self::Int(v) => write!(f, "{v}"),
-			Self::Float(v) => v.fmt(f),
-			Self::String(v) => v.fmt(f),
-		}
-	}
-}
-
-#[derive(Clone, PartialEq)]
-pub struct TaggedValue(Value, u32);
-
-impl std::fmt::Debug for TaggedValue {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		if self.1 == 0 {
-			self.0.fmt(f)
-		} else {
-			write!(f, "{:?}:{}", self.0, self.1)
-		}
-	}
 }
 
 fn f30(v: u32) -> f32 {
