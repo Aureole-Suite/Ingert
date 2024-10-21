@@ -329,7 +329,6 @@ impl<'a> Ctx<'a> {
 			},
 			Op::Call(..) | Op::CallExtern(..) | Op::CallSystem(..) => {
 				let expr = self.rewind().call()?;
-				let expr = self.maybe_wrap_line(expr);
 				push(NStmt::Expr(expr));
 			}
 			Op::_23(a, b, c) => {
@@ -346,7 +345,6 @@ impl<'a> Ctx<'a> {
 				}
 				args.reverse();
 				let expr = Expr::Call(CallKind::Become(a.clone(), b.clone()), args);
-				let expr = self.maybe_wrap_line(expr);
 				push(NStmt::Expr(expr));
 			}
 			Op::Push(Value::Uint(0)) => {
@@ -368,7 +366,7 @@ impl<'a> Ctx<'a> {
 			Op::Debug(n) => {
 				let mut args = Vec::new();
 				for _ in 0..*n {
-					args.push(self.expr()?);
+					args.push(self.expr_line()?);
 				}
 				push(NStmt::Debug(args));
 			}
@@ -403,18 +401,30 @@ impl<'a> Ctx<'a> {
 			Op::GetGlobal(n) => Expr::Var(Lvalue::Global(n.clone())),
 			Op::GetRef(n) => Expr::Var(Lvalue::Deref(*n)),
 			Op::Binop(op) => {
-				let b = self.expr()?;
-				let a = self.expr()?;
+				let b = self.expr_line()?;
+				let a = self.expr_line()?;
 				Expr::Binop(*op, Box::new(a), Box::new(b))
 			},
-			Op::Unop(op) => Expr::Unop(*op, Box::new(self.expr()?)),
+			Op::Unop(op) => {
+				let a = self.expr_line()?;
+				Expr::Unop(*op, Box::new(a))
+			}
 			Op::GetTemp(0) => self.call()?,
 			op => {
 				self.rewind();
 				return e::Unexpected { op: op.clone(), what: "expression" }.fail();
 			}
 		};
-		Ok(self.maybe_wrap_line(expr))
+		Ok(expr)
+	}
+
+	fn expr_line(&mut self) -> Result<Expr<StackSlot>> {
+		let expr = self.expr()?;
+		if let Some(line) = self.maybe_line() {
+			Ok(Expr::Line(line, Box::new(expr)))
+		} else {
+			Ok(expr)
+		}
 	}
 
 	#[tracing::instrument(skip(self), fields(pos = ?self.pos()))]
@@ -424,20 +434,20 @@ impl<'a> Ctx<'a> {
 		let kind = match self.next()? {
 			Op::Call(n) => {
 				while self.next_if(pat!(Op::Push(Value::Uint(n)) if *n == pos.0 => ()))?.is_none() {
-					args.push(self.expr()?);
+					args.push(self.expr_line()?);
 				}
 				self.expect(&Op::Push(Value::Uint(self.function.index)))?;
 				CallKind::Func(String::new(), n.clone())
 			}
 			Op::CallSystem(a, b, c) => {
 				for _ in 0..*c {
-					args.push(self.expr()?);
+					args.push(self.expr_line()?);
 				}
 				CallKind::System(*a, *b)
 			}
 			Op::CallExtern(a, b, c) => {
 				for _ in 0..*c {
-					args.push(self.expr()?);
+					args.push(self.expr()?); // Wonder why no line numbers here
 				}
 				self.expect(&Op::_25(pos))?;
 				CallKind::Func(a.clone(), b.clone())
@@ -455,14 +465,6 @@ impl<'a> Ctx<'a> {
 			None
 		} else {
 			self.next_if(pat!(Op::Line(n) => *n)).ok().flatten()
-		}
-	}
-
-	fn maybe_wrap_line(&mut self, expr: Expr<StackSlot>) -> Expr<StackSlot> {
-		if let Some(line) = self.maybe_line() {
-			Expr::Line(line, Box::new(expr))
-		} else {
-			expr
 		}
 	}
 }
