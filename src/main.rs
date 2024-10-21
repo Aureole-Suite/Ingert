@@ -42,7 +42,7 @@ fn process_file(file: &PathBuf) {
 		for (f, stmts) in scp.functions {
 			writeln!(out, "{f}");
 			for stmt in stmts {
-				writeln!(out, "{stmt:?}");
+				writeln!(out, "  {stmt:?}");
 			}
 			writeln!(out);
 		}

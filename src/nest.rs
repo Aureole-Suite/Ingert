@@ -6,7 +6,7 @@ pub use scp::{Value, Binop, Unop};
 use snafu::OptionExt as _;
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Stmt {
+pub enum NStmt {
 	Return(Option<Expr<StackSlot>>),
 	Expr(Expr<StackSlot>),
 	Set(Lvalue<StackSlot>, Expr<StackSlot>),
@@ -78,7 +78,7 @@ macro_rules! pat {
 
 #[derive(Debug)]
 pub struct NestedScp {
-	pub functions: Vec<(scp::Function, Vec<Stmt>)>,
+	pub functions: Vec<(scp::Function, Vec<NStmt>)>,
 }
 
 pub fn decompile(scp: &Scp) -> Result<NestedScp> {
@@ -176,7 +176,7 @@ impl<'a> Ctx<'a> {
 		Ok(())
 	}
 
-	fn decompile(&mut self, mut l: impl FnMut(Stmt)) -> Result<()> {
+	fn decompile(&mut self, mut l: impl FnMut(NStmt)) -> Result<()> {
 		while self.index > 0 {
 			self.line(&mut l)?;
 		}
@@ -184,25 +184,25 @@ impl<'a> Ctx<'a> {
 	}
 
 	#[tracing::instrument(skip(self, push), fields(pos = ?self.pos()))]
-	fn line(&mut self, mut push: impl FnMut(Stmt)) -> Result<()> {
+	fn line(&mut self, mut push: impl FnMut(NStmt)) -> Result<()> {
 		match self.next()? {
 			Op::Return => {
 				self.do_pop(&mut push);
 				self.expect(&Op::SetTemp(0))?;
 				if let Some(()) = self.next_if(pat!(Op::Push(Value::Uint(0)) => ()))? {
-					push(Stmt::Return(None));
+					push(NStmt::Return(None));
 				} else {
 					let expr = self.expr()?;
-					push(Stmt::Return(Some(expr)));
+					push(NStmt::Return(Some(expr)));
 				}
 			}
 			Op::If(l) => {
 				let expr = self.expr()?;
-				push(Stmt::If(expr, *l));
+				push(NStmt::If(expr, *l));
 			},
 			Op::SetTemp(0) => {
 				let expr = self.expr()?;
-				push(Stmt::Switch(expr));
+				push(NStmt::Switch(expr));
 			}
 			Op::If2(l) => {
 				self.expect(&Op::Binop(Binop::Eq))?;
@@ -211,15 +211,15 @@ impl<'a> Ctx<'a> {
 					op => return e::Unexpected { op: op.clone(), what: "switch case" }.fail(),
 				};
 				self.expect(&Op::GetTemp(0))?;
-				push(Stmt::Case(expr, *l));
+				push(NStmt::Case(expr, *l));
 			}
 			Op::Goto(l) => {
-				push(Stmt::Goto(*l));
+				push(NStmt::Goto(*l));
 			},
 			Op::Call(..) | Op::CallExtern(..) | Op::CallSystem(..) => {
 				let expr = self.rewind().call()?;
 				let expr = self.maybe_wrap_line(expr);
-				push(Stmt::Expr(expr));
+				push(NStmt::Expr(expr));
 			}
 			Op::_23(a, b, c) => {
 				for i in 1..=*c {
@@ -236,29 +236,29 @@ impl<'a> Ctx<'a> {
 				args.reverse();
 				let expr = Expr::Call(CallKind::Become(a.clone(), b.clone()), args);
 				let expr = self.maybe_wrap_line(expr);
-				push(Stmt::Expr(expr));
+				push(NStmt::Expr(expr));
 			}
 			Op::Push(Value::Uint(0)) => {
-				push(Stmt::PushVar);
+				push(NStmt::PushVar);
 			}
 			Op::Pop(..) => self.rewind().do_pop(&mut push),
 			Op::SetVar(n) => {
 				let expr = self.expr()?;
-				push(Stmt::Set(Lvalue::Stack(*n), expr));
+				push(NStmt::Set(Lvalue::Stack(*n), expr));
 			}
 			Op::SetGlobal(n) => {
 				let expr = self.expr()?;
-				push(Stmt::Set(Lvalue::Global(*n), expr));
+				push(NStmt::Set(Lvalue::Global(*n), expr));
 			}
 			Op::Debug(n) => {
 				let mut args = Vec::new();
 				for _ in 0..*n {
 					args.push(self.expr()?);
 				}
-				push(Stmt::Debug(args));
+				push(NStmt::Debug(args));
 			}
 			Op::Line(n) => {
-				push(Stmt::Line(*n));
+				push(NStmt::Line(*n));
 			}
 			op => {
 				self.rewind();
@@ -266,15 +266,15 @@ impl<'a> Ctx<'a> {
 			}
 		}
 		if self.labels.remove(&self.pos()) {
-			push(Stmt::Label(self.pos()));
+			push(NStmt::Label(self.pos()));
 		}
 		Ok(())
 	}
 
-	fn do_pop(&mut self, mut push: impl FnMut(Stmt)) {
+	fn do_pop(&mut self, mut push: impl FnMut(NStmt)) {
 		if let Some(pop) = self.next_if(pat!(Op::Pop(n) => *n)).ok().flatten() {
 			for _ in 0..pop/4 {
-				push(Stmt::PopVar);
+				push(NStmt::PopVar);
 			}
 		}
 	}
