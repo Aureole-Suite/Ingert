@@ -5,7 +5,7 @@ use std::fmt::Display;
 
 mod scp;
 
-use scp::{Label, Op, Scp};
+use scp::{Label, Op};
 pub use scp::{Value, Binop, Unop};
 pub use scp::parse_scp;
 
@@ -420,96 +420,7 @@ fn stmt(out: &mut Write, ctx: &mut Ctx<'_>) {
 				// assert_eq!(ctx.peek(), None);
 			}
 		}
-		Op::GetVar(n) => {
-			let var = Lvalue::Stack(ctx.resolve(*n));
-			ctx.push(Expr::Var(var));
-		}
-		Op::SetVar(n) => {
-			let a = ctx.pop();
-			let var = Lvalue::Stack(ctx.resolve(*n));
-			writeln!(out, "{i}{} = {}", Expr::Var(var), a);
-		}
-		Op::PushRef(n) => {
-			ctx.push(Expr::Ref(ctx.resolve(*n)));
-		}
-		Op::GetRef(n) => {
-			let var = Lvalue::Deref(ctx.resolve(*n));
-			ctx.push(Expr::Var(var));
-		}
-		Op::SetRef(n) => {
-			let a = ctx.pop();
-			let var = Lvalue::Deref(ctx.resolve(*n));
-			writeln!(out, "{i}{} = {}", Expr::Var(var), a);
-		}
-		Op::GetGlobal(n) => {
-			let var = Lvalue::Local(*n);
-			ctx.push(Expr::Var(var));
-		}
-		Op::SetGlobal(n) => {
-			let a = ctx.pop();
-			let var = Lvalue::Local(*n);
-			writeln!(out, "{i}{} = {}", Expr::Var(var), a);
-		}
-		Op::GetTemp(n) => {
-			let var = Lvalue::Global(*n);
-			ctx.push(Expr::Var(var));
-		}
-		Op::SetTemp(n) => {
-			let a = ctx.pop();
-			let var = Lvalue::Global(*n);
-			writeln!(out, "{i}{} = {}", Expr::Var(var), a);
-		}
-		Op::Binop(op) => {
-			let b = ctx.pop();
-			let a = ctx.pop();
-			ctx.push(Expr::Binop(*op, a.into(), b.into()));
-		}
-		Op::Unop(op) => {
-			let a = ctx.pop();
-			ctx.push(Expr::Unop(*op, a.into()));
-		}
 
-		Op::Call(n) => {
-			let pos = ctx
-				.stack
-				.iter()
-				.position(|v| v == &Expr::Value(Value::Uint(ctx.pos().0)))
-				.unwrap();
-			let it = ctx.pop_n(pos);
-			assert_eq!(ctx.pop(), Expr::Value(Value::Uint(ctx.pos().0)));
-			assert_eq!(ctx.pop(), Expr::Value(Value::Uint(ctx.current_func)));
-			let call = CallKind::Func(String::new(), n.clone());
-			push_call(ctx, out, call, it);
-		}
-		Op::CallExtern(a, b, n) => {
-			let it = ctx.pop_n(*n as usize);
-			assert_ne!(a, "");
-			let call = CallKind::Func(a.clone(), b.clone());
-			push_call(ctx, out, call, it);
-		}
-		Op::_23(a, b, c) => {
-			let it = ctx.pop_n(*c as usize);
-			let call = CallKind::_23(a.clone(), b.clone());
-			push_call(ctx, out, call, it);
-		}
-		Op::CallSystem(a, b, c) => {
-			let it = ctx.pop_n(*c as usize);
-			let call = CallKind::System(*a, *b);
-			push_call(ctx, out, call, it);
-		}
-		Op::_25(target) => {
-			// Always wraps a complete CallFunc
-			while ctx.pos() < *target {
-				stmt(out, ctx);
-			}
-			// assert_eq!(ctx.pos(), *target); // assert is currently invalid because of GetGlobal(0)
-		}
-
-		Op::Line(_) => {}
-		Op::Debug(n) => {
-			let a = ctx.pop_n(*n as usize);
-			writeln!(out, "{i}debug {}", Args(&a));
-		}
 		op => {
 			writeln!(out, "{i}!!{op:?} {:?}", ctx.stack);
 			unimplemented!("{op:?} {:?}", ctx.stack);

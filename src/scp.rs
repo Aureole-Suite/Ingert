@@ -35,8 +35,8 @@ pub enum ScpError {
 		ty: u32,
 	},
 	BadDefaults,
-	#[snafu(display("invalid function index {index}"))]
-	FuncId { index: usize },
+	#[snafu(display("invalid {what} index {index}"))]
+	Id { what: &'static str, index: usize },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -316,8 +316,8 @@ pub enum Op {
 	PushRef(StackSlot),
 	SetVar(StackSlot),
 	SetRef(StackSlot),
-	GetGlobal(u32),
-	SetGlobal(u32),
+	GetGlobal(String),
+	SetGlobal(String),
 	GetTemp(u8),
 	SetTemp(u8),
 	Goto(Label),
@@ -397,7 +397,7 @@ impl std::fmt::Display for Unop {
 
 pub struct Scp {
 	pub functions: Vec<Function>,
-	pub extras: Vec<TaggedValue>,
+	pub globals: Vec<(String, u32)>,
 }
 
 pub fn parse_scp(data: &[u8]) -> Result<Scp, ScpError> {
@@ -412,7 +412,7 @@ pub fn parse_scp(data: &[u8]) -> Result<Scp, ScpError> {
 
 	let mut functions = parse_functions(&mut f, n_entries)?;
 	f.seek(code_start as usize)?;
-	let extras = multi(&mut f, n3 as usize, tagged_value)?;
+	let globals = multi(&mut f, n3 as usize, |f| Ok((string_value(f)?, f.u32()?)))?;
 
 	let last_offset = functions
 		.iter()
@@ -444,15 +444,12 @@ pub fn parse_scp(data: &[u8]) -> Result<Scp, ScpError> {
 			4 => Op::PushRef(stack_slot(&mut f)?),
 			5 => Op::SetVar(stack_slot(&mut f)?),
 			6 => Op::SetRef(stack_slot(&mut f)?),
-			7 => Op::GetGlobal(f.u32()?),
-			8 => Op::SetGlobal(f.u32()?),
+			7 => Op::GetGlobal(index(f.u32()? as usize, "global", &globals)?.0.clone()),
+			8 => Op::SetGlobal(index(f.u32()? as usize, "global", &globals)?.0.clone()),
 			9 => Op::GetTemp(f.u8()?),
 			10 => Op::SetTemp(f.u8()?),
 			11 => Op::Goto(label(&mut f)?),
-			12 => {
-				let index = f.u16()? as usize;
-				Op::Call(functions.get(index).context(scp::FuncId { index })?.name.clone())
-			}
+			12 => Op::Call(index(f.u16()? as usize, "function", &functions)?.name.clone()),
 			13 => Op::Return,
 			14 => Op::If2(label(&mut f)?),
 			15 => Op::If(label(&mut f)?),
@@ -494,8 +491,12 @@ pub fn parse_scp(data: &[u8]) -> Result<Scp, ScpError> {
 
 	Ok(Scp {
 		functions,
-		extras,
+		globals,
 	})
+}
+
+fn index<'a, T>(index: usize, what: &'static str, values: &'a [T]) -> Result<&'a T, ScpError> {
+	values.get(index).context(scp::Id { what, index })
 }
 
 pub fn dump_ops(code: &[(Label, Op)]) -> Vec<String> {

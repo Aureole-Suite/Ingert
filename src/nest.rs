@@ -31,11 +31,11 @@ pub enum Expr<T> {
 	Line(u16, Box<Expr<T>>),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Lvalue<T> {
 	Stack(T),
 	Deref(T),
-	Global(u32),
+	Global(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -218,7 +218,7 @@ impl<'a> Ctx<'a> {
 			}
 			Op::SetGlobal(n) => {
 				let expr = self.expr()?;
-				push(NStmt::Set(Lvalue::Global(*n), expr));
+				push(NStmt::Set(Lvalue::Global(n.clone()), expr));
 			}
 			Op::SetRef(n) => {
 				let expr = self.expr()?;
@@ -259,7 +259,7 @@ impl<'a> Ctx<'a> {
 			Op::Push(value) => Expr::Value(value.clone()),
 			Op::PushRef(n) => Expr::Ref(*n),
 			Op::GetVar(n) => Expr::Var(Lvalue::Stack(*n)),
-			Op::GetGlobal(n) => Expr::Var(Lvalue::Global(*n)),
+			Op::GetGlobal(n) => Expr::Var(Lvalue::Global(n.clone())),
 			Op::GetRef(n) => Expr::Var(Lvalue::Deref(*n)),
 			Op::Binop(op) => {
 				let b = self.expr()?;
