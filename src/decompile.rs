@@ -230,9 +230,10 @@ fn block(mut ctx: Ctx) -> Result<Vec<Stmt>> {
 			NStmt::Set(l, e) => stmts.push(Stmt::Set(lvalue(ctx.stack, l)?, expr(ctx.stack, e)?)),
 			NStmt::Label(_) => {}
 			NStmt::If(e, l) => {
+				let start = ctx.pos;
 				let e = expr(ctx.stack, e)?;
 				let mut sub = ctx.sub(*l)?;
-				if let Some(cont) = sub.last_goto(|i| i == ctx.pos - 1)? {
+				if let Some(cont) = sub.last_goto(|i| i == start - 1)? {
 					sub.brk = Some(*l);
 					sub.cont = Some(cont);
 					let body = block(sub)?;
