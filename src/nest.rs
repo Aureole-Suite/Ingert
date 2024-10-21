@@ -52,9 +52,9 @@ pub enum CallKind {
 }
 
 macro_rules! pat {
-	($($pat:pat => $expr:expr),*) => {
+	($($pat:pat $(if $cond:expr)? => $expr:expr),*) => {
 		|v| match v {
-			$($pat => Some($expr),)*
+			$($pat $(if $cond)? => Some($expr),)*
 			_ => None,
 		}
 	}
@@ -145,18 +145,20 @@ impl<'a> Ctx<'a> {
 		self
 	}
 
-	fn next(&mut self) -> Option<&'a Op> {
+	fn next_if<T>(&mut self, pat: impl Fn(&'a Op) -> Option<T>) -> Option<T> {
 		if self.index == 0 {
 			return None;
 		}
-		self.index -= 1;
-		let op = &self.code[self.index].1;
-		Some(op)
+		if let Some(v) = pat(&self.code[self.index - 1].1) {
+			self.index -= 1;
+			Some(v)
+		} else {
+			None
+		}
 	}
 
-	fn peek(&mut self) -> Option<&'a Op> {
-		let p = self.index;
-		self.next().inspect(|_| self.index = p)
+	fn next(&mut self) -> Option<&'a Op> {
+		self.next_if(Some)
 	}
 
 	fn expect(&mut self, op: &Op) -> Option<()> {
@@ -167,12 +169,6 @@ impl<'a> Ctx<'a> {
 		}
 		Some(())
 	}
-
-	fn next_if<T>(&mut self, pat: impl Fn(&Op) -> Option<T>) -> Option<T> {
-		let next = self.peek()?;
-		pat(next).inspect(|_| self.index -= 1)
-	}
-
 
 	fn decompile(&mut self, mut l: impl FnMut(Stmt)) {
 		while self.index > 0 {
@@ -304,13 +300,9 @@ impl<'a> Ctx<'a> {
 		let mut args = Vec::new();
 		let kind = match self.next()? {
 			Op::Call(n) => {
-				loop {
-					if self.peek() == Some(&Op::Push(Value::Uint(pos.0))) {
-						break;
-					}
+				while self.next_if(pat!(Op::Push(Value::Uint(n)) if *n == pos.0 => ())).is_none() {
 					args.push(self.expr()?);
 				}
-				self.expect(&Op::Push(Value::Uint(pos.0)))?;
 				self.expect(&Op::Push(Value::Uint(self.function.index)))?;
 				CallKind::Func(String::new(), n.clone())
 			}
