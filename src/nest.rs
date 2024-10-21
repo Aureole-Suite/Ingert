@@ -8,7 +8,7 @@ pub type Lvalue = crate::expr::Lvalue<StackSlot>;
 pub use crate::expr::CallKind;
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum NStmt {
+pub enum Stmt {
 	Return(Option<Expr>),
 	Expr(Expr),
 	Set(Lvalue, Expr),
@@ -52,22 +52,22 @@ mod display {
 		}
 	}
 
-	impl Display for NStmt {
+	impl Display for Stmt {
 		fn fmt(&self, f: &mut Formatter<'_>) -> Result {
 			match self {
-				NStmt::Return(None) => write!(f, "return")?,
-				NStmt::Return(Some(e)) => write!(f, "return {e}")?,
-				NStmt::Expr(e) => write!(f, "{e}")?,
-				NStmt::Set(v, e) => write!(f, "{v} = {e}")?,
-				NStmt::Label(l) => write!(f, "{l}:")?,
-				NStmt::If(e, l) => write!(f, "if {e} goto {l}")?,
-				NStmt::Switch(e) => write!(f, "switch {e}")?,
-				NStmt::Case(n, l) => write!(f, "case {n} goto {l}")?,
-				NStmt::Goto(l) => write!(f, "goto {l}")?,
-				NStmt::PushVar => write!(f, "push")?,
-				NStmt::PopVar => write!(f, "pop")?,
-				NStmt::Line(l) => write!(f, "line {l}")?,
-				NStmt::Debug(args) => {
+				Stmt::Return(None) => write!(f, "return")?,
+				Stmt::Return(Some(e)) => write!(f, "return {e}")?,
+				Stmt::Expr(e) => write!(f, "{e}")?,
+				Stmt::Set(v, e) => write!(f, "{v} = {e}")?,
+				Stmt::Label(l) => write!(f, "{l}:")?,
+				Stmt::If(e, l) => write!(f, "if {e} goto {l}")?,
+				Stmt::Switch(e) => write!(f, "switch {e}")?,
+				Stmt::Case(n, l) => write!(f, "case {n} goto {l}")?,
+				Stmt::Goto(l) => write!(f, "goto {l}")?,
+				Stmt::PushVar => write!(f, "push")?,
+				Stmt::PopVar => write!(f, "pop")?,
+				Stmt::Line(l) => write!(f, "line {l}")?,
+				Stmt::Debug(args) => {
 					write!(f, "debug")?;
 					crate::expr::write_args(f, args)?;
 				}
@@ -88,7 +88,7 @@ macro_rules! pat {
 	}
 }
 
-pub fn decompile(f: &scp::Function) -> Result<Vec<NStmt>> {
+pub fn decompile(f: &scp::Function) -> Result<Vec<Stmt>> {
 	let _span = tracing::info_span!("function", name = f.name.clone()).entered();
 
 	let labels = f.code.iter()
@@ -160,7 +160,7 @@ impl<'a> Ctx<'a> {
 		Ok(())
 	}
 
-	fn decompile(&mut self, mut l: impl FnMut(NStmt)) -> Result<()> {
+	fn decompile(&mut self, mut l: impl FnMut(Stmt)) -> Result<()> {
 		while self.index > 0 {
 			self.line(&mut l)?;
 		}
@@ -168,25 +168,25 @@ impl<'a> Ctx<'a> {
 	}
 
 	#[tracing::instrument(skip(self, push), fields(pos = ?self.pos()))]
-	fn line(&mut self, mut push: impl FnMut(NStmt)) -> Result<()> {
+	fn line(&mut self, mut push: impl FnMut(Stmt)) -> Result<()> {
 		match self.next()? {
 			Op::Return => {
 				self.do_pop(&mut push);
 				self.expect(&Op::SetTemp(0))?;
 				if let Some(()) = self.next_if(pat!(Op::Push(Value::Uint(0)) => ()))? {
-					push(NStmt::Return(None));
+					push(Stmt::Return(None));
 				} else {
 					let expr = self.expr()?;
-					push(NStmt::Return(Some(expr)));
+					push(Stmt::Return(Some(expr)));
 				}
 			}
 			Op::If(l) => {
 				let expr = self.expr()?;
-				push(NStmt::If(expr, *l));
+				push(Stmt::If(expr, *l));
 			},
 			Op::SetTemp(0) => {
 				let expr = self.expr()?;
-				push(NStmt::Switch(expr));
+				push(Stmt::Switch(expr));
 			}
 			Op::If2(l) => {
 				self.expect(&Op::Binop(Binop::Eq))?;
@@ -195,14 +195,14 @@ impl<'a> Ctx<'a> {
 					op => return e::Unexpected { op: op.clone(), what: "switch case" }.fail(),
 				};
 				self.expect(&Op::GetTemp(0))?;
-				push(NStmt::Case(expr, *l));
+				push(Stmt::Case(expr, *l));
 			}
 			Op::Goto(l) => {
-				push(NStmt::Goto(*l));
+				push(Stmt::Goto(*l));
 			},
 			Op::Call(..) | Op::CallExtern(..) | Op::CallSystem(..) => {
 				let expr = self.rewind().call()?;
-				push(NStmt::Expr(expr));
+				push(Stmt::Expr(expr));
 			}
 			Op::CallTail(a, b, c) => {
 				for i in 1..=*c {
@@ -218,33 +218,33 @@ impl<'a> Ctx<'a> {
 				}
 				args.reverse();
 				let expr = Expr::Call(CallKind::Tail(a.clone(), b.clone()), args);
-				push(NStmt::Expr(expr));
+				push(Stmt::Expr(expr));
 			}
 			Op::Push(Value::Uint(0)) => {
-				push(NStmt::PushVar);
+				push(Stmt::PushVar);
 			}
 			Op::Pop(..) => self.rewind().do_pop(&mut push),
 			Op::SetVar(n) => {
 				let expr = self.expr()?;
-				push(NStmt::Set(Lvalue::Stack(*n), expr));
+				push(Stmt::Set(Lvalue::Stack(*n), expr));
 			}
 			Op::SetGlobal(n) => {
 				let expr = self.expr()?;
-				push(NStmt::Set(Lvalue::Global(n.clone()), expr));
+				push(Stmt::Set(Lvalue::Global(n.clone()), expr));
 			}
 			Op::SetRef(n) => {
 				let expr = self.expr()?;
-				push(NStmt::Set(Lvalue::Deref(*n), expr));
+				push(Stmt::Set(Lvalue::Deref(*n), expr));
 			}
 			Op::Debug(n) => {
 				let mut args = Vec::new();
 				for _ in 0..*n {
 					args.push(self.expr_line()?);
 				}
-				push(NStmt::Debug(args));
+				push(Stmt::Debug(args));
 			}
 			Op::Line(n) => {
-				push(NStmt::Line(*n));
+				push(Stmt::Line(*n));
 			}
 			op => {
 				self.rewind();
@@ -252,15 +252,15 @@ impl<'a> Ctx<'a> {
 			}
 		}
 		if self.labels.remove(&self.pos()) {
-			push(NStmt::Label(self.pos()));
+			push(Stmt::Label(self.pos()));
 		}
 		Ok(())
 	}
 
-	fn do_pop(&mut self, mut push: impl FnMut(NStmt)) {
+	fn do_pop(&mut self, mut push: impl FnMut(Stmt)) {
 		if let Some(pop) = self.next_if(pat!(Op::Pop(n) => *n)).ok().flatten() {
 			for _ in 0..pop/4 {
-				push(NStmt::PopVar);
+				push(Stmt::PopVar);
 			}
 		}
 	}

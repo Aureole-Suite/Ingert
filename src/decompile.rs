@@ -1,6 +1,6 @@
 use std::{cell::Cell, collections::HashMap};
 
-use crate::nest::{self, NStmt, Label};
+use crate::nest::{self, Label};
 pub use nest::CallKind;
 use snafu::OptionExt as _;
 
@@ -116,7 +116,7 @@ pub enum Error {
 	#[snafu(display("unknown label: {label}"))]
 	Label { label: Label },
 	#[snafu(display("unexpected {stmt} when parsing switch: {why}"))]
-	Switch { why: &'static str, stmt: NStmt },
+	Switch { why: &'static str, stmt: nest::Stmt },
 	#[snafu(display("Unexpected jump to {label}"))]
 	Jump { label: Label },
 }
@@ -124,12 +124,12 @@ pub enum Error {
 type Result<T, E = Error> = std::result::Result<T, E>;
 
 // TODO do I really need to remove labels?
-pub fn decompile(nargs: usize, stmts: &[NStmt]) -> Result<Vec<Stmt>> {
+pub fn decompile(nargs: usize, stmts: &[nest::Stmt]) -> Result<Vec<Stmt>> {
 	let mut stmts_no_labels = Vec::new();
 	let mut labels = HashMap::new();
 	for stmt in stmts {
 		match stmt {
-			NStmt::Label(l) => {
+			nest::Stmt::Label(l) => {
 				labels.insert(*l, stmts_no_labels.len());
 			}
 			stmt => {
@@ -147,7 +147,7 @@ pub fn decompile(nargs: usize, stmts: &[NStmt]) -> Result<Vec<Stmt>> {
 }
 
 struct Gctx<'a> {
-	stmts: &'a [&'a NStmt],
+	stmts: &'a [&'a nest::Stmt],
 	labels: HashMap<Label, usize>,
 }
 
@@ -180,7 +180,7 @@ impl<'a> Ctx<'a> {
 		}
 	}
 
-	fn next(&mut self) -> Option<&'a NStmt> {
+	fn next(&mut self) -> Option<&'a nest::Stmt> {
 		if self.pos == self.end || (self.has_goto && self.pos == self.end - 1) {
 			None
 		} else {
@@ -207,7 +207,7 @@ impl<'a> Ctx<'a> {
 			return Ok(None);
 		}
 
-		if let NStmt::Goto(l) = *self.gctx.stmts[self.end - 1] && pos(self.gctx.lookup(l)?) {
+		if let nest::Stmt::Goto(l) = *self.gctx.stmts[self.end - 1] && pos(self.gctx.lookup(l)?) {
 			self.has_goto = true;
 			Ok(Some(l))
 		} else {
@@ -220,12 +220,12 @@ fn block(mut ctx: Ctx) -> Result<Vec<Stmt>> {
 	let mut stmts = Vec::new();
 	while let Some(stmt) = ctx.next() {
 		match stmt {
-			NStmt::Return(None) => stmts.push(Stmt::Return(None)),
-			NStmt::Return(Some(e)) => stmts.push(Stmt::Return(Some(expr(ctx.stack, e)?))),
-			NStmt::Expr(e) => stmts.push(Stmt::Expr(expr(ctx.stack, e)?)),
-			NStmt::Set(l, e) => stmts.push(Stmt::Set(lvalue(ctx.stack, l)?, expr(ctx.stack, e)?)),
-			NStmt::Label(_) => {}
-			NStmt::If(e, l) => {
+			nest::Stmt::Return(None) => stmts.push(Stmt::Return(None)),
+			nest::Stmt::Return(Some(e)) => stmts.push(Stmt::Return(Some(expr(ctx.stack, e)?))),
+			nest::Stmt::Expr(e) => stmts.push(Stmt::Expr(expr(ctx.stack, e)?)),
+			nest::Stmt::Set(l, e) => stmts.push(Stmt::Set(lvalue(ctx.stack, l)?, expr(ctx.stack, e)?)),
+			nest::Stmt::Label(_) => {}
+			nest::Stmt::If(e, l) => {
 				let start = ctx.pos;
 				let e = expr(ctx.stack, e)?;
 				let mut sub = ctx.sub(*l)?;
@@ -244,21 +244,21 @@ fn block(mut ctx: Ctx) -> Result<Vec<Stmt>> {
 					stmts.push(Stmt::If(e, yes, None));
 				}
 			}
-			NStmt::Switch(e) => {
+			nest::Stmt::Switch(e) => {
 				let e = expr(ctx.stack, e)?;
 				let cases = parse_switch(&mut ctx, stmt)?;
 				stmts.push(Stmt::Switch(e, cases));
 			}
-			NStmt::Case(_, _) => return SwitchSnafu { why: "stray case", stmt: stmt.clone() }.fail(),
-			NStmt::Goto(l) if Some(*l) == ctx.brk => stmts.push(Stmt::Break),
-			NStmt::Goto(l) if Some(*l) == ctx.cont => stmts.push(Stmt::Continue),
-			NStmt::Goto(l) => return JumpSnafu { label: *l }.fail(),
-			NStmt::PushVar => {
+			nest::Stmt::Case(_, _) => return SwitchSnafu { why: "stray case", stmt: stmt.clone() }.fail(),
+			nest::Stmt::Goto(l) if Some(*l) == ctx.brk => stmts.push(Stmt::Break),
+			nest::Stmt::Goto(l) if Some(*l) == ctx.cont => stmts.push(Stmt::Continue),
+			nest::Stmt::Goto(l) => return JumpSnafu { label: *l }.fail(),
+			nest::Stmt::PushVar => {
 				const LAST: nest::StackSlot = nest::StackSlot(-1);
 				ctx.stack += 1;
 				let var = stack_slot(ctx.stack, &LAST)?;
 				if ctx.pos < ctx.end
-					&& let NStmt::Set(nest::Lvalue::Stack(LAST), e) = ctx.gctx.stmts[ctx.pos]
+					&& let nest::Stmt::Set(nest::Lvalue::Stack(LAST), e) = ctx.gctx.stmts[ctx.pos]
 				{
 					ctx.pos += 1;
 					stmts.push(Stmt::PushVar(var, Some(expr(ctx.stack, e)?)));
@@ -266,20 +266,20 @@ fn block(mut ctx: Ctx) -> Result<Vec<Stmt>> {
 					stmts.push(Stmt::PushVar(var, None));
 				}
 			}
-			NStmt::PopVar => {}, // only used at end of block
-			NStmt::Line(l) => stmts.push(Stmt::Line(*l)),
-			NStmt::Debug(args) => stmts.push(Stmt::Debug(do_args(ctx.stack, args)?)),
+			nest::Stmt::PopVar => {}, // only used at end of block
+			nest::Stmt::Line(l) => stmts.push(Stmt::Line(*l)),
+			nest::Stmt::Debug(args) => stmts.push(Stmt::Debug(do_args(ctx.stack, args)?)),
 		}
 	}
 	Ok(stmts)
 }
 
-fn parse_switch(ctx: &mut Ctx, stmt: &NStmt) -> Result<Vec<(Option<i32>, Vec<Stmt>)>> {
+fn parse_switch(ctx: &mut Ctx, stmt: &nest::Stmt) -> Result<Vec<(Option<i32>, Vec<Stmt>)>> {
 	let mut cases = Vec::new();
 	let default = loop {
 		match ctx.next().with_context(|| SwitchSnafu { why: "unterminated", stmt: stmt.clone() })? {
-			NStmt::Case(v, l) => cases.push((Some(*v), *l)),
-			NStmt::Goto(l) => break *l,
+			nest::Stmt::Case(v, l) => cases.push((Some(*v), *l)),
+			nest::Stmt::Goto(l) => break *l,
 			stmt => return SwitchSnafu { why: "unexpected", stmt: stmt.clone() }.fail(),
 		}
 	};

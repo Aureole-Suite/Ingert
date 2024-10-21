@@ -59,7 +59,7 @@ fn process_file(file: &PathBuf) {
 				if !was_line {
 					write!(out, "  ");
 				}
-				if let ingert::nest::NStmt::Line(_) = stmt {
+				if let ingert::nest::Stmt::Line(_) = stmt {
 					was_line = true;
 					write!(out, "{stmt} ");
 				} else {
