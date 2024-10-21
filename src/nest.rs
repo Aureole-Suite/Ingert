@@ -1,8 +1,8 @@
 use std::collections::{HashSet, VecDeque};
 
 use super::scp;
-use scp::{Label, Op, StackSlot};
-pub use scp::{Value, Binop, Unop};
+use scp::{Op, StackSlot};
+pub use scp::{Label, Value, Binop, Unop};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum NStmt {
@@ -208,11 +208,6 @@ macro_rules! pat {
 			_ => None,
 		}
 	}
-}
-
-#[derive(Debug)]
-pub struct NestedScp {
-	pub functions: Vec<(scp::Function, Vec<NStmt>)>,
 }
 
 pub fn decompile(f: &scp::Function) -> Result<Vec<NStmt>> {

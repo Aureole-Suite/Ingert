@@ -48,14 +48,14 @@ fn process_file(file: &PathBuf) {
 		functions.sort_by_key(|f| f.start);
 		for f in &functions {
 			writeln!(out, "{}", f);
-			// for c in &f.called {
-			// 	writeln!(out, "  {c:?}");
-			// }
-			// writeln!(out);
+			for c in &f.code {
+				writeln!(out, "  {c:?}");
+			}
+			writeln!(out);
 
 			let mut was_line = false;
-			let f = ingert::nest::decompile(f).unwrap();
-			for stmt in f {
+			let stmts = ingert::nest::decompile(f).unwrap();
+			for stmt in &stmts {
 				if !was_line {
 					write!(out, "  ");
 				}
@@ -66,6 +66,12 @@ fn process_file(file: &PathBuf) {
 					was_line = false;
 					writeln!(out, "{stmt}");
 				}
+			}
+			writeln!(out);
+
+			let f = ingert::decompile::decompile(f.args.len(), &stmts).unwrap();
+			for stmt in f {
+				writeln!(out, "  {stmt:?}");
 			}
 			writeln!(out);
 		}
