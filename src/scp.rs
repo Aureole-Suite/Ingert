@@ -508,6 +508,7 @@ pub fn parse_scp(data: &[u8]) -> Result<Scp, ScpError> {
 				let b = f.u8()?;
 				let c = f.u8()?;
 				if c != 0 {
+					// This is really a Pop instruction, but handling it here makes subsequent stages easier
 					f.check_u8(1)?;
 					f.check_u8(4 * c)?;
 				}
