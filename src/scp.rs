@@ -545,21 +545,3 @@ pub fn parse_scp(data: &[u8]) -> Result<Scp, ScpError> {
 fn index<'a, T>(index: usize, what: &'static str, values: &'a [T]) -> Result<&'a T, ScpError> {
 	values.get(index).context(scp::Id { what, index })
 }
-
-pub fn dump_ops(code: &[(Label, Op)]) -> Vec<String> {
-	let mut lines = Vec::new();
-	let mut labels = BTreeSet::new();
-	labels.insert(code[0].0);
-	for (_, op) in code {
-		if let Op::Goto(l) | Op::If(l) | Op::If2(l) | Op::_25(l) = op {
-			labels.insert(*l);
-		}
-	}
-	for line in code {
-		if labels.contains(&line.0) {
-			lines.push(format!("{:?}", line.0));
-		}
-		lines.push(format!("  {:?}", line.1));
-	}
-	lines
-}
