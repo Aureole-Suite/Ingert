@@ -121,8 +121,8 @@ mod display {
 pub enum Error {
 	#[snafu(display("unknown label: {label}"))]
 	Label { label: Label },
-	#[snafu(display("unexpected stmt when parsing switch: {stmt}"))]
-	Switch { stmt: NStmt },
+	#[snafu(display("unexpected {stmt} when parsing switch: {why}"))]
+	Switch { why: &'static str, stmt: NStmt },
 	#[snafu(display("Unexpected jump to {label}"))]
 	Jump { label: Label },
 }
@@ -255,7 +255,7 @@ fn block(mut ctx: Ctx) -> Result<Vec<Stmt>> {
 				let cases = parse_switch(&mut ctx, stmt)?;
 				stmts.push(Stmt::Switch(e, cases));
 			}
-			NStmt::Case(_, _) => return SwitchSnafu { stmt: stmt.clone() }.fail(),
+			NStmt::Case(_, _) => return SwitchSnafu { why: "stray case", stmt: stmt.clone() }.fail(),
 			NStmt::Goto(l) if Some(*l) == ctx.brk => stmts.push(Stmt::Break),
 			NStmt::Goto(l) if Some(*l) == ctx.cont => stmts.push(Stmt::Continue),
 			NStmt::Goto(l) => return JumpSnafu { label: *l }.fail(),
@@ -283,13 +283,13 @@ fn block(mut ctx: Ctx) -> Result<Vec<Stmt>> {
 fn parse_switch(ctx: &mut Ctx, stmt: &NStmt) -> Result<Vec<(Option<i32>, Vec<Stmt>)>> {
 	let mut cases = Vec::new();
 	let default = loop {
-		match ctx.next().with_context(|| SwitchSnafu { stmt: stmt.clone() })? {
+		match ctx.next().with_context(|| SwitchSnafu { why: "unterminated", stmt: stmt.clone() })? {
 			NStmt::Case(v, l) => cases.push((Some(*v), *l)),
 			NStmt::Goto(l) => break *l,
-			stmt => return SwitchSnafu { stmt: stmt.clone() }.fail(),
+			stmt => return SwitchSnafu { why: "unexpected", stmt: stmt.clone() }.fail(),
 		}
 	};
-	snafu::ensure!(cases.is_sorted_by_key(|(_, a)| a), SwitchSnafu { stmt: stmt.clone() });
+	snafu::ensure!(cases.is_sorted_by_key(|(_, a)| a), SwitchSnafu { why: "unsorted", stmt: stmt.clone() });
 	let default_pos = cases.partition_point(|(_, a)| *a < default);
 	cases.insert(default_pos, (None, default));
 
@@ -304,7 +304,7 @@ fn parse_switch(ctx: &mut Ctx, stmt: &NStmt) -> Result<Vec<(Option<i32>, Vec<Stm
 		let new_end = sub.last_goto(|l| l >= end_pos)?;
 		if let Some(new_end) = new_end {
 			if let Some(the_end) = the_end.get() {
-				snafu::ensure!(the_end == new_end, SwitchSnafu { stmt: stmt.clone() });
+				snafu::ensure!(the_end == new_end, SwitchSnafu { why: "wrong end", stmt: stmt.clone() });
 			}
 			the_end.set(Some(new_end));
 		}
