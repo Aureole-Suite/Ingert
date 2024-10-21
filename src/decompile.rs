@@ -18,7 +18,7 @@ pub type Lvalue = nest::Lvalue<StackVar>;
 #[derive(Debug, Clone, PartialEq)]
 pub enum Stmt {
 	Expr(Expr),
-	PushVar(Option<Expr>),
+	PushVar(StackVar, Option<Expr>),
 	Set(Lvalue, Expr),
 	Line(u16),
 	Debug(Vec<Expr>),
@@ -52,8 +52,8 @@ mod display {
 			let i = "  ".repeat(indent);
 			match self {
 				Stmt::Expr(e) => writeln!(f, "{i}{e}"),
-				Stmt::PushVar(None) => writeln!(f, "{i}push"),
-				Stmt::PushVar(Some(e)) => writeln!(f, "{i}push {e}"),
+				Stmt::PushVar(v, None) => writeln!(f, "{i}let {v}"),
+				Stmt::PushVar(v, Some(e)) => writeln!(f, "{i}let {v} = {e}"),
 				Stmt::Set(v, e) => writeln!(f, "{i}{v} = {e}"),
 				Stmt::Line(l) => writeln!(f, "{i}line {l}"),
 				Stmt::Debug(args) => {
@@ -251,7 +251,19 @@ fn block(mut ctx: Ctx) -> Result<Vec<Stmt>> {
 			NStmt::Switch(_) => todo!(),
 			NStmt::Case(_, _) => return SwitchSnafu { stmt: stmt.clone() }.fail(),
 			NStmt::Goto(_) => todo!(),
-			NStmt::PushVar => todo!(),
+			NStmt::PushVar => {
+				const LAST: crate::scp::StackSlot = crate::scp::StackSlot(-1);
+				ctx.stack += 1;
+				let var = stack_slot(ctx.stack, &LAST)?;
+				if ctx.pos < ctx.end
+					&& let NStmt::Set(nest::Lvalue::Stack(LAST), e) = ctx.gctx.stmts[ctx.pos]
+				{
+					ctx.pos += 1;
+					stmts.push(Stmt::PushVar(var, Some(expr(ctx.stack, e)?)));
+				} else {
+					stmts.push(Stmt::PushVar(var, None));
+				}
+			}
 			NStmt::PopVar => {}, // only used at end of block
 			NStmt::Line(l) => stmts.push(Stmt::Line(*l)),
 			NStmt::Debug(args) => stmts.push(Stmt::Debug(do_args(ctx.stack, args, 0..args.len())?)),
