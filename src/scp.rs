@@ -63,7 +63,7 @@ pub struct Function {
 	pub a0: u8,
 	pub a1: u8,
 	pub args: Vec<Arg>,
-	pub called: Vec<(i32, u16, Vec<CallArg>)>,
+	pub called: Vec<Call>,
 	pub name: String,
 	pub index: u32,
 	pub code: Vec<(Label, Op)>,
@@ -111,7 +111,6 @@ pub enum Value {
 	String(String),
 }
 
-
 impl std::fmt::Display for Value {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		std::fmt::Debug::fmt(self, f)
@@ -127,6 +126,13 @@ impl std::fmt::Debug for Value {
 			Self::String(v) => v.fmt(f),
 		}
 	}
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Call {
+	pub name: Option<String>,
+	pub kind: u16, // TODO: enum
+	pub args: Vec<CallArg>,
 }
 
 #[derive(Clone, PartialEq)]
@@ -158,6 +164,7 @@ fn multi<T>(
 
 fn parse_functions(f: &mut Reader<'_>, n_entries: u32) -> Result<Vec<Function>, ScpError> {
 	let mut entries = Vec::with_capacity(n_entries as usize);
+	let mut call_specs = Vec::with_capacity(n_entries as usize);
 	for index in 0..n_entries {
 		let start = Label(f.u32()?);
 		let argc = f.u8()? as usize;
@@ -200,26 +207,45 @@ fn parse_functions(f: &mut Reader<'_>, n_entries: u32) -> Result<Vec<Function>, 
 		}
 		snafu::ensure!(defaults.next().is_none(), scp::BadDefaults);
 
-		let called = multi(&mut f.at(calledp)?, calledc, |f| {
-			let x = f.i32()?;
-			let y = f.u16()?;
-			let z = f.u16()? as usize;
-			let w = f.u32()? as usize;
-			let z = multi(&mut f.at(w)?, z, call_arg)?;
-			Ok((x, y, z))
-		})?;
+		call_specs.push((calledp, calledc));
+
 		entries.push(Function {
 			start,
 			a0,
 			a1,
 			args,
-			called,
+			called: Vec::new(),
 			name,
 			index,
 			code: Vec::new(),
 			code_end: Label(0),
 		});
 	}
+
+	let mut calls = Vec::with_capacity(call_specs.len());
+	for (calledp, calledc) in call_specs {
+		let c = multi(&mut f.at(calledp)?, calledc, |f| {
+			let name = match f.i32()? {
+				-1 => None,
+				n => Some(index(n as usize, "function", &entries)?.name.clone()),
+			};
+			let kind = f.u16()?;
+			let argc = f.u16()? as usize;
+			let argp = f.u32()? as usize;
+			let args = multi(&mut f.at(argp)?, argc, call_arg)?;
+			Ok(Call {
+				name,
+				kind,
+				args,
+			})
+		})?;
+		calls.push(c);
+	}
+
+	for (f, c) in std::iter::zip(&mut entries, calls) {
+		f.called = c;
+	}
+
 	Ok(entries)
 }
 
