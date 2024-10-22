@@ -64,12 +64,12 @@ pub struct Arg {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Function {
-	pub start: Label,
+	pub name: String,
+	pub index: u32,
 	pub is_prelude: bool,
 	pub args: Vec<Arg>,
 	pub called: Vec<Call>,
-	pub name: String,
-	pub index: u32,
+	pub start: Label,
 	pub code: Vec<(Label, Op)>,
 	pub code_end: Label,
 }
@@ -211,12 +211,12 @@ fn parse_functions(f: &mut Reader<'_>, n_entries: u32) -> Result<Vec<Function>, 
 		call_specs.push((calledp, calledc));
 
 		entries.push(Function {
-			start,
+			name,
+			index,
 			is_prelude,
 			args,
 			called: Vec::new(),
-			name,
-			index,
+			start,
 			code: Vec::new(),
 			code_end: Label(0),
 		});
