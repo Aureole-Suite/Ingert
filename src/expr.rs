@@ -22,8 +22,8 @@ pub enum Lvalue<T> {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum CallKind {
 	System(u8, u8),
-	Func(String, String),
-	Tail(String, String),
+	Func(String),
+	Tail(String),
 }
 
 impl<T: Display> Display for Expr<T> {
@@ -94,10 +94,8 @@ impl Display for CallKind {
 	fn fmt(&self, f: &mut Formatter<'_>) -> Result {
 		match self {
 			CallKind::System(a, b) => write!(f, "system[{a},{b}]"),
-			CallKind::Func(a, b) if a.is_empty() => write!(f, "{b}"),
-			CallKind::Func(a, b) => write!(f, "{a}.{b}"),
-			CallKind::Tail(a, b) if a.is_empty() => write!(f, "tail {b}"),
-			CallKind::Tail(a, b) => write!(f, "tail {a}.{b}"),
+			CallKind::Func(a) => write!(f, "{a}"),
+			CallKind::Tail(a) => write!(f, "tail {a}"),
 		}
 	}
 }

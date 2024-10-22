@@ -397,7 +397,7 @@ fn expr(stack: usize, e: &nest::Expr) -> Result<Expr> {
 		nest::Expr::Call(call, args) => {
 			let add = match call {
 				CallKind::System(..) => 0,
-				CallKind::Func(a, _) => if a.is_empty() { 2 } else { 5 },
+				CallKind::Func(n) => if n.contains('.') { 5 } else { 2 },
 				CallKind::Tail(..) => 0,
 			};
 			Expr::Call(call.clone(), do_args(stack + add, args)?)

@@ -204,7 +204,7 @@ impl<'a> Ctx<'a> {
 				let expr = self.rewind().call()?;
 				push(Stmt::Expr(expr));
 			}
-			Op::CallTail(a, b, c) => {
+			Op::CallTail(n, c) => {
 				for i in 1..=*c {
 					self.expect(&Op::GetTemp(i))?;
 				}
@@ -217,7 +217,7 @@ impl<'a> Ctx<'a> {
 					args.push(self.expr()?);
 				}
 				args.reverse();
-				let expr = Expr::Call(CallKind::Tail(a.clone(), b.clone()), args);
+				let expr = Expr::Call(CallKind::Tail(n.clone()), args);
 				push(Stmt::Expr(expr));
 			}
 			Op::Push(Value::Uint(0)) => {
@@ -310,7 +310,7 @@ impl<'a> Ctx<'a> {
 					args.push(self.expr_line()?);
 				}
 				self.expect(&Op::Push(Value::Uint(self.function.index)))?;
-				CallKind::Func(String::new(), n.clone())
+				CallKind::Func(n.clone())
 			}
 			Op::CallSystem(a, b, c) => {
 				for _ in 0..*c {
@@ -318,12 +318,12 @@ impl<'a> Ctx<'a> {
 				}
 				CallKind::System(*a, *b)
 			}
-			Op::CallExtern(a, b, c) => {
+			Op::CallExtern(n, c) => {
 				for _ in 0..*c {
 					args.push(self.expr()?); // Wonder why no line numbers here
 				}
 				self.expect(&Op::_25(pos))?;
-				CallKind::Func(a.clone(), b.clone())
+				CallKind::Func(n.clone())
 			}
 			op => {
 				self.rewind();
