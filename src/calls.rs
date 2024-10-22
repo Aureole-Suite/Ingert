@@ -1,6 +1,6 @@
 use crate::scp::{Call, CallArg};
 use crate::decompile::{Expr, Stmt, CallKind};
-
+// It might be tempting to do this on nest rather than decompile, but that might screw up stack usage.
 
 #[derive(Debug, snafu::Snafu)]
 pub enum Error {
