@@ -1,4 +1,4 @@
-use std::{cell::Cell, collections::HashMap};
+use std::collections::HashMap;
 
 use crate::nest::{self, Label};
 pub use nest::CallKind;

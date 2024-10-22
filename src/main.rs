@@ -47,36 +47,21 @@ fn process_file(file: &PathBuf) {
 		let mut functions = scp.functions.iter().collect::<Vec<_>>();
 		functions.sort_by_key(|f| f.start);
 		for f in &functions {
+			let _span = tracing::info_span!("function", name=f.name).entered();
 			writeln!(out, "{}", f);
-			// for c in &f.code {
-			// 	writeln!(out, "  {c:?}");
-			// }
-			// writeln!(out);
-
-			// let mut was_line = false;
+			for c in &f.called {
+				writeln!(out, "  calls {c:?}");
+			}
 			let stmts = ingert::nest::decompile(f).unwrap();
-			// for stmt in &stmts {
-			// 	if !was_line {
-			// 		write!(out, "  ");
-			// 	}
-			// 	if let ingert::nest::Stmt::Line(_) = stmt {
-			// 		was_line = true;
-			// 		write!(out, "{stmt} ");
-			// 	} else {
-			// 		was_line = false;
-			// 		writeln!(out, "{stmt}");
-			// 	}
-			// }
-			// writeln!(out);
-
-			let f = ingert::decompile::decompile(f.args.len(), &stmts).unwrap();
+			let mut stmts = ingert::decompile::decompile(f.args.len(), &stmts).unwrap();
+			ingert::calls::infer_calls(&f.called, &mut stmts).unwrap();
 			struct Block<'a>(&'a [ingert::decompile::Stmt]);
 			impl std::fmt::Display for Block<'_> {
 				fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 					ingert::decompile::Stmt::display_block(self.0, f, 1)
 				}
 			}
-			writeln!(out, "{}", Block(&f));
+			writeln!(out, "{}", Block(&stmts));
 		}
 	});
 }

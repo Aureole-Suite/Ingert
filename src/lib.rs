@@ -8,6 +8,7 @@ pub use scp::parse_scp;
 pub mod expr;
 pub mod nest;
 pub mod decompile;
+pub mod calls;
 
 #[repr(transparent)]
 pub struct Write(pub Box<dyn std::io::Write>);
