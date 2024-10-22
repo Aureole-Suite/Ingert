@@ -1,4 +1,6 @@
-use crate::scp::{Call, CallArg};
+use std::collections::HashMap;
+
+use crate::scp::{Arg, Call, CallArg};
 use crate::decompile::{Expr, Stmt, CallKind};
 // It might be tempting to do this on nest rather than decompile, but that might screw up stack usage.
 
@@ -7,26 +9,28 @@ pub enum Error {
 	DifferentCall { call: CallKind, exp_call: CallKind },
 	DifferentArgs { call: CallKind, args: Vec<CallArg>, exp_args: Vec<CallArg> },
 	NonLocalDefault { call: CallKind, args: Vec<CallArg>, exp_args: Vec<CallArg> },
+	TooManyCalls,
+	BadArgs { call: CallKind, args: Vec<CallArg>, sig: Vec<Arg> },
 }
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 
-pub fn infer_calls(called: &[Call], stmts: &mut [Stmt]) -> Result<()> {
-	let mut called = Calls { called, pos: 0 };
+// Returns whether the calls table is mysteriously duplicated. Seriously, I have no idea why this is a thing.
+pub fn infer_calls(funcs: &[crate::scp::Function], called: &[Call], stmts: &mut [Stmt]) -> Result<bool> {
+	let functable = funcs.iter().map(|f| (f.name.as_str(), f.args.as_slice())).collect::<HashMap<_, _>>();
+	let mut called = Calls { called, pos: 0, functable };
 	stmts.infer(&mut called)?;
 	if called.pos != called.called.len() {
-		if called.called[..called.pos] == called.called[called.pos..] {
-			tracing::warn!("calls kinda ok");
-		} else {
-			tracing::error!("{}/{} call", called.pos, called.called.len());
-		}
+		let (a, b) = called.called.split_at(called.pos);
+		snafu::ensure!(a == b, TooManyCallsSnafu);
 	}
-	Ok(())
+	Ok(called.pos != called.called.len())
 }
 
 struct Calls<'a> {
 	called: &'a [Call],
 	pos: usize,
+	functable: HashMap<&'a str, &'a [Arg]>,
 }
 
 trait Infer {
@@ -128,8 +132,16 @@ fn infer_call(called: &mut Calls, call: &mut CallKind, a: &mut Vec<Expr>) -> Res
 
 	snafu::ensure!(call == exp_call, DifferentCallSnafu { call: call.clone(), exp_call: exp_call.clone() });
 	snafu::ensure!(args.starts_with(exp_args), DifferentArgsSnafu { call: call.clone(), args: args.clone(), exp_args: exp_args.clone() });
-	let is_local = matches!(exp_call, CallKind::Func(name) if !name.contains('.'));
-	if is_local {
+	if let CallKind::Func(name) = call && !name.contains('.') {
+		let func = called.functable.get(name.as_str()).expect("name was looked up from table in the first place");
+		snafu::ensure!(args.len() == func.len(), BadArgsSnafu { call: call.clone(), args: args.clone(), sig: func.to_vec() });
+		for i in a.len()..exp_args.len() {
+			let Some(default) = &func[i].default else {
+				return BadArgsSnafu { call: call.clone(), args: args.clone(), sig: func.to_vec() }.fail();
+			};
+			snafu::ensure!(a[i] == Expr::Value(default.clone()), BadArgsSnafu { call: call.clone(), args: args.clone(), sig: func.to_vec() });
+		}
+		a.truncate(exp_args.len());
 	} else {
 		snafu::ensure!(args.len() == exp_args.len(), NonLocalDefaultSnafu { call: call.clone(), args: args.clone(), exp_args: exp_args.clone() });
 	}

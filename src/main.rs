@@ -49,12 +49,9 @@ fn process_file(file: &PathBuf) {
 		for f in &functions {
 			let _span = tracing::info_span!("function", name=f.name).entered();
 			writeln!(out, "{}", f);
-			for c in &f.called {
-				writeln!(out, "  calls {c:?}");
-			}
 			let stmts = ingert::nest::decompile(f).unwrap();
 			let mut stmts = ingert::decompile::decompile(f.args.len(), &stmts).unwrap();
-			ingert::calls::infer_calls(&f.called, &mut stmts).unwrap();
+			ingert::calls::infer_calls(&scp.functions, &f.called, &mut stmts).unwrap();
 			struct Block<'a>(&'a [ingert::decompile::Stmt]);
 			impl std::fmt::Display for Block<'_> {
 				fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
