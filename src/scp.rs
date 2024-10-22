@@ -1,6 +1,7 @@
 use gospel::read::{Le as _, Reader};
-use std::{cell::Cell, cmp::Reverse, collections::BTreeSet};
+use std::{cell::Cell, cmp::Reverse};
 use snafu::{OptionExt as _, ResultExt as _};
+use crate::expr::CallKind;
 
 #[derive(Debug, snafu::Snafu)]
 #[snafu(module(scp), context(suffix(false)))]
@@ -37,6 +38,8 @@ pub enum ScpError {
 	BadDefaults,
 	#[snafu(display("invalid {what} index {index}"))]
 	Id { what: &'static str, index: usize },
+	#[snafu(display("invalid call: {why}"))]
+	BadCall { why: &'static str },
 	#[snafu(display("invalid call argument {value:?} with kind {kind}"))]
 	BadCallArg {
 		value: Value,
@@ -129,13 +132,6 @@ impl std::fmt::Debug for Value {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct Call {
-	pub name: Option<String>,
-	pub kind: u16, // TODO: enum
-	pub args: Vec<CallArg>,
-}
-
 #[derive(Clone, PartialEq)]
 pub enum CallArg {
 	Value(Value),
@@ -143,6 +139,8 @@ pub enum CallArg {
 	Var,
 	Expr,
 }
+
+pub type Call = (CallKind, Vec<CallArg>);
 
 impl std::fmt::Debug for CallArg {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -226,21 +224,7 @@ fn parse_functions(f: &mut Reader<'_>, n_entries: u32) -> Result<Vec<Function>, 
 
 	let mut calls = Vec::with_capacity(call_specs.len());
 	for (calledp, calledc) in call_specs {
-		let c = multi(&mut f.at(calledp)?, calledc, |f| {
-			let name = match f.i32()? {
-				-1 => None,
-				n => Some(index(n as usize, "function", &entries)?.name.clone()),
-			};
-			let kind = f.u16()?;
-			let argc = f.u16()? as usize;
-			let argp = f.u32()? as usize;
-			let args = multi(&mut f.at(argp)?, argc, call_arg)?;
-			Ok(Call {
-				name,
-				kind,
-				args,
-			})
-		})?;
+		let c = multi(&mut f.at(calledp)?, calledc, |f| parse_call(f, &entries))?;
 		calls.push(c);
 	}
 
@@ -249,6 +233,65 @@ fn parse_functions(f: &mut Reader<'_>, n_entries: u32) -> Result<Vec<Function>, 
 	}
 
 	Ok(entries)
+}
+
+fn parse_call(f: &mut Reader, entries: &[Function]) -> Result<Call, ScpError> {
+	let name = match f.i32()? {
+		-1 => None,
+		n => Some(index(n as usize, "function", entries)?.name.clone()),
+	};
+	let kind = f.u16()?;
+	let argc = f.u16()? as usize;
+	let argp = f.u32()? as usize;
+	const V: Value = Value::Uint(0);
+	let mut args = multi(&mut f.at(argp)?, argc, |f| match (value(f)?, f.u32()?) {
+		(v, 0) => Ok(CallArg::Value(v)),
+		(V, 1) => Ok(CallArg::Call),
+		(V, 2) => Ok(CallArg::Var),
+		(V, 3) => Ok(CallArg::Expr),
+		(value, kind) => scp::BadCallArg { value, kind }.fail(),
+	})?;
+	let kind = match kind {
+		0 => {
+			snafu::ensure!(name.is_some(), scp::BadCall { why: "no name on local call" });
+			CallKind::Func(name.unwrap())
+		}
+		1 => {
+			snafu::ensure!(name.is_none(), scp::BadCall { why: "name on extern call" });
+			snafu::ensure!(args.len() >= 1, scp::BadCall { why: "insufficient args on extern call" });
+			let CallArg::Value(Value::String(namearg)) = args.remove(0) else {
+				return scp::BadCall { why: "invalid name on extern call" }.fail();
+			};
+			CallKind::Func(namearg)
+		}
+		2 => {
+			snafu::ensure!(args.len() >= 1, scp::BadCall { why: "insufficient args on tail call" });
+			let CallArg::Value(Value::String(namearg)) = args.remove(0) else {
+				return scp::BadCall { why: "invalid name on tail call" }.fail();
+			};
+			if let Some(name) = name {
+				snafu::ensure!(name == namearg, scp::BadCall { why: "mismatched names on tail call" });
+			} else if !namearg.contains('.') {
+				tracing::warn!("tail call to missing function {namearg}");
+			}
+			CallKind::Tail(namearg)
+		}
+		3 => {
+			snafu::ensure!(name.is_none(), scp::BadCall { why: "name on system call" });
+			snafu::ensure!(args.len() >= 2, scp::BadCall { why: "insufficient args on system call" });
+			let CallArg::Value(Value::Int(a)) = args.remove(0) else {
+				return scp::BadCall { why: "invalid group on system call" }.fail();
+			};
+			let CallArg::Value(Value::Int(b)) = args.remove(0) else {
+				return scp::BadCall { why: "invalid number on system call" }.fail();
+			};
+			let a = a.try_into().ok().context(scp::BadCall { why: "invalid group on system call" })?;
+			let b = b.try_into().ok().context(scp::BadCall { why: "invalid number on system call" })?;
+			CallKind::System(a, b)
+		}
+		_ => return scp::BadCall { why: "invalid call kind" }.fail(),
+	};
+	Ok((kind, args))
 }
 
 fn f30(v: u32) -> f32 {
@@ -316,17 +359,6 @@ fn string_value(f: &mut Reader) -> Result<String, ScpError> {
 			reason: "expected string",
 			value
 		}.fail(),
-	}
-}
-
-fn call_arg(f: &mut Reader) -> Result<CallArg, ScpError> {
-	const V: Value = Value::Uint(0);
-	match (value(f)?, f.u32()?) {
-		(v, 0) => Ok(CallArg::Value(v)),
-		(V, 1) => Ok(CallArg::Call),
-		(V, 2) => Ok(CallArg::Var),
-		(V, 3) => Ok(CallArg::Expr),
-		(value, kind) => scp::BadCallArg { value, kind }.fail(),
 	}
 }
 
