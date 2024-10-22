@@ -216,7 +216,6 @@ impl<'a> Ctx<'a> {
 				for _ in 0..*c {
 					args.push(self.expr()?);
 				}
-				args.reverse();
 				let expr = Expr::Call(CallKind::Tail(n.clone()), args);
 				push(Stmt::Expr(expr));
 			}
