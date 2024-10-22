@@ -4,6 +4,9 @@ use crate::decompile::{Expr, Stmt, CallKind};
 
 #[derive(Debug, snafu::Snafu)]
 pub enum Error {
+	DifferentCall { call: CallKind, exp_call: CallKind },
+	DifferentArgs { call: CallKind, args: Vec<CallArg>, exp_args: Vec<CallArg> },
+	NonLocalDefault { call: CallKind, args: Vec<CallArg>, exp_args: Vec<CallArg> },
 }
 
 type Result<T, E = Error> = std::result::Result<T, E>;
@@ -118,12 +121,18 @@ impl Infer for Expr {
 	}
 }
 
-fn infer_call(called: &mut Calls, c: &mut CallKind, a: &mut Vec<Expr>) -> Result<()> {
-	let call_args = a.iter().map(to_call_arg).collect::<Vec<_>>();
-	if !call_args.starts_with(&called.called[called.pos].1) {
-		tracing::error!("call args {c:?} {call_args:?} != {:?}", called.called[called.pos]);
-	}
+fn infer_call(called: &mut Calls, call: &mut CallKind, a: &mut Vec<Expr>) -> Result<()> {
+	let args = a.iter().map(to_call_arg).collect::<Vec<_>>();
+	let (exp_call, exp_args) = &called.called[called.pos];
 	called.pos += 1;
+
+	snafu::ensure!(call == exp_call, DifferentCallSnafu { call: call.clone(), exp_call: exp_call.clone() });
+	snafu::ensure!(args.starts_with(exp_args), DifferentArgsSnafu { call: call.clone(), args: args.clone(), exp_args: exp_args.clone() });
+	let is_local = matches!(exp_call, CallKind::Func(name) if !name.contains('.'));
+	if is_local {
+	} else {
+		snafu::ensure!(args.len() == exp_args.len(), NonLocalDefaultSnafu { call: call.clone(), args: args.clone(), exp_args: exp_args.clone() });
+	}
 	Ok(())
 }
 
