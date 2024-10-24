@@ -61,23 +61,6 @@ pub struct Function {
 	pub code_end: Label,
 }
 
-impl std::fmt::Display for Function {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		if self.is_prelude {
-			write!(f, "prelude ")?;
-		}
-		write!(f, "function {}(", self.name)?;
-		for (i, arg) in self.args.iter().enumerate() {
-			if i != 0 {
-				write!(f, ", ")?;
-			}
-			arg.fmt(f)?;
-		}
-		write!(f, ")")?;
-		Ok(())
-	}
-}
-
 #[derive(Clone, PartialEq)]
 pub enum Value {
 	Uint(u32),
