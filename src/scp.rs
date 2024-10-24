@@ -388,7 +388,7 @@ pub struct Scp {
 	pub items: Vec<Item>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Item {
 	Function(Function),
 	Global(Global),

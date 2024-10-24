@@ -67,7 +67,7 @@ pub enum Unop {
 	BitNot = 33,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Global {
 	pub name: String,
 	pub ty: Type,
