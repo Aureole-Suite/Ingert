@@ -44,7 +44,7 @@ fn process_file(file: &PathBuf) {
 					if let Some(line) = g.line {
 						write!(out, "line {} ", line);
 					}
-					writeln!(out, "global {} = {}", g.name, g.unknown);
+					writeln!(out, "global {} = {}", g.name, g.ty);
 				}
 				ingert::scp::Item::Function(f) => {
 					let _span = tracing::info_span!("function", name=f.name).entered();

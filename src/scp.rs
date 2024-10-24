@@ -394,6 +394,16 @@ pub enum Item {
 	Global(Global),
 }
 
+fn parse_global(f: &mut Reader) -> Result<Global, ScpError> {
+	let name = string_value(f)?;
+	let ty = match f.u32()? {
+		0 => Type::Number,
+		1 => Type::String,
+		ty => return scp::BadType { ty }.fail(),
+	};
+	Ok(Global { name, ty, line: None })
+}
+
 pub fn parse_scp(data: &[u8]) -> Result<Scp, ScpError> {
 	tracing::info!("reading");
 	let mut f = Reader::new(data);
@@ -406,11 +416,7 @@ pub fn parse_scp(data: &[u8]) -> Result<Scp, ScpError> {
 
 	let mut functions = parse_functions(&mut f, n_entries)?;
 	f.seek(code_start as usize)?;
-	let mut globals = multi(&mut f, n3 as usize, |f| Ok(Global {
-		name: string_value(f)?,
-		unknown: f.u32()?,
-		line: None,
-	}))?;
+	let mut globals = multi(&mut f, n3 as usize, parse_global)?;
 
 	let last_offset = functions
 		.iter()

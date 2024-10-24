@@ -70,7 +70,7 @@ pub enum Unop {
 #[derive(Debug, Clone)]
 pub struct Global {
 	pub name: String,
-	pub unknown: u32,
+	pub ty: Type,
 	pub line: Option<u16>,
 }
 
@@ -148,15 +148,21 @@ impl Display for CallKind {
 	}
 }
 
+impl Display for Type {
+	fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+		f.write_str(match self {
+			Type::Number => "num",
+			Type::String => "str",
+		})
+	}
+}
+
 impl std::fmt::Display for Arg {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		if self.out {
 			write!(f, "out ")?;
 		}
-		match self.ty {
-			Type::Number => write!(f, "num")?,
-			Type::String => write!(f, "str")?,
-		}
+		write!(f, "{}", self.ty)?;
 		if let Some(default) = &self.default {
 			write!(f, "={:?}", default)?;
 		}
