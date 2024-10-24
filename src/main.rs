@@ -1,6 +1,6 @@
 use clap::Parser;
 use std::path::{Path, PathBuf};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 
 #[derive(clap::Parser)]
 struct Args {
@@ -63,7 +63,7 @@ fn main() {
 		prelude_order.push(prelude_funcs);
 	}
 
-	let prelude_order = find_order(prelude_order);
+	let prelude_order = prelude_order.into_iter().fold(Vec::new(), ordered_union);
 
 	let out = Path::new("out").join("prelude.da");
 	let out = std::fs::File::create(&out).unwrap();
@@ -73,15 +73,33 @@ fn main() {
 	for name in prelude_order {
 		write_fn(&mut out, &prelude.remove(&name).unwrap());
 	}
-	println!("{} functions left in prelude", prelude.len());
+	writeln!(out, "// {} functions left in prelude", prelude.len());
 	for f in prelude.values() {
 		write_fn(&mut out, f);
 	}
 }
 
-fn find_order(prelude_order: Vec<Vec<String>>) -> Vec<String> {
-	// TODO
-	Vec::new()
+fn ordered_union<T: Clone + std::hash::Hash + Eq>(a: Vec<T>, b: Vec<T>) -> Vec<T> {
+	let in_a = HashSet::<_>::from_iter(a.iter().cloned());
+	let in_b = HashSet::<_>::from_iter(b.iter().cloned());
+	let mut a = a.into_iter();
+	let mut b = b.into_iter();
+	let mut out = Vec::<T>::new();
+	while let Some(a) = a.next() {
+		if in_b.contains(&a) {
+			while let Some(b) = b.next() {
+				if b == a {
+					break
+				}
+				if !in_a.contains(&b) {
+					out.push(b);
+				}
+			}
+		}
+		out.push(a);
+	}
+	out.extend(b.filter(|b| !in_a.contains(b)));
+	out
 }
 
 fn write_fn(out: &mut ingert::Write, f: &ingert::Function) {
