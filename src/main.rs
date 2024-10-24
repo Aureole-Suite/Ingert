@@ -38,26 +38,30 @@ fn process_file(file: &PathBuf) {
 		let out = std::io::BufWriter::new(out);
 		let mut out = ingert::Write(Box::new(out));
 		let scp = ingert::parse_scp(&data).unwrap();
-		for glob in &scp.globals {
-			writeln!(out, "global {} = {}", glob.name, glob.unknown);
-		}
-		if !scp.globals.is_empty() {
-			writeln!(out);
-		}
-		for f in &scp.functions {
-			let _span = tracing::info_span!("function", name=f.name).entered();
-			let stmts = ingert::nest::decompile(f).unwrap();
-			let mut stmts = ingert::decompile::decompile(f.args.len(), &stmts).unwrap();
-			let dup = ingert::calls::infer_calls(&scp.functions, &f.called, &mut stmts).unwrap();
+		for item in &scp.items {
+			match item {
+				ingert::scp::Item::Global(g) => {
+					if let Some(line) = g.line {
+						write!(out, "line {} ", line);
+					}
+					writeln!(out, "global {} = {}", g.name, g.unknown);
+				}
+				ingert::scp::Item::Function(f) => {
+					let _span = tracing::info_span!("function", name=f.name).entered();
+					let stmts = ingert::nest::decompile(f).unwrap();
+					let mut stmts = ingert::decompile::decompile(f.args.len(), &stmts).unwrap();
+					let dup = ingert::calls::infer_calls(&scp.items, &f.called, &mut stmts).unwrap();
 
-			writeln!(out, "{}{}", f, if dup { " (dup)" } else { "" });
-			struct Block<'a>(&'a [ingert::decompile::Stmt]);
-			impl std::fmt::Display for Block<'_> {
-				fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-					ingert::decompile::Stmt::display_block(self.0, f, 1)
+					writeln!(out, "{}{}", f, if dup { " (dup)" } else { "" });
+					struct Block<'a>(&'a [ingert::decompile::Stmt]);
+					impl std::fmt::Display for Block<'_> {
+						fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+							ingert::decompile::Stmt::display_block(self.0, f, 1)
+						}
+					}
+					writeln!(out, "{}", Block(&stmts));
 				}
 			}
-			writeln!(out, "{}", Block(&stmts));
 		}
 	});
 }

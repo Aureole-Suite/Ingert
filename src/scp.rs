@@ -477,11 +477,17 @@ impl std::fmt::Display for Unop {
 pub struct Global {
 	pub name: String,
 	pub unknown: u32,
+	pub line: Option<u16>,
 }
 
 pub struct Scp {
-	pub functions: Vec<Function>,
-	pub globals: Vec<Global>,
+	pub items: Vec<Item>,
+}
+
+#[derive(Debug, Clone)]
+pub enum Item {
+	Function(Function),
+	Global(Global),
 }
 
 pub fn parse_scp(data: &[u8]) -> Result<Scp, ScpError> {
@@ -496,9 +502,10 @@ pub fn parse_scp(data: &[u8]) -> Result<Scp, ScpError> {
 
 	let mut functions = parse_functions(&mut f, n_entries)?;
 	f.seek(code_start as usize)?;
-	let globals = multi(&mut f, n3 as usize, |f| Ok(Global {
+	let mut globals = multi(&mut f, n3 as usize, |f| Ok(Global {
 		name: string_value(f)?,
 		unknown: f.u32()?,
+		line: None,
 	}))?;
 
 	let last_offset = functions
@@ -579,19 +586,27 @@ pub fn parse_scp(data: &[u8]) -> Result<Scp, ScpError> {
 		}
 	}
 
+	let mut items = Vec::new();
+
 	functions.sort_by_key(|f| f.start);
 	let mut end = Label(f.pos() as u32);
-	for func in functions.iter_mut().rev() {
+	for mut func in functions.into_iter().rev() {
 		let pos = ops.binary_search_by_key(&func.start, |(l, _)| *l).unwrap();
 		func.code = ops.split_off(pos);
 		func.code_end = end;
 		end = func.start;
+		while let Some(&(_, Op::Line(line))) = func.code.last() && !globals.is_empty() {
+			func.code.pop();
+			let mut glob = globals.pop().unwrap();
+			glob.line = Some(line);
+			items.push(Item::Global(glob));
+		}
+		items.push(Item::Function(func));
 	}
+	items.extend(globals.into_iter().rev().map(Item::Global));
+	items.reverse();
 
-	Ok(Scp {
-		functions,
-		globals,
-	})
+	Ok(Scp { items })
 }
 
 fn index<'a, T>(index: usize, what: &'static str, values: &'a [T]) -> Result<&'a T, ScpError> {

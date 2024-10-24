@@ -1,6 +1,6 @@
 #![feature(let_chains, is_sorted)]
 
-mod scp;
+pub mod scp;
 
 pub use scp::{Value, Binop, Unop};
 pub use scp::parse_scp;

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::scp::{Arg, Call, CallArg};
+use crate::scp::{Arg, Call, CallArg, Item};
 use crate::decompile::{Expr, Stmt, CallKind};
 // It might be tempting to do this on nest rather than decompile, but that might screw up stack usage.
 
@@ -16,8 +16,13 @@ pub enum Error {
 type Result<T, E = Error> = std::result::Result<T, E>;
 
 // Returns whether the calls table is mysteriously duplicated. Seriously, I have no idea why this is a thing.
-pub fn infer_calls(funcs: &[crate::scp::Function], called: &[Call], stmts: &mut [Stmt]) -> Result<bool> {
-	let functable = funcs.iter().map(|f| (f.name.as_str(), f.args.as_slice())).collect::<HashMap<_, _>>();
+pub fn infer_calls(funcs: &[Item], called: &[Call], stmts: &mut [Stmt]) -> Result<bool> {
+	let mut functable = HashMap::new();
+	for f in funcs {
+		if let Item::Function(f) = f {
+			functable.insert(f.name.as_str(), f.args.as_slice());
+		}
+	}
 	let mut called = Calls { called, pos: 0, functable };
 	stmts.infer(&mut called)?;
 	if called.pos != called.called.len() {
