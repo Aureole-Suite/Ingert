@@ -44,9 +44,7 @@ fn process_file(file: &PathBuf) {
 		if !scp.globals.is_empty() {
 			writeln!(out);
 		}
-		let mut functions = scp.functions.iter().collect::<Vec<_>>();
-		functions.sort_by_key(|f| f.start);
-		for f in &functions {
+		for f in &scp.functions {
 			let _span = tracing::info_span!("function", name=f.name).entered();
 			let stmts = ingert::nest::decompile(f).unwrap();
 			let mut stmts = ingert::decompile::decompile(f.args.len(), &stmts).unwrap();

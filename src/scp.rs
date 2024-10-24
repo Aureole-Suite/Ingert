@@ -1,5 +1,5 @@
 use gospel::read::{Le as _, Reader};
-use std::{cell::Cell, cmp::Reverse};
+use std::cell::Cell;
 use snafu::{OptionExt as _, ResultExt as _};
 use crate::expr::CallKind;
 
@@ -579,10 +579,9 @@ pub fn parse_scp(data: &[u8]) -> Result<Scp, ScpError> {
 		}
 	}
 
-	let mut sorted_functions = functions.iter_mut().collect::<Vec<_>>();
-	sorted_functions.sort_by_key(|f| Reverse(f.start));
+	functions.sort_by_key(|f| f.start);
 	let mut end = Label(f.pos() as u32);
-	for func in sorted_functions {
+	for func in functions.iter_mut().rev() {
 		let pos = ops.binary_search_by_key(&func.start, |(l, _)| *l).unwrap();
 		func.code = ops.split_off(pos);
 		func.code_end = end;
