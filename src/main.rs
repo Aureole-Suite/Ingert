@@ -1,3 +1,4 @@
+#![feature(let_chains)]
 use clap::Parser;
 use std::path::{Path, PathBuf};
 use std::collections::{BTreeMap, HashSet};
@@ -82,23 +83,28 @@ fn main() {
 fn ordered_union<T: Clone + std::hash::Hash + Eq>(a: Vec<T>, b: Vec<T>) -> Vec<T> {
 	let in_a = HashSet::<_>::from_iter(a.iter().cloned());
 	let in_b = HashSet::<_>::from_iter(b.iter().cloned());
-	let mut a = a.into_iter();
-	let mut b = b.into_iter();
-	let mut out = Vec::<T>::new();
-	while let Some(a) = a.next() {
-		if in_b.contains(&a) {
-			while let Some(b) = b.next() {
-				if b == a {
-					break
-				}
-				if !in_a.contains(&b) {
-					out.push(b);
-				}
+	let mut aa = a.into_iter().peekable();
+	let mut bb = b.into_iter().peekable();
+	let mut out = Vec::new();
+	while let Some(a) = aa.peek() && let Some(b) = bb.peek() {
+		if a == b {
+			out.push(aa.next().unwrap());
+			bb.next();
+		} else {
+			let only_a = !in_b.contains(a);
+			let only_b = !in_a.contains(b);
+			if only_a && !only_b {
+				out.push(aa.next().unwrap());
+			} else if !only_a && only_b {
+				out.push(bb.next().unwrap());
+			} else {
+				// tiebreak by order
+				out.push(aa.next().unwrap());
 			}
 		}
-		out.push(a);
 	}
-	out.extend(b.filter(|b| !in_a.contains(b)));
+	out.extend(aa.filter(|a| !in_b.contains(a)));
+	out.extend(bb.filter(|b| !in_a.contains(b)));
 	out
 }
 
