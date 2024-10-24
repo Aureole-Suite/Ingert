@@ -1,7 +1,7 @@
 #![feature(let_chains)]
 use clap::Parser;
 use std::path::{Path, PathBuf};
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 #[derive(clap::Parser)]
 struct Args {
@@ -64,7 +64,9 @@ fn main() {
 		prelude_order.push(prelude_funcs);
 	}
 
-	let prelude_order = prelude_order.into_iter().fold(Vec::new(), ordered_union);
+	let tiebreak = prelude.iter().map(|(k, v)| (k, tiebreak_score(v))).collect::<HashMap<_, _>>();
+	let prelude_order = prelude_order.into_iter()
+		.fold(Vec::new(), |a, b| ordered_union(a, b, |a, b| tiebreak[a] < tiebreak[b]));
 
 	let out = Path::new("out").join("prelude.da");
 	let out = std::fs::File::create(&out).unwrap();
@@ -74,13 +76,34 @@ fn main() {
 	for name in prelude_order {
 		write_fn(&mut out, &prelude.remove(&name).unwrap());
 	}
-	writeln!(out, "// {} functions left in prelude", prelude.len());
 	for f in prelude.values() {
 		write_fn(&mut out, f);
 	}
 }
 
-fn ordered_union<T: Clone + std::hash::Hash + Eq>(a: Vec<T>, b: Vec<T>) -> Vec<T> {
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+enum Tiebreak<'a> {
+	Syscall(u8, u8),
+	Name(&'a str),
+}
+
+fn tiebreak_score(v: &ingert::Function) -> Tiebreak<'_> {
+	use ingert::*;
+	if let [Stmt::Expr(expr), Stmt::Return(None)] | [Stmt::Return(Some(expr))] = v.body.as_slice()
+		&& let Expr::Call(CallKind::System(a, b), args) = expr
+		&& args.iter().zip(0..).all(|(arg, i)| arg == &Expr::Var(Lvalue::Stack(StackVar(!i))))
+	{
+		Tiebreak::Syscall(*a, *b)
+	} else {
+		Tiebreak::Name(&v.name)
+	}
+}
+
+fn ordered_union<T: Clone + std::hash::Hash + Eq>(
+	a: Vec<T>,
+	b: Vec<T>,
+	tiebreak: impl Fn(&T, &T) -> bool,
+) -> Vec<T> {
 	let in_a = HashSet::<_>::from_iter(a.iter().cloned());
 	let in_b = HashSet::<_>::from_iter(b.iter().cloned());
 	let mut aa = a.into_iter().peekable();
@@ -97,14 +120,17 @@ fn ordered_union<T: Clone + std::hash::Hash + Eq>(a: Vec<T>, b: Vec<T>) -> Vec<T
 				out.push(aa.next().unwrap());
 			} else if !only_a && only_b {
 				out.push(bb.next().unwrap());
-			} else {
-				// tiebreak by order
+			} else if tiebreak(a, b) {
 				out.push(aa.next().unwrap());
+			} else {
+				out.push(bb.next().unwrap());
 			}
 		}
 	}
-	out.extend(aa.filter(|a| !in_b.contains(a)));
-	out.extend(bb.filter(|b| !in_a.contains(b)));
+	out.extend(aa);
+	out.extend(bb);
+	let mut dedup = HashSet::new();
+	out.retain(|v| dedup.insert(v.clone()));
 	out
 }
 

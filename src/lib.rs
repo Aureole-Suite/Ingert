@@ -8,6 +8,8 @@ pub mod nest;
 pub mod decompile;
 pub mod calls;
 
+pub use decompile::{Stmt, Expr, Lvalue, CallKind, StackVar};
+
 #[repr(transparent)]
 pub struct Write(pub Box<dyn std::io::Write>);
 impl Write {
