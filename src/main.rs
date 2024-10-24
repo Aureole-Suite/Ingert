@@ -38,8 +38,8 @@ fn process_file(file: &PathBuf) {
 		let out = std::io::BufWriter::new(out);
 		let mut out = ingert::Write(Box::new(out));
 		let scp = ingert::parse_scp(&data).unwrap();
-		for (name, val) in &scp.globals {
-			writeln!(out, "global {name} = {val}");
+		for glob in &scp.globals {
+			writeln!(out, "global {} = {}", glob.name, glob.unknown);
 		}
 		if !scp.globals.is_empty() {
 			writeln!(out);

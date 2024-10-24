@@ -473,9 +473,15 @@ impl std::fmt::Display for Unop {
 	}
 }
 
+#[derive(Debug, Clone)]
+pub struct Global {
+	pub name: String,
+	pub unknown: u32,
+}
+
 pub struct Scp {
 	pub functions: Vec<Function>,
-	pub globals: Vec<(String, u32)>,
+	pub globals: Vec<Global>,
 }
 
 pub fn parse_scp(data: &[u8]) -> Result<Scp, ScpError> {
@@ -490,7 +496,10 @@ pub fn parse_scp(data: &[u8]) -> Result<Scp, ScpError> {
 
 	let mut functions = parse_functions(&mut f, n_entries)?;
 	f.seek(code_start as usize)?;
-	let globals = multi(&mut f, n3 as usize, |f| Ok((string_value(f)?, f.u32()?)))?;
+	let globals = multi(&mut f, n3 as usize, |f| Ok(Global {
+		name: string_value(f)?,
+		unknown: f.u32()?,
+	}))?;
 
 	let last_offset = functions
 		.iter()
@@ -522,8 +531,8 @@ pub fn parse_scp(data: &[u8]) -> Result<Scp, ScpError> {
 			4 => Op::PushRef(stack_slot(&mut f)?),
 			5 => Op::SetVar(stack_slot(&mut f)?),
 			6 => Op::SetRef(stack_slot(&mut f)?),
-			7 => Op::GetGlobal(index(f.u32()? as usize, "global", &globals)?.0.clone()),
-			8 => Op::SetGlobal(index(f.u32()? as usize, "global", &globals)?.0.clone()),
+			7 => Op::GetGlobal(index(f.u32()? as usize, "global", &globals)?.name.clone()),
+			8 => Op::SetGlobal(index(f.u32()? as usize, "global", &globals)?.name.clone()),
 			9 => Op::GetTemp(f.u8()?),
 			10 => Op::SetTemp(f.u8()?),
 			11 => Op::Goto(label(&mut f)?),
