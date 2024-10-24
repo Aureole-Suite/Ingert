@@ -1,5 +1,6 @@
 use clap::Parser;
 use std::path::{Path, PathBuf};
+use std::collections::BTreeMap;
 
 #[derive(clap::Parser)]
 struct Args {
@@ -11,16 +12,19 @@ fn main() {
 		.with_writer(std::io::stderr)
 		.init();
 	let args = Args::parse();
+
+	let mut prelude = BTreeMap::new();
+	let mut prelude_order = Vec::new();
 	for file in &args.files {
+		let _span = tracing::info_span!("file", path = %file.display()).entered();
 		if file.ends_with("mon9996_c00.da") {
 			// this one has a very different format, where the first table is half the width
 			tracing::info!("Skipping mon9996_c00.da");
-			return;
+			continue;
 		}
-		tracing::trace!("reading");
 		let Ok(data) = std::fs::read(file) else {
 			tracing::error!("Failed to read file");
-			return;
+			continue;
 		};
 
 		let scena = ingert::decompile(&data).unwrap();
@@ -29,6 +33,7 @@ fn main() {
 		let out = std::io::BufWriter::new(out);
 		let mut out = ingert::Write(Box::new(out));
 
+		let mut prelude_funcs = Vec::new();
 		for item in &scena {
 			match item {
 				ingert::Item::Global(g) => {
@@ -39,28 +44,63 @@ fn main() {
 				}
 				ingert::Item::Function(f) => {
 					if f.is_prelude {
-						write!(out, "prelude ");
-					}
-					write!(out, "function {}(", f.name);
-					for (i, arg) in f.args.iter().enumerate() {
-						if i != 0 {
-							write!(out, ", ");
+						if let Some(prev) = prelude.get(&f.name) {
+							if prev != f {
+								tracing::warn!("{} differs from prelude", f.name);
+								write!(out, "prelude ");
+								write_fn(&mut out, f);
+							}
+						} else {
+							prelude.insert(f.name.clone(), f.clone());
 						}
-						write!(out, "{}", arg);
+						prelude_funcs.push(f.name.clone());
+					} else {
+						write_fn(&mut out, f);
 					}
-					writeln!(out, ")");
-					if f.dup {
-						writeln!(out, " (dup)");
-					}
-					struct Block<'a>(&'a [ingert::decompile::Stmt]);
-					impl std::fmt::Display for Block<'_> {
-						fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-							ingert::decompile::Stmt::display_block(self.0, f, 1)
-						}
-					}
-					writeln!(out, "{}", Block(&f.body));
 				}
 			}
 		}
+		prelude_order.push(prelude_funcs);
 	}
+
+	let prelude_order = find_order(prelude_order);
+
+	let out = Path::new("out").join("prelude.da");
+	let out = std::fs::File::create(&out).unwrap();
+	let out = std::io::BufWriter::new(out);
+	let mut out = ingert::Write(Box::new(out));
+
+	for name in prelude_order {
+		write_fn(&mut out, &prelude.remove(&name).unwrap());
+	}
+	println!("{} functions left in prelude", prelude.len());
+	for f in prelude.values() {
+		write_fn(&mut out, f);
+	}
+}
+
+fn find_order(prelude_order: Vec<Vec<String>>) -> Vec<String> {
+	// TODO
+	Vec::new()
+}
+
+fn write_fn(out: &mut ingert::Write, f: &ingert::Function) {
+	write!(out, "function {}(", f.name);
+	for (i, arg) in f.args.iter().enumerate() {
+		if i != 0 {
+			write!(out, ", ");
+		}
+		write!(out, "{}", arg);
+	}
+	writeln!(out, ")");
+	if f.dup {
+		writeln!(out, " (dup)");
+	}
+	struct Block<'a>(&'a [ingert::decompile::Stmt]);
+	impl std::fmt::Display for Block<'_> {
+		fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+			ingert::decompile::Stmt::display_block(self.0, f, 1)
+		}
+	}
+	writeln!(out, "{}", Block(&f.body));
 }
