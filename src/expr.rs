@@ -1,4 +1,4 @@
-pub use crate::scp::{Value, Binop, Unop};
+pub use crate::scp::Value;
 use std::fmt::{Display, Formatter, Result};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -24,6 +24,54 @@ pub enum CallKind {
 	System(u8, u8),
 	Func(String),
 	Tail(String),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Type {
+	Number,
+	String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Arg {
+	pub out: bool,
+	pub ty: Type,
+	pub default: Option<Value>,
+}
+
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, strum::FromRepr)]
+pub enum Binop {
+	Add = 16,
+	Sub = 17,
+	Mul = 18,
+	Div = 19,
+	Mod = 20,
+	Eq = 21,
+	Ne = 22,
+	Gt = 23,
+	Ge = 24,
+	Lt = 25,
+	Le = 26,
+	BitAnd = 27,
+	BitOr = 28,
+	BoolAnd = 29,
+	BoolOr = 30,
+}
+
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, strum::FromRepr)]
+pub enum Unop {
+	Neg = 31,
+	BoolNot = 32,
+	BitNot = 33,
+}
+
+#[derive(Debug, Clone)]
+pub struct Global {
+	pub name: String,
+	pub unknown: u32,
+	pub line: Option<u16>,
 }
 
 impl<T: Display> Display for Expr<T> {
@@ -100,7 +148,55 @@ impl Display for CallKind {
 	}
 }
 
-fn op_prio(op: Binop) -> u32 {
+impl std::fmt::Display for Arg {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		if self.out {
+			write!(f, "out ")?;
+		}
+		match self.ty {
+			Type::Number => write!(f, "num")?,
+			Type::String => write!(f, "str")?,
+		}
+		if let Some(default) = &self.default {
+			write!(f, "={:?}", default)?;
+		}
+		Ok(())
+	}
+}
+
+impl std::fmt::Display for Binop {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.write_str(match self {
+			Binop::Add => "+",
+			Binop::Sub => "-",
+			Binop::Mul => "*",
+			Binop::Div => "/",
+			Binop::Mod => "%",
+			Binop::Eq => "==",
+			Binop::Ne => "!=",
+			Binop::Gt => ">",
+			Binop::Ge => ">=",
+			Binop::Lt => "<",
+			Binop::Le => "<=",
+			Binop::BitAnd => "&",
+			Binop::BitOr => "|",
+			Binop::BoolAnd => "&&",
+			Binop::BoolOr => "||",
+		})
+	}
+}
+
+impl std::fmt::Display for Unop {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.write_str(match self {
+			Unop::Neg => "-",
+			Unop::BoolNot => "!",
+			Unop::BitNot => "~",
+		})
+	}
+}
+
+pub fn op_prio(op: Binop) -> u32 {
 	use Binop::*;
 	match op {
 		Mul | Div | Mod => 7,

@@ -1,7 +1,7 @@
 use gospel::read::{Le as _, Reader};
 use std::cell::Cell;
 use snafu::{OptionExt as _, ResultExt as _};
-use crate::expr::CallKind;
+use crate::expr::{Arg, Binop, CallKind, Global, Type, Unop};
 
 #[derive(Debug, snafu::Snafu)]
 #[snafu(module(scp), context(suffix(false)))]
@@ -49,19 +49,6 @@ pub enum ScpError {
 	BadFlags { name: String, flags: u16 },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Type {
-	Number,
-	String,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct Arg {
-	pub out: bool,
-	pub ty: Type,
-	pub default: Option<Value>,
-}
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct Function {
 	pub name: String,
@@ -72,22 +59,6 @@ pub struct Function {
 	pub start: Label,
 	pub code: Vec<(Label, Op)>,
 	pub code_end: Label,
-}
-
-impl std::fmt::Display for Arg {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		if self.out {
-			write!(f, "out ")?;
-		}
-		match self.ty {
-			Type::Number => write!(f, "num")?,
-			Type::String => write!(f, "str")?,
-		}
-		if let Some(default) = &self.default {
-			write!(f, "={:?}", default)?;
-		}
-		Ok(())
-	}
 }
 
 impl std::fmt::Display for Function {
@@ -411,73 +382,6 @@ pub enum Op {
 	_25(Label),
 	Line(u16),
 	Debug(u8),
-}
-
-#[repr(u8)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, strum::FromRepr)]
-pub enum Binop {
-	Add = 16,
-	Sub = 17,
-	Mul = 18,
-	Div = 19,
-	Mod = 20,
-	Eq = 21,
-	Ne = 22,
-	Gt = 23,
-	Ge = 24,
-	Lt = 25,
-	Le = 26,
-	BitAnd = 27,
-	BitOr = 28,
-	BoolAnd = 29,
-	BoolOr = 30,
-}
-
-#[repr(u8)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, strum::FromRepr)]
-pub enum Unop {
-	Neg = 31,
-	BoolNot = 32,
-	BitNot = 33,
-}
-
-impl std::fmt::Display for Binop {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		f.write_str(match self {
-			Binop::Add => "+",
-			Binop::Sub => "-",
-			Binop::Mul => "*",
-			Binop::Div => "/",
-			Binop::Mod => "%",
-			Binop::Eq => "==",
-			Binop::Ne => "!=",
-			Binop::Gt => ">",
-			Binop::Ge => ">=",
-			Binop::Lt => "<",
-			Binop::Le => "<=",
-			Binop::BitAnd => "&",
-			Binop::BitOr => "|",
-			Binop::BoolAnd => "&&",
-			Binop::BoolOr => "||",
-		})
-	}
-}
-
-impl std::fmt::Display for Unop {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		f.write_str(match self {
-			Unop::Neg => "-",
-			Unop::BoolNot => "!",
-			Unop::BitNot => "~",
-		})
-	}
-}
-
-#[derive(Debug, Clone)]
-pub struct Global {
-	pub name: String,
-	pub unknown: u32,
-	pub line: Option<u16>,
 }
 
 pub struct Scp {
