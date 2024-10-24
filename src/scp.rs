@@ -5,7 +5,7 @@ use crate::expr::{Arg, Binop, CallKind, Global, Type, Unop};
 
 #[derive(Debug, snafu::Snafu)]
 #[snafu(module(scp), context(suffix(false)))]
-pub enum ScpError {
+pub enum Error {
 	#[snafu(display("invalid read (at {location})"), context(false))]
 	Read {
 		source: gospel::read::Error,
@@ -127,12 +127,12 @@ impl std::fmt::Debug for CallArg {
 fn multi<T>(
 	f: &mut Reader,
 	n: usize,
-	g: impl Fn(&mut Reader) -> Result<T, ScpError>,
-) -> Result<Vec<T>, ScpError> {
+	g: impl Fn(&mut Reader) -> Result<T, Error>,
+) -> Result<Vec<T>, Error> {
 	(0..n).map(|_| g(f)).collect()
 }
 
-fn parse_functions(f: &mut Reader<'_>, n_entries: u32) -> Result<Vec<Function>, ScpError> {
+fn parse_functions(f: &mut Reader<'_>, n_entries: u32) -> Result<Vec<Function>, Error> {
 	let mut entries = Vec::with_capacity(n_entries as usize);
 	let mut call_specs = Vec::with_capacity(n_entries as usize);
 	for index in 0..n_entries {
@@ -206,7 +206,7 @@ fn parse_functions(f: &mut Reader<'_>, n_entries: u32) -> Result<Vec<Function>, 
 	Ok(entries)
 }
 
-fn parse_call(f: &mut Reader, entries: &[Function]) -> Result<Call, ScpError> {
+fn parse_call(f: &mut Reader, entries: &[Function]) -> Result<Call, Error> {
 	let name = match f.i32()? {
 		-1 => None,
 		n => Some(index(n as usize, "function", entries)?.name.clone()),
@@ -310,7 +310,7 @@ fn string(f: &mut Reader) -> Result<String, StringError> {
 	Ok(s.to_string())
 }
 
-fn value(f: &mut Reader) -> Result<Value, ScpError> {
+fn value(f: &mut Reader) -> Result<Value, Error> {
 	let v = f.u32()?;
 	let hi = v >> 30;
 	let lo = v & 0x3FFFFFFF;
@@ -323,7 +323,7 @@ fn value(f: &mut Reader) -> Result<Value, ScpError> {
 	}
 }
 
-fn string_value(f: &mut Reader) -> Result<String, ScpError> {
+fn string_value(f: &mut Reader) -> Result<String, Error> {
 	match value(f)? {
 		Value::String(s) => Ok(s),
 		value => scp::BadValue {
@@ -345,7 +345,7 @@ impl std::fmt::Debug for Label {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct StackSlot(pub i32);
 
-fn stack_slot(f: &mut Reader) -> Result<StackSlot, ScpError> {
+fn stack_slot(f: &mut Reader) -> Result<StackSlot, Error> {
 	let v = f.i32()?;
 	if v % 4 != 0 {
 		return scp::BadValue {
@@ -394,7 +394,7 @@ pub enum Item {
 	Global(Global),
 }
 
-fn parse_global(f: &mut Reader) -> Result<Global, ScpError> {
+fn parse_global(f: &mut Reader) -> Result<Global, Error> {
 	let name = string_value(f)?;
 	let ty = match f.u32()? {
 		0 => Type::Number,
@@ -404,7 +404,7 @@ fn parse_global(f: &mut Reader) -> Result<Global, ScpError> {
 	Ok(Global { name, ty, line: None })
 }
 
-pub fn parse_scp(data: &[u8]) -> Result<Scp, ScpError> {
+pub fn parse_scp(data: &[u8]) -> Result<Scp, Error> {
 	tracing::info!("reading");
 	let mut f = Reader::new(data);
 	f.check(b"#scp")?;
@@ -425,7 +425,7 @@ pub fn parse_scp(data: &[u8]) -> Result<Scp, ScpError> {
 		.unwrap_or(code_start);
 	let last_offset = Cell::new(last_offset);
 
-	let label = |f: &mut Reader| -> Result<Label, ScpError> {
+	let label = |f: &mut Reader| -> Result<Label, Error> {
 		let l = Label(f.u32()?);
 		if l.0 > last_offset.get() {
 			last_offset.set(l.0);
@@ -519,6 +519,6 @@ pub fn parse_scp(data: &[u8]) -> Result<Scp, ScpError> {
 	Ok(Scp { items })
 }
 
-fn index<'a, T>(index: usize, what: &'static str, values: &'a [T]) -> Result<&'a T, ScpError> {
+fn index<'a, T>(index: usize, what: &'static str, values: &'a [T]) -> Result<&'a T, Error> {
 	values.get(index).context(scp::Id { what, index })
 }
