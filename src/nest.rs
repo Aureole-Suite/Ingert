@@ -173,7 +173,7 @@ impl<'a> Ctx<'a> {
 			Op::Return => {
 				self.do_pop(&mut push);
 				self.expect(&Op::SetTemp(0))?;
-				if let Some(()) = self.next_if(pat!(Op::Push(Value::Uint(0)) => ()))? {
+				if let Some(()) = self.next_if(pat!(Op::PushSpecial(0) => ()))? {
 					push(Stmt::Return(None));
 				} else {
 					let expr = self.expr()?;
@@ -219,7 +219,7 @@ impl<'a> Ctx<'a> {
 				let expr = Expr::Call(CallKind::Tail(n.clone()), args);
 				push(Stmt::Expr(expr));
 			}
-			Op::Push(Value::Uint(0)) => {
+			Op::PushSpecial(0) => {
 				push(Stmt::PushVar);
 			}
 			Op::Pop(..) => self.rewind().do_pop(&mut push),
@@ -305,10 +305,10 @@ impl<'a> Ctx<'a> {
 		let mut args = Vec::new();
 		let kind = match self.next()? {
 			Op::Call(n) => {
-				while self.next_if(pat!(Op::Push(Value::Uint(n)) if *n == pos.0 => ()))?.is_none() {
+				while self.next_if(pat!(Op::PushSpecial(n) if *n == pos.0 => ()))?.is_none() {
 					args.push(self.expr_line()?);
 				}
-				self.expect(&Op::Push(Value::Uint(self.function.index)))?;
+				self.expect(&Op::PushSpecial(self.function.index))?;
 				CallKind::Func(n.clone())
 			}
 			Op::CallSystem(a, b, c) => {

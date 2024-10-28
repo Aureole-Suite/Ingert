@@ -23,8 +23,10 @@ pub enum Error {
 	#[snafu(display("invalid value {value:?}: {reason}"))]
 	BadValue {
 		reason: &'static str,
-		value: Value,
+		value: RawValue,
 	},
+	#[snafu(display("stack slot not aligned {value:?}"))]
+	StackSlot { value: i32 },
 	#[snafu(display("invalid checksum for function {name}: expected {expected:#X}, got {actual:#X}"))]
 	Checksum {
 		name: String,
@@ -42,7 +44,7 @@ pub enum Error {
 	BadCall { why: &'static str },
 	#[snafu(display("invalid call argument {value:?} with kind {kind}"))]
 	BadCallArg {
-		value: Value,
+		value: RawValue,
 		kind: u32,
 	},
 	#[snafu(display("bad function flags on function {name}: {flags:04X}"))]
@@ -63,10 +65,15 @@ pub struct Function {
 
 #[derive(Clone, PartialEq)]
 pub enum Value {
-	Uint(u32),
 	Int(i32),
 	Float(f32),
 	String(String),
+}
+
+#[derive(Clone, PartialEq)]
+pub enum RawValue {
+	Special(u32),
+	Value(Value)
 }
 
 impl std::fmt::Display for Value {
@@ -78,10 +85,18 @@ impl std::fmt::Display for Value {
 impl std::fmt::Debug for Value {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
-			Self::Uint(v) => write!(f, "{:#X}", v),
 			Self::Int(v) => write!(f, "{v}"),
 			Self::Float(v) => v.fmt(f),
 			Self::String(v) => v.fmt(f),
+		}
+	}
+}
+
+impl std::fmt::Debug for RawValue {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			Self::Special(v) => write!(f, "{:#X}", v),
+			Self::Value(v) => v.fmt(f),
 		}
 	}
 }
@@ -147,7 +162,10 @@ fn parse_functions(f: &mut Reader<'_>, n_entries: u32) -> Result<Vec<Function>, 
 		for ty in types {
 			let out = ty & 4 != 0;
 			let default = if ty & 8 != 0 {
-				Some(defaults.next().context(scp::BadDefaults)?)
+				let Some(RawValue::Value(default)) = defaults.next() else {
+					return scp::BadDefaults.fail();
+				};
+				Some(default)
 			} else {
 				None
 			};
@@ -197,12 +215,11 @@ fn parse_call(f: &mut Reader, entries: &[Function]) -> Result<Call, Error> {
 	let kind = f.u16()?;
 	let argc = f.u16()? as usize;
 	let argp = f.u32()? as usize;
-	const V: Value = Value::Uint(0);
 	let mut args = multi(&mut f.at(argp)?, argc, |f| match (value(f)?, f.u32()?) {
-		(v, 0) => Ok(CallArg::Value(v)),
-		(V, 1) => Ok(CallArg::Call),
-		(V, 2) => Ok(CallArg::Var),
-		(V, 3) => Ok(CallArg::Expr),
+		(RawValue::Value(v), 0) => Ok(CallArg::Value(v)),
+		(RawValue::Special(0), 1) => Ok(CallArg::Call),
+		(RawValue::Special(0), 2) => Ok(CallArg::Var),
+		(RawValue::Special(0), 3) => Ok(CallArg::Expr),
 		(value, kind) => scp::BadCallArg { value, kind }.fail(),
 	})?;
 	let kind = match kind {
@@ -293,22 +310,22 @@ fn string(f: &mut Reader) -> Result<String, StringError> {
 	Ok(s.to_string())
 }
 
-fn value(f: &mut Reader) -> Result<Value, Error> {
+fn value(f: &mut Reader) -> Result<RawValue, Error> {
 	let v = f.u32()?;
 	let hi = v >> 30;
 	let lo = v & 0x3FFFFFFF;
 	match hi {
-		0 => Ok(Value::Uint(lo)),
-		1 => Ok(Value::Int((lo as i32) << 2 >> 2)),
-		2 => Ok(Value::Float(f30(lo))),
-		3 => Ok(Value::String(string(&mut f.at(lo as usize)?)?)),
+		0 => Ok(RawValue::Special(lo)),
+		1 => Ok(RawValue::Value(Value::Int((lo as i32) << 2 >> 2))),
+		2 => Ok(RawValue::Value(Value::Float(f30(lo)))),
+		3 => Ok(RawValue::Value(Value::String(string(&mut f.at(lo as usize)?)?))),
 		_ => unreachable!(),
 	}
 }
 
 fn string_value(f: &mut Reader) -> Result<String, Error> {
 	match value(f)? {
-		Value::String(s) => Ok(s),
+		RawValue::Value(Value::String(s)) => Ok(s),
 		value => scp::BadValue {
 			reason: "expected string",
 			value
@@ -329,19 +346,17 @@ impl std::fmt::Debug for Label {
 pub struct StackSlot(pub i32);
 
 fn stack_slot(f: &mut Reader) -> Result<StackSlot, Error> {
-	let v = f.i32()?;
-	if v % 4 != 0 {
-		return scp::BadValue {
-			reason: "stack slot not aligned",
-			value: Value::Int(v)
-		}.fail();
+	let value = f.i32()?;
+	if value % 4 != 0 {
+		return scp::StackSlot { value }.fail();
 	}
-	Ok(StackSlot(v / 4))
+	Ok(StackSlot(value / 4))
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Op {
 	Push(Value),
+	PushSpecial(u32),
 	Pop(u8),
 	GetVar(StackSlot),
 	GetRef(StackSlot),
@@ -423,7 +438,10 @@ pub fn parse_scp(data: &[u8]) -> Result<Scp, Error> {
 		let op = match op {
 			0 => {
 				f.check_u8(4)?; // number of bytes to push?
-				Op::Push(value(&mut f)?)
+				match value(&mut f)? {
+					RawValue::Value(v) => Op::Push(v),
+					RawValue::Special(v) => Op::PushSpecial(v),
+				}
 			}
 			1 => Op::Pop(f.u8()?),
 			2 => Op::GetVar(stack_slot(&mut f)?),
