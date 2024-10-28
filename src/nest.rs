@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use crate::scp::{self, Op};
 use crate::expr::{Binop, Value};
 pub use scp::{Label, StackSlot};
+use snafu::OptionExt as _;
 
 pub type Expr = crate::expr::Expr<StackSlot>;
 pub type Lvalue = crate::expr::Lvalue<StackSlot>;
@@ -173,16 +174,16 @@ impl<'a> Ctx<'a> {
 				if let Some(()) = self.next_if(pat!(Op::PushSpecial(0) => ()))? {
 					self.stmts.push(Stmt::Return(None));
 				} else {
-					let expr = self.expr()?;
+					let expr = self.expr(None)?;
 					self.stmts.push(Stmt::Return(Some(expr)));
 				}
 			}
 			Op::If(l) => {
-				let expr = self.expr()?;
+				let expr = self.expr(None)?;
 				self.stmts.push(Stmt::If(expr, *l));
 			},
 			Op::SetTemp(0) => {
-				let expr = self.expr()?;
+				let expr = self.expr(None)?;
 				self.stmts.push(Stmt::Switch(expr));
 			}
 			Op::If2(l) => {
@@ -211,7 +212,7 @@ impl<'a> Ctx<'a> {
 				}
 				let mut args = Vec::new();
 				for _ in 0..*c {
-					args.push(self.expr()?);
+					args.push(self.expr(None)?);
 				}
 				let expr = Expr::Call(CallKind::Tail(n.clone()), args);
 				self.stmts.push(Stmt::Expr(expr));
@@ -221,26 +222,34 @@ impl<'a> Ctx<'a> {
 			}
 			Op::Pop(..) => self.rewind().do_pop(),
 			Op::SetVar(n) => {
-				let expr = self.expr()?;
+				let expr = self.expr(None)?;
 				self.stmts.push(Stmt::Set(Lvalue::Stack(*n), expr));
 			}
 			Op::SetGlobal(n) => {
-				let expr = self.expr()?;
+				let expr = self.expr(None)?;
 				self.stmts.push(Stmt::Set(Lvalue::Global(n.clone()), expr));
 			}
 			Op::SetRef(n) => {
-				let expr = self.expr()?;
+				let expr = self.expr(None)?;
 				self.stmts.push(Stmt::Set(Lvalue::Deref(*n), expr));
 			}
 			Op::Debug(n) => {
 				let mut args = Vec::new();
 				for _ in 0..*n {
-					args.push(self.expr_line()?);
+					args.push(self.expr(None)?);
 				}
 				self.stmts.push(Stmt::Debug(args));
 			}
-			Op::Line(n) => {
-				self.stmts.push(Stmt::Line(*n));
+			Op::Line(l) => {
+				let mut l = *l;
+				while self.index > 0 && let Some(n) = self.next_if(pat!(Op::Line(n) => n))? {
+					let expr = self.stmts.last_mut()
+						.and_then(tail_expr)
+						.context(e::Unexpected { op: Op::Line(*n), what: "expression" }).expect("debug todo");
+					add_line(expr, l);
+					l = *n;
+				}
+				self.stmts.push(Stmt::Line(l));
 			}
 			op => {
 				self.rewind();
@@ -262,7 +271,7 @@ impl<'a> Ctx<'a> {
 	}
 
 	#[tracing::instrument(skip(self), fields(pos = ?self.pos()))]
-	fn expr(&mut self) -> Result<Expr> {
+	fn expr(&mut self, mut last: Option<&mut Expr>) -> Result<Expr> {
 		let expr = match self.next()? {
 			Op::Push(value) => Expr::Value(value.clone()),
 			Op::PushRef(n) => Expr::Ref(*n),
@@ -270,30 +279,26 @@ impl<'a> Ctx<'a> {
 			Op::GetGlobal(n) => Expr::Var(Lvalue::Global(n.clone())),
 			Op::GetRef(n) => Expr::Var(Lvalue::Deref(*n)),
 			Op::Binop(op) => {
-				let b = self.expr_line()?;
-				let a = self.expr_line()?;
+				let mut b = self.expr(last)?;
+				let a = self.expr(Some(&mut b))?;
 				Expr::Binop(*op, Box::new(a), Box::new(b))
 			},
 			Op::Unop(op) => {
-				let a = self.expr_line()?;
+				let a = self.expr(last)?;
 				Expr::Unop(*op, Box::new(a))
 			}
 			Op::GetTemp(0) => self.call()?,
+			Op::Line(l) => {
+				let last0 = last.as_mut().context(e::Unexpected { op: Op::Line(*l), what: "expression" }).expect("debug todo");
+				add_line(last0, *l);
+				self.expr(last)?
+			}
 			op => {
 				self.rewind();
 				return e::Unexpected { op: op.clone(), what: "expression" }.fail();
 			}
 		};
 		Ok(expr)
-	}
-
-	fn expr_line(&mut self) -> Result<Expr> {
-		let expr = self.expr()?;
-		if let Some(line) = self.maybe_line() {
-			Ok(Expr::Line(line, Box::new(expr)))
-		} else {
-			Ok(expr)
-		}
 	}
 
 	#[tracing::instrument(skip(self), fields(pos = ?self.pos()))]
@@ -303,20 +308,23 @@ impl<'a> Ctx<'a> {
 		let kind = match self.next()? {
 			Op::Call(n) => {
 				while self.next_if(pat!(Op::PushSpecial(n) if *n == pos.0 => ()))?.is_none() {
-					args.push(self.expr_line()?);
+					args.push(self.expr(None)?);
+					self.maybe_line(args.last_mut().unwrap())?;
 				}
 				self.expect(&Op::PushSpecial(self.function.index))?;
 				CallKind::Func(n.clone())
 			}
 			Op::CallSystem(a, b, c) => {
 				for _ in 0..*c {
-					args.push(self.expr_line()?);
+					let e = self.expr(args.last_mut())?;
+					args.push(e);
 				}
 				CallKind::System(*a, *b)
 			}
 			Op::CallExtern(n, c) => {
 				for _ in 0..*c {
-					args.push(self.expr()?); // Wonder why no line numbers here
+					args.push(self.expr(None)?);
+					self.maybe_line(args.last_mut().unwrap())?;
 				}
 				self.expect(&Op::_25(pos))?;
 				CallKind::Func(n.clone())
@@ -329,11 +337,32 @@ impl<'a> Ctx<'a> {
 		Ok(Expr::Call(kind, args))
 	}
 
-	fn maybe_line(&mut self) -> Option<u16> {
-		if self.labels.contains(&self.pos()) {
-			None
-		} else {
-			self.next_if(pat!(Op::Line(n) => *n)).ok().flatten()
+	fn maybe_line(&mut self, expr: &mut Expr) -> Result<()> {
+		while let Some(l) = self.next_if(pat!(Op::Line(l) => l))? {
+			add_line(expr, *l);
 		}
+		Ok(())
+	}
+}
+
+fn add_line(expr: &mut Expr, l: u16) {
+	let e = std::mem::replace(expr, Expr::Value(Value::Int(0)));
+	*expr = Expr::Line(l, Box::new(e));
+}
+
+fn tail_expr(stmt: &mut Stmt) -> Option<&mut Expr> {
+	match stmt {
+		Stmt::Return(e) => e.as_mut(),
+		Stmt::Expr(e) => Some(e),
+		Stmt::Set(_, e) => Some(e),
+		Stmt::Label(_) => None,
+		Stmt::If(e, _) => Some(e),
+		Stmt::Switch(e) => Some(e),
+		Stmt::Case(_, _) => None,
+		Stmt::Goto(_) => None,
+		Stmt::PushVar => None,
+		Stmt::PopVar => None,
+		Stmt::Line(_) => None,
+		Stmt::Debug(es) => es.last_mut(),
 	}
 }
