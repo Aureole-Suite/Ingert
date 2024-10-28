@@ -257,10 +257,7 @@ impl<'a> Ctx<'a> {
 				}
 				self.stmts.push(Stmt::Line(l));
 			}
-			op => {
-				self.rewind();
-				return e::Unexpected { op: op.clone(), what: "statement" }.fail();
-			}
+			op => return e::Unexpected { op: op.clone(), what: "statement" }.fail()
 		}
 		if self.labels.remove(&self.pos()) {
 			self.stmts.push(Stmt::Label(self.pos()));
@@ -295,10 +292,7 @@ impl<'a> Ctx<'a> {
 				Expr::Unop(*op, Box::new(a))
 			}
 			Op::GetTemp(0) => self.call()?,
-			op => {
-				self.rewind();
-				return e::Unexpected { op: op.clone(), what: "expression" }.fail();
-			}
+			op => return e::Unexpected { op: op.clone(), what: "expression" }.fail()
 		};
 		Ok(expr)
 	}
@@ -334,10 +328,7 @@ impl<'a> Ctx<'a> {
 				self.expect(&Op::_25(pos))?;
 				CallKind::Func(n.clone())
 			}
-			op => {
-				self.rewind();
-				return e::Unexpected { op: op.clone(), what: "call" }.fail();
-			}
+			op => return e::Unexpected { op: op.clone(), what: "call" }.fail()
 		};
 		Ok(Expr::Call(kind, args))
 	}
