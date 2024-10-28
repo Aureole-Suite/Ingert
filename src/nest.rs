@@ -1,4 +1,4 @@
-use std::collections::{HashSet, VecDeque};
+use std::collections::HashSet;
 
 use crate::scp::{self, Op};
 use crate::expr::{Binop, Value};
@@ -103,16 +103,18 @@ pub fn decompile(f: &scp::Function) -> Result<Vec<Stmt>> {
 		code: &f.code,
 		end: f.code_end,
 		index: f.code.len(),
+		stmts: Vec::new(),
 	};
 
-	let mut lines = VecDeque::new();
-	ctx.decompile(|l| lines.push_front(l))?;
+	while ctx.index > 0 {
+		ctx.line()?;
+	}
 
 	if let Some(label) = ctx.labels.into_iter().next() {
 		return e::MissingLabel { label }.fail();
 	}
-
-	Ok(Vec::from(lines))
+	ctx.stmts.reverse();
+	Ok(ctx.stmts)
 }
 
 struct Ctx<'a> {
@@ -121,6 +123,7 @@ struct Ctx<'a> {
 	code: &'a [(Label, Op)],
 	end: Label,
 	index: usize,
+	stmts: Vec<Stmt>,
 }
 
 impl<'a> Ctx<'a> {
@@ -161,33 +164,26 @@ impl<'a> Ctx<'a> {
 		Ok(())
 	}
 
-	fn decompile(&mut self, mut l: impl FnMut(Stmt)) -> Result<()> {
-		while self.index > 0 {
-			self.line(&mut l)?;
-		}
-		Ok(())
-	}
-
-	#[tracing::instrument(skip(self, push), fields(pos = ?self.pos()))]
-	fn line(&mut self, mut push: impl FnMut(Stmt)) -> Result<()> {
+	#[tracing::instrument(skip(self), fields(pos = ?self.pos()))]
+	fn line(&mut self) -> Result<()> {
 		match self.next()? {
 			Op::Return => {
-				self.do_pop(&mut push);
+				self.do_pop();
 				self.expect(&Op::SetTemp(0))?;
 				if let Some(()) = self.next_if(pat!(Op::PushSpecial(0) => ()))? {
-					push(Stmt::Return(None));
+					self.stmts.push(Stmt::Return(None));
 				} else {
 					let expr = self.expr()?;
-					push(Stmt::Return(Some(expr)));
+					self.stmts.push(Stmt::Return(Some(expr)));
 				}
 			}
 			Op::If(l) => {
 				let expr = self.expr()?;
-				push(Stmt::If(expr, *l));
+				self.stmts.push(Stmt::If(expr, *l));
 			},
 			Op::SetTemp(0) => {
 				let expr = self.expr()?;
-				push(Stmt::Switch(expr));
+				self.stmts.push(Stmt::Switch(expr));
 			}
 			Op::If2(l) => {
 				self.expect(&Op::Binop(Binop::Eq))?;
@@ -196,20 +192,20 @@ impl<'a> Ctx<'a> {
 					op => return e::Unexpected { op: op.clone(), what: "switch case" }.fail(),
 				};
 				self.expect(&Op::GetTemp(0))?;
-				push(Stmt::Case(expr, *l));
+				self.stmts.push(Stmt::Case(expr, *l));
 			}
 			Op::Goto(l) => {
-				push(Stmt::Goto(*l));
+				self.stmts.push(Stmt::Goto(*l));
 			},
 			Op::Call(..) | Op::CallExtern(..) | Op::CallSystem(..) => {
 				let expr = self.rewind().call()?;
-				push(Stmt::Expr(expr));
+				self.stmts.push(Stmt::Expr(expr));
 			}
 			Op::CallTail(n, c) => {
 				for i in 1..=*c {
 					self.expect(&Op::GetTemp(i))?;
 				}
-				self.do_pop(&mut push);
+				self.do_pop();
 				for i in (1..=*c).rev() {
 					self.expect(&Op::SetTemp(i))?;
 				}
@@ -218,33 +214,33 @@ impl<'a> Ctx<'a> {
 					args.push(self.expr()?);
 				}
 				let expr = Expr::Call(CallKind::Tail(n.clone()), args);
-				push(Stmt::Expr(expr));
+				self.stmts.push(Stmt::Expr(expr));
 			}
 			Op::PushSpecial(0) => {
-				push(Stmt::PushVar);
+				self.stmts.push(Stmt::PushVar);
 			}
-			Op::Pop(..) => self.rewind().do_pop(&mut push),
+			Op::Pop(..) => self.rewind().do_pop(),
 			Op::SetVar(n) => {
 				let expr = self.expr()?;
-				push(Stmt::Set(Lvalue::Stack(*n), expr));
+				self.stmts.push(Stmt::Set(Lvalue::Stack(*n), expr));
 			}
 			Op::SetGlobal(n) => {
 				let expr = self.expr()?;
-				push(Stmt::Set(Lvalue::Global(n.clone()), expr));
+				self.stmts.push(Stmt::Set(Lvalue::Global(n.clone()), expr));
 			}
 			Op::SetRef(n) => {
 				let expr = self.expr()?;
-				push(Stmt::Set(Lvalue::Deref(*n), expr));
+				self.stmts.push(Stmt::Set(Lvalue::Deref(*n), expr));
 			}
 			Op::Debug(n) => {
 				let mut args = Vec::new();
 				for _ in 0..*n {
 					args.push(self.expr_line()?);
 				}
-				push(Stmt::Debug(args));
+				self.stmts.push(Stmt::Debug(args));
 			}
 			Op::Line(n) => {
-				push(Stmt::Line(*n));
+				self.stmts.push(Stmt::Line(*n));
 			}
 			op => {
 				self.rewind();
@@ -252,15 +248,15 @@ impl<'a> Ctx<'a> {
 			}
 		}
 		if self.labels.remove(&self.pos()) {
-			push(Stmt::Label(self.pos()));
+			self.stmts.push(Stmt::Label(self.pos()));
 		}
 		Ok(())
 	}
 
-	fn do_pop(&mut self, mut push: impl FnMut(Stmt)) {
+	fn do_pop(&mut self) {
 		if let Some(pop) = self.next_if(pat!(Op::Pop(n) => *n)).ok().flatten() {
 			for _ in 0..pop/4 {
-				push(Stmt::PopVar);
+				self.stmts.push(Stmt::PopVar);
 			}
 		}
 	}
