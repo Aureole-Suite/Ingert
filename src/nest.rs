@@ -236,7 +236,8 @@ impl<'a> Ctx<'a> {
 			Op::Debug(n) => {
 				let mut args = Vec::new();
 				for _ in 0..*n {
-					args.push(self.expr(None)?);
+					let e = self.expr(args.last_mut())?;
+					args.push(e);
 				}
 				self.stmts.push(Stmt::Debug(args));
 			}
