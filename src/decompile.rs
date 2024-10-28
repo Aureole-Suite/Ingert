@@ -258,7 +258,10 @@ fn block(ctx: &mut Ctx, goto_allowed: GotoAllowed) -> Result<(Vec<Stmt>, Option<
 			nest::Stmt::If(e, l) => {
 				let e = expr(ctx.stack, e)?;
 
-				if let Some(cont) = ctx.goto_before(*l)? && ctx.gctx.lookup(cont)? == ctx.pos - 1 {
+				if let Some(cont) = ctx.goto_before(*l)?
+						&& let lookup = ctx.gctx.lookup(cont)?
+						&& (lookup + 1 == ctx.pos
+							|| lookup + 2 == ctx.pos && matches!(ctx.gctx.stmts[ctx.pos - 2], nest::Stmt::Line(..))) {
 					let mut sub = ctx.sub(*l)?;
 					sub.brk = Some(*l);
 					sub.cont = Some(cont);

@@ -248,7 +248,7 @@ impl<'a> Ctx<'a> {
 			}
 			Op::Line(l) => {
 				let mut l = *l;
-				while self.index > 0 && let Some(n) = self.next_if(pat!(Op::Line(n) => n))? {
+				while self.index > 0 && !self.labels.contains(&self.pos()) && let Some(n) = self.next_if(pat!(Op::Line(n) => n))? {
 					let expr = self.stmts.last_mut()
 						.and_then(tail_expr)
 						.context(e::Unexpected { op: Op::Line(*n), what: "expression" }).expect("debug todo");
