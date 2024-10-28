@@ -1,7 +1,8 @@
 use std::collections::{HashSet, VecDeque};
 
-use crate::{expr::Binop, scp::{self, Op}};
-pub use scp::{Label, StackSlot, Value};
+use crate::scp::{self, Op};
+use crate::expr::{Binop, Value};
+pub use scp::{Label, StackSlot};
 
 pub type Expr = crate::expr::Expr<StackSlot>;
 pub type Lvalue = crate::expr::Lvalue<StackSlot>;

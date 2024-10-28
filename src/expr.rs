@@ -1,5 +1,11 @@
-pub use crate::scp::Value;
 use std::fmt::{Display, Formatter, Result};
+
+#[derive(Clone, PartialEq)]
+pub enum Value {
+	Int(i32),
+	Float(f32),
+	String(String),
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr<T> {
@@ -72,6 +78,22 @@ pub struct Global {
 	pub name: String,
 	pub ty: Type,
 	pub line: Option<u16>,
+}
+
+impl std::fmt::Display for Value {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		std::fmt::Debug::fmt(self, f)
+	}
+}
+
+impl std::fmt::Debug for Value {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			Self::Int(v) => write!(f, "{v}"),
+			Self::Float(v) => std::fmt::Debug::fmt(&v, f),
+			Self::String(v) => std::fmt::Debug::fmt(&v, f),
+		}
+	}
 }
 
 impl<T: Display> Display for Expr<T> {

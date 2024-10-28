@@ -1,7 +1,7 @@
 use gospel::read::{Le as _, Reader};
 use std::cell::Cell;
 use snafu::{OptionExt as _, ResultExt as _};
-use crate::expr::{Arg, Binop, CallKind, Global, Type, Unop};
+use crate::expr::{Arg, Binop, CallKind, Global, Type, Unop, Value};
 
 #[derive(Debug, snafu::Snafu)]
 #[snafu(module(scp), context(suffix(false)))]
@@ -64,32 +64,9 @@ pub struct Function {
 }
 
 #[derive(Clone, PartialEq)]
-pub enum Value {
-	Int(i32),
-	Float(f32),
-	String(String),
-}
-
-#[derive(Clone, PartialEq)]
 pub enum RawValue {
 	Special(u32),
 	Value(Value)
-}
-
-impl std::fmt::Display for Value {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		std::fmt::Debug::fmt(self, f)
-	}
-}
-
-impl std::fmt::Debug for Value {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		match self {
-			Self::Int(v) => write!(f, "{v}"),
-			Self::Float(v) => v.fmt(f),
-			Self::String(v) => v.fmt(f),
-		}
-	}
 }
 
 impl std::fmt::Debug for RawValue {
