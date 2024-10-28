@@ -241,7 +241,9 @@ fn lvalue(ctx: &mut Ctx, lv: &Lvalue) {
 }
 
 fn expr(ctx: &mut Ctx, e: &Expr) {
+	ctx.indent += 2;
 	expr0(ctx, e, 0);
+	ctx.indent -= 2;
 }
 
 fn expr0(ctx: &mut Ctx, e: &Expr, prio: u32) {
@@ -254,7 +256,7 @@ fn expr0(ctx: &mut Ctx, e: &Expr, prio: u32) {
 		}
 		Expr::Call(c, a) => {
 			call(ctx, c);
-			args(ctx, a, expr);
+			args(ctx, a, |ctx, e| expr0(ctx, e, 0));
 		}
 		Expr::Unop(o, a) => {
 			write!(ctx, "{}", o);
