@@ -8,6 +8,8 @@ pub mod nest;
 pub mod decompile;
 pub mod calls;
 
+pub mod print;
+
 pub use decompile::{Stmt, Expr, Lvalue, CallKind, StackVar};
 
 #[repr(transparent)]

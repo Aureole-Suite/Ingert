@@ -28,13 +28,38 @@ fn main() {
 			continue;
 		};
 
-		let scena = ingert::decompile(&data).unwrap();
+		let mut scena = ingert::decompile(&data).unwrap();
 		let out = Path::new("out").join(file.file_name().unwrap());
 		let out = std::fs::File::create(&out).unwrap();
 		let out = std::io::BufWriter::new(out);
 		let mut out = ingert::Write(Box::new(out));
 
 		let mut prelude_funcs = Vec::new();
+		scena.retain_mut(|item| {
+			match item {
+				ingert::Item::Function(f) => {
+					if f.is_prelude {
+						prelude_funcs.push(f.name.clone());
+						if let Some(prev) = prelude.get(&f.name) {
+							if prev != f {
+								tracing::warn!("{} differs from prelude", f.name);
+								true
+							} else {
+								false
+							}
+						} else {
+							prelude.insert(f.name.clone(), f.clone());
+							false
+						}
+					} else {
+						true
+					}
+				}
+				_ => true,
+			}
+		});
+		prelude_order.push(prelude_funcs);
+
 		for item in &scena {
 			match item {
 				ingert::Item::Global(g) => {
@@ -45,23 +70,19 @@ fn main() {
 				}
 				ingert::Item::Function(f) => {
 					if f.is_prelude {
-						if let Some(prev) = prelude.get(&f.name) {
-							if prev != f {
-								tracing::warn!("{} differs from prelude", f.name);
-								write!(out, "prelude ");
-								write_fn(&mut out, f);
-							}
-						} else {
-							prelude.insert(f.name.clone(), f.clone());
-						}
-						prelude_funcs.push(f.name.clone());
-					} else {
-						write_fn(&mut out, f);
+						write!(out, "prelude ");
 					}
+					write_fn(&mut out, f);
 				}
 			}
 		}
-		prelude_order.push(prelude_funcs);
+
+		let printed = ingert::print::print(&scena, ingert::print::Settings {
+			use_lines: true,
+			show_lines: false,
+		});
+
+		writeln!(out, "{printed}");
 	}
 
 	let tiebreak = prelude.iter().map(|(k, v)| (k, tiebreak_score(v))).collect::<HashMap<_, _>>();
