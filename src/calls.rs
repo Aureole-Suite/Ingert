@@ -113,19 +113,19 @@ impl Infer for Stmt {
 impl Infer for Expr {
 	fn infer(&mut self, called: &mut Calls) -> Result<()> {
 		match self {
-			crate::expr::Expr::Value(_) => {},
-			crate::expr::Expr::Var(_) => {},
-			crate::expr::Expr::Ref(_) => {},
-			crate::expr::Expr::Call(c, a) => {
+			Expr::Value(_) => {},
+			Expr::Var(_) => {},
+			Expr::Ref(_) => {},
+			Expr::Call(c, a) => {
 				infer_call(called, c, a)?;
 				a.infer(called)?;
 			}
-			crate::expr::Expr::Unop(_, a) => a.infer(called)?,
-			crate::expr::Expr::Binop(_, a, b) => {
+			Expr::Unop(_, a) => a.infer(called)?,
+			Expr::Binop(_, a, b) => {
 				a.infer(called)?;
 				b.infer(called)?;
 			},
-			crate::expr::Expr::Line(_, a) => a.infer(called)?,
+			Expr::Line(_, a) => a.infer(called)?,
 		}
 		Ok(())
 	}
@@ -156,12 +156,12 @@ fn infer_call(called: &mut Calls, call: &mut CallKind, a: &mut Vec<Expr>) -> Res
 
 fn to_call_arg(expr: &Expr) -> CallArg {
 	match expr {
-		crate::expr::Expr::Value(v) => CallArg::Value(v.clone()),
-		crate::expr::Expr::Var(_) => CallArg::Var,
-		crate::expr::Expr::Ref(_) => CallArg::Var,
-		crate::expr::Expr::Call(_, _) => CallArg::Call,
-		crate::expr::Expr::Unop(_, _) => CallArg::Expr,
-		crate::expr::Expr::Binop(_, _, _) => CallArg::Expr,
-		crate::expr::Expr::Line(_, l) => to_call_arg(l),
+		Expr::Value(v) => CallArg::Value(v.clone()),
+		Expr::Var(_) => CallArg::Var,
+		Expr::Ref(_) => CallArg::Var,
+		Expr::Call(_, _) => CallArg::Call,
+		Expr::Unop(_, _) => CallArg::Expr,
+		Expr::Binop(_, _, _) => CallArg::Expr,
+		Expr::Line(_, l) => to_call_arg(l),
 	}
 }
