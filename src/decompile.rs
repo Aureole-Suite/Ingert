@@ -322,6 +322,9 @@ fn block(ctx: &mut Ctx, goto_allowed: GotoAllowed) -> Result<(Vec<Stmt>, Option<
 
 				if brk.is_some() {
 					// we know where the break is, so no need for that bullshit
+					if cases2.last().is_some_and(|(k, v)| k.is_none() && v.is_empty()) {
+						cases2.pop();
+					}
 					stmts.push(Stmt::Switch(*l, e, cases2));
 					continue;
 				}
