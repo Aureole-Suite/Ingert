@@ -183,49 +183,45 @@ fn stmt(ctx: &mut Ctx, s: &Stmt) {
 			expr(ctx, e);
 			ctx.semi();
 		},
-		Stmt::PushVar(lv, e) => {
-			ctx.token("var").token(format_args!("var{}", lv.0));
+		Stmt::PushVar(l, lv, e) => {
+			ctx.align(*l).token("var").token(format_args!("var{}", lv.0));
 			if let Some(e) = e {
 				ctx.token("=");
 				expr(ctx, e);
 			}
 			ctx.semi();
 		}
-		Stmt::Set(lv, e) => {
+		Stmt::Set(l, lv, e) => {
+			ctx.align(*l);
 			lvalue(ctx, lv);
 			ctx.token("=");
 			expr(ctx, e);
 			ctx.semi();
 		}
-		Stmt::Line(l) => {
-			ctx.align(Some(*l));
-		}
-		Stmt::Debug(es) => {
-			ctx.token("debug");
+		Stmt::Debug(l, es) => {
+			ctx.align(*l).token("debug");
 			args(ctx, es, expr);
 		}
-		Stmt::If(a, b, c) => {
-			ctx.token("if");
+		Stmt::If(l, a, b, c) => {
+			ctx.align(*l).token("if");
 			expr(ctx, a);
 			block(ctx, b);
 			if let Some(c) = c {
 				ctx.token("else");
-				if matches!(c.as_slice(), [Stmt::If(..)] | [Stmt::Line(..), Stmt::If(..)]) {
-					for s in c {
-						stmt(ctx, s);
-					}
+				if let [s@Stmt::If(..)] = c.as_slice() {
+					stmt(ctx, s);
 				} else {
 					block(ctx, c);
 				}
 			}
 		}
-		Stmt::While(a, b) => {
-			ctx.token("while");
+		Stmt::While(l, a, b) => {
+			ctx.align(*l).token("while");
 			expr(ctx, a);
 			block(ctx, b);
 		}
-		Stmt::Switch(a, b) => {
-			ctx.token("switch");
+		Stmt::Switch(l, a, b) => {
+			ctx.align(*l).token("switch");
 			expr(ctx, a);
 			ctx.token("{");
 			for (n, s) in b {
@@ -250,8 +246,8 @@ fn stmt(ctx: &mut Ctx, s: &Stmt) {
 		Stmt::Continue => {
 			ctx.token("continue").semi();
 		}
-		Stmt::Return(v) => {
-			ctx.token("return");
+		Stmt::Return(l, v) => {
+			ctx.align(*l).token("return");
 			if let Some(v) = v {
 				expr(ctx, v);
 			}

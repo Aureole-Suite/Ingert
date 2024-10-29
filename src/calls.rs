@@ -83,20 +83,19 @@ impl Infer for Stmt {
 	fn infer(&mut self, called: &mut Calls) -> Result<()> {
 		match self {
 			Stmt::Expr(e) => e.infer(called)?,
-			Stmt::PushVar(_, e) => e.infer(called)?,
-			Stmt::Set(_, e) => e.infer(called)?,
-			Stmt::Line(_) => {}
-			Stmt::Debug(a) => a.infer(called)?,
-			Stmt::If(a, b, c) => {
+			Stmt::PushVar(_, _, e) => e.infer(called)?,
+			Stmt::Set(_, _, e) => e.infer(called)?,
+			Stmt::Debug(_, a) => a.infer(called)?,
+			Stmt::If(_, a, b, c) => {
 				a.infer(called)?;
 				b.infer(called)?;
 				c.infer(called)?;
 			}
-			Stmt::While(a, b) => {
+			Stmt::While(_, a, b) => {
 				a.infer(called)?;
 				b.infer(called)?;
 			}
-			Stmt::Switch(a, b) => {
+			Stmt::Switch(_, a, b) => {
 				a.infer(called)?;
 				for (_, v) in b {
 					v.infer(called)?;
@@ -104,7 +103,7 @@ impl Infer for Stmt {
 			}
 			Stmt::Break => {}
 			Stmt::Continue => {}
-			Stmt::Return(v) => v.infer(called)?,
+			Stmt::Return(_, v) => v.infer(called)?,
 		}
 		Ok(())
 	}

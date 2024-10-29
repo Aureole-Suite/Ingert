@@ -19,17 +19,16 @@ pub struct StackVar(pub i32);
 #[derive(Debug, Clone, PartialEq)]
 pub enum Stmt {
 	Expr(Expr),
-	PushVar(StackVar, Option<Expr>),
-	Set(Lvalue, Expr),
-	Line(u16),
-	Debug(Vec<Expr>),
+	PushVar(Option<u16>, StackVar, Option<Expr>),
+	Set(Option<u16>, Lvalue, Expr),
+	Debug(Option<u16>, Vec<Expr>),
 
-	If(Expr, Vec<Stmt>, Option<Vec<Stmt>>),
-	While(Expr, Vec<Stmt>),
-	Switch(Expr, Vec<(Option<i32>, Vec<Stmt>)>),
+	If(Option<u16>, Expr, Vec<Stmt>, Option<Vec<Stmt>>),
+	While(Option<u16>, Expr, Vec<Stmt>),
+	Switch(Option<u16>, Expr, Vec<(Option<i32>, Vec<Stmt>)>),
 	Break,
 	Continue,
-	Return(Option<Expr>),
+	Return(Option<u16>, Option<Expr>),
 }
 
 mod display {
@@ -48,24 +47,17 @@ mod display {
 		}
 	}
 
+	fn line(f: &mut Formatter, l: &Option<u16>) -> Result {
+		if let Some(l) = l {
+			write!(f, "line {l} ")?;
+		}
+		Ok(())
+	}
+
 	impl Stmt {
 		pub fn display_block(stmts: &[Stmt], f: &mut Formatter, indent: usize) -> Result {
-			let mut was_line = false;
 			for stmt in stmts {
-				if let Stmt::Line(n) = stmt {
-					if !was_line {
-						write!(f, "{}", "  ".repeat(indent))?;
-					}
-					was_line = true;
-					write!(f, "line {n} ")?;
-				} else {
-					if was_line {
-						stmt.display_inline(f, indent)?;
-					} else {
-						stmt.display(f, indent)?;
-					}
-					was_line = false;
-				}
+				stmt.display(f, indent)?;
 			}
 			Ok(())
 		}
@@ -80,25 +72,31 @@ mod display {
 			let i = "  ".repeat(indent);
 			match self {
 				Stmt::Expr(e) => writeln!(f, "{e}"),
-				Stmt::PushVar(v, None) => writeln!(f, "let {v}"),
-				Stmt::PushVar(v, Some(e)) => writeln!(f, "let {v} = {e}"),
-				Stmt::Set(v, e) => writeln!(f, "{v} = {e}"),
-				Stmt::Line(l) => writeln!(f, "line {l}"),
-				Stmt::Debug(args) => {
+				Stmt::PushVar(l, v, None) => {
+					line(f, l)?;
+					writeln!(f, "let {v}")
+				}
+				Stmt::PushVar(l, v, Some(e)) => {
+					line(f, l)?;
+					writeln!(f, "let {v} = {e}")
+				}
+				Stmt::Set(l, v, e) => {
+					line(f, l)?;
+					writeln!(f, "{v} = {e}")
+				}
+				Stmt::Debug(l, args) => {
+					line(f, l)?;
 					write!(f, "debug")?;
 					expr::write_args(f, args)?;
 					writeln!(f)
 				}
-				Stmt::If(e, yes, no) => {
+				Stmt::If(l, e, yes, no) => {
+					line(f, l)?;
 					writeln!(f, "if {e} {{")?;
 					Self::display_block(yes, f, indent + 1)?;
 					match no.as_ref().map(Vec::as_slice) {
 						Some([s@Stmt::If(..)]) => {
 							write!(f, "{i}}} else ")?;
-							s.display_inline(f, indent)?;
-						}
-						Some([Stmt::Line(n), s@Stmt::If(..)]) => {
-							write!(f, "{i}}} else line {n} ")?;
 							s.display_inline(f, indent)?;
 						}
 						Some(no) => {
@@ -112,12 +110,14 @@ mod display {
 					}
 					Ok(())
 				}
-				Stmt::While(e, body) => {
+				Stmt::While(l, e, body) => {
+					line(f, l)?;
 					writeln!(f, "while {e} {{")?;
 					Self::display_block(body, f, indent + 1)?;
 					writeln!(f, "{i}}}")
 				}
-				Stmt::Switch(e, cases) => {
+				Stmt::Switch(l, e, cases) => {
+					line(f, l)?;
 					writeln!(f, "switch {e} {{")?;
 					for (c, body) in cases {
 						if let Some(c) = c {
@@ -131,8 +131,14 @@ mod display {
 				}
 				Stmt::Break => writeln!(f, "break"),
 				Stmt::Continue => writeln!(f, "continue"),
-				Stmt::Return(None) => writeln!(f, "return"),
-				Stmt::Return(Some(e)) => writeln!(f, "return {e}"),
+				Stmt::Return(l, None) => {
+					line(f, l)?;
+					writeln!(f, "return")
+				}
+				Stmt::Return(l, Some(e)) => {
+					line(f, l)?;
+					writeln!(f, "return {e}")
+				}
 			}
 		}
 	}
@@ -249,41 +255,39 @@ fn block(ctx: &mut Ctx, goto_allowed: GotoAllowed) -> Result<(Vec<Stmt>, Option<
 	let mut stmts = Vec::new();
 	while let Some(stmt) = ctx.next() {
 		match stmt {
-			nest::Stmt::Return(None) => stmts.push(Stmt::Return(None)),
-			nest::Stmt::Return(Some(e)) => stmts.push(Stmt::Return(Some(expr(ctx.stack, e)?))),
+			nest::Stmt::Return(l, None) => stmts.push(Stmt::Return(*l, None)),
+			nest::Stmt::Return(l, Some(e)) => stmts.push(Stmt::Return(*l, Some(expr(ctx.stack, e)?))),
 			nest::Stmt::Expr(e) => stmts.push(Stmt::Expr(expr(ctx.stack, e)?)),
-			nest::Stmt::Set(l, e) => stmts.push(Stmt::Set(lvalue(ctx.stack, l)?, expr(ctx.stack, e)?)),
+			nest::Stmt::Set(l, lv, e) => stmts.push(Stmt::Set(*l, lvalue(ctx.stack, lv)?, expr(ctx.stack, e)?)),
 			nest::Stmt::Label(_) => {}
 
-			nest::Stmt::If(e, l) => {
+			nest::Stmt::If(l, e, label) => {
 				let e = expr(ctx.stack, e)?;
 
-				if let Some(cont) = ctx.goto_before(*l)?
-						&& let lookup = ctx.gctx.lookup(cont)?
-						&& (lookup + 1 == ctx.pos
-							|| lookup + 2 == ctx.pos && matches!(ctx.gctx.stmts[ctx.pos - 2], nest::Stmt::Line(..))) {
-					let mut sub = ctx.sub(*l)?;
-					sub.brk = Some(*l);
+				if let Some(cont) = ctx.goto_before(*label)?
+						&& ctx.gctx.lookup(cont)? == ctx.pos - 1 {
+					let mut sub = ctx.sub(*label)?;
+					sub.brk = Some(*label);
 					sub.cont = Some(cont);
 					let (mut body, _) = block(&mut sub, GotoAllowed::No)?;
 					assert_eq!(body.pop(), Some(Stmt::Continue));
-					stmts.push(Stmt::While(e, body));
+					stmts.push(Stmt::While(*l, e, body));
 					continue
 				}
 
-				let (body, goto) = block(&mut ctx.sub(*l)?, GotoAllowed::Yes)?;
+				let (body, goto) = block(&mut ctx.sub(*label)?, GotoAllowed::Yes)?;
 
 				if let Some(goto) = goto {
 					let end = ctx.gctx.lookup(goto)?;
 					snafu::ensure!(end <= ctx.end, LabelSnafu { label: goto });
 					let (no, _) = block(&mut ctx.sub(goto)?, GotoAllowed::No)?;
-					stmts.push(Stmt::If(e, body, Some(no)));
+					stmts.push(Stmt::If(*l, e, body, Some(no)));
 				} else {
-					stmts.push(Stmt::If(e, body, None));
+					stmts.push(Stmt::If(*l, e, body, None));
 				}
 			}
 
-			nest::Stmt::Switch(e) => {
+			nest::Stmt::Switch(l, e) => {
 				let e = expr(ctx.stack, e)?;
 
 				let mut cases = Vec::new();
@@ -318,7 +322,7 @@ fn block(ctx: &mut Ctx, goto_allowed: GotoAllowed) -> Result<(Vec<Stmt>, Option<
 
 				if brk.is_some() {
 					// we know where the break is, so no need for that bullshit
-					stmts.push(Stmt::Switch(e, cases2));
+					stmts.push(Stmt::Switch(*l, e, cases2));
 					continue;
 				}
 
@@ -332,13 +336,13 @@ fn block(ctx: &mut Ctx, goto_allowed: GotoAllowed) -> Result<(Vec<Stmt>, Option<
 						// finally found a break, but it's useless
 						body.push(Stmt::Break);
 						cases2.push((last.0, body));
-						stmts.push(Stmt::Switch(e, cases2));
+						stmts.push(Stmt::Switch(*l, e, cases2));
 					} else if Some(goto) == ctx.brk {
 						// found a break from the parent element
 						if last.0.is_some() {
 							cases2.push((last.0, Vec::new()));
 						}
-						stmts.push(Stmt::Switch(e, cases2));
+						stmts.push(Stmt::Switch(*l, e, cases2));
 						stmts.extend(body);
 						stmts.push(Stmt::Break);
 					} else {
@@ -350,7 +354,7 @@ fn block(ctx: &mut Ctx, goto_allowed: GotoAllowed) -> Result<(Vec<Stmt>, Option<
 					if last.0.is_some() {
 						cases2.push((last.0, Vec::new()));
 					}
-					stmts.push(Stmt::Switch(e, cases2));
+					stmts.push(Stmt::Switch(*l, e, cases2));
 					stmts.extend(body);
 				}
 			}
@@ -371,22 +375,21 @@ fn block(ctx: &mut Ctx, goto_allowed: GotoAllowed) -> Result<(Vec<Stmt>, Option<
 				}
 			}
 
-			nest::Stmt::PushVar => {
+			nest::Stmt::PushVar(l) => {
 				const LAST: nest::StackSlot = nest::StackSlot(-1);
 				ctx.stack += 1;
 				let var = stack_slot(ctx.stack, &LAST)?;
 				if ctx.pos < ctx.end
-					&& let nest::Stmt::Set(nest::Lvalue::Stack(LAST), e) = ctx.gctx.stmts[ctx.pos]
+					&& let nest::Stmt::Set(None, nest::Lvalue::Stack(LAST), e) = ctx.gctx.stmts[ctx.pos]
 				{
 					ctx.pos += 1;
-					stmts.push(Stmt::PushVar(var, Some(expr(ctx.stack, e)?)));
+					stmts.push(Stmt::PushVar(*l, var, Some(expr(ctx.stack, e)?)));
 				} else {
-					stmts.push(Stmt::PushVar(var, None));
+					stmts.push(Stmt::PushVar(*l, var, None));
 				}
 			}
 			nest::Stmt::PopVar => {}, // only used at end of block
-			nest::Stmt::Line(l) => stmts.push(Stmt::Line(*l)),
-			nest::Stmt::Debug(args) => stmts.push(Stmt::Debug(do_args(ctx.stack, args)?)),
+			nest::Stmt::Debug(l, args) => stmts.push(Stmt::Debug(*l, do_args(ctx.stack, args)?)),
 		}
 	}
 	Ok((stmts, None))

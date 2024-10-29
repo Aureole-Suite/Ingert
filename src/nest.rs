@@ -11,18 +11,17 @@ pub use crate::expr::CallKind;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Stmt {
-	Return(Option<Expr>),
+	Return(Option<u16>, Option<Expr>),
 	Expr(Expr),
-	Set(Lvalue, Expr),
+	Set(Option<u16>, Lvalue, Expr),
 	Label(Label),
-	If(Expr, Label),
-	Switch(Expr),
+	If(Option<u16>, Expr, Label),
+	Switch(Option<u16>, Expr),
 	Case(i32, Label),
 	Goto(Label),
-	PushVar,
+	PushVar(Option<u16>),
 	PopVar,
-	Line(u16),
-	Debug(Vec<Expr>),
+	Debug(Option<u16>, Vec<Expr>),
 }
 
 #[derive(Debug, snafu::Snafu)]
@@ -131,19 +130,19 @@ impl<'a> Ctx<'a> {
 				self.do_pop();
 				self.expect(&Op::SetTemp(0))?;
 				if let Some(()) = self.next_if(pat!(Op::PushSpecial(0) => ()))? {
-					self.stmts.push(Stmt::Return(None));
+					self.stmts.push(Stmt::Return(None, None));
 				} else {
 					let expr = self.expr()?;
-					self.stmts.push(Stmt::Return(Some(expr)));
+					self.stmts.push(Stmt::Return(None, Some(expr)));
 				}
 			}
 			Op::If(l) => {
 				let expr = self.expr()?;
-				self.stmts.push(Stmt::If(expr, *l));
+				self.stmts.push(Stmt::If(None, expr, *l));
 			},
 			Op::SetTemp(0) => {
 				let expr = self.expr()?;
-				self.stmts.push(Stmt::Switch(expr));
+				self.stmts.push(Stmt::Switch(None, expr));
 			}
 			Op::If2(l) => {
 				self.expect(&Op::Binop(Binop::Eq))?;
@@ -180,20 +179,20 @@ impl<'a> Ctx<'a> {
 				self.stmts.push(Stmt::Expr(expr));
 			}
 			Op::PushSpecial(0) => {
-				self.stmts.push(Stmt::PushVar);
+				self.stmts.push(Stmt::PushVar(None));
 			}
 			Op::Pop(..) => self.rewind().do_pop(),
 			Op::SetVar(n) => {
 				let expr = self.expr()?;
-				self.stmts.push(Stmt::Set(Lvalue::Stack(*n), expr));
+				self.stmts.push(Stmt::Set(None, Lvalue::Stack(*n), expr));
 			}
 			Op::SetGlobal(n) => {
 				let expr = self.expr()?;
-				self.stmts.push(Stmt::Set(Lvalue::Global(n.clone()), expr));
+				self.stmts.push(Stmt::Set(None, Lvalue::Global(n.clone()), expr));
 			}
 			Op::SetRef(n) => {
 				let expr = self.expr()?;
-				self.stmts.push(Stmt::Set(Lvalue::Deref(*n), expr));
+				self.stmts.push(Stmt::Set(None, Lvalue::Deref(*n), expr));
 			}
 			Op::Debug(n) => {
 				let mut args = Vec::new();
@@ -203,29 +202,34 @@ impl<'a> Ctx<'a> {
 					}
 					args.push(self.expr()?);
 				}
-				self.stmts.push(Stmt::Debug(args));
+				self.stmts.push(Stmt::Debug(None, args));
 			}
 			Op::Line(l) => {
 				let mut l = *l;
 				let mut lines = Vec::new();
-				while self.index > 0 && !self.labels.contains(&self.pos()) && let Some(n) = self.next_if(pat!(Op::Line(n) => n))? {
+				while self.index > 0
+					&& !self.labels.contains(&self.pos())
+					&& let Some(n) = self.next_if(pat!(Op::Line(n) => n))?
+				{
 					lines.push(l);
 					l = *n;
 				}
 				let is_loop = self.labels.contains(&self.pos())
-					&& matches!(self.code[self.index - 1].1, Op::Line(_))
-					|| matches!(self.stmts.last(), Some(Stmt::Expr(_)));
-				if is_loop {
+					&& matches!(self.code[self.index - 1].1, Op::Line(_));
+				let last_stmt = self.stmts.iter_mut().rfind(|a| !matches!(a, Stmt::Label(_)));
+				if is_loop || last_stmt.and_then(self::stmt_line).is_none() {
 					lines.push(l);
 				}
 				if !lines.is_empty() {
-					let expr = self.stmts.last_mut()
+					let expr = self.stmts.iter_mut()
+						.rfind(|a| !matches!(a, Stmt::Label(_)))
 						.and_then(tail_expr)
 						.context(e::Unexpected { op: Op::Line(l), what: "expression" }).expect("debug todo");
 					add_lines(expr, &lines);
 				}
-				if !is_loop {
-					self.stmts.push(Stmt::Line(l));
+				let last_stmt = self.stmts.iter_mut().rfind(|a| !matches!(a, Stmt::Label(_)));
+				if !is_loop && let Some(line) = last_stmt.and_then(self::stmt_line) {
+					*line = Some(l);
 				}
 			}
 			op => return e::Unexpected { op: op.clone(), what: "statement" }.fail()
@@ -351,17 +355,32 @@ fn add_lines(expr: &mut Expr, l: &[u16]) {
 
 fn tail_expr(stmt: &mut Stmt) -> Option<&mut Expr> {
 	match stmt {
-		Stmt::Return(e) => e.as_mut(),
+		Stmt::Return(_, e) => e.as_mut(),
 		Stmt::Expr(e) => Some(e),
-		Stmt::Set(_, e) => Some(e),
+		Stmt::Set(_, _, e) => Some(e),
 		Stmt::Label(_) => None,
-		Stmt::If(e, _) => Some(e),
-		Stmt::Switch(e) => Some(e),
+		Stmt::If(_, e, _) => Some(e),
+		Stmt::Switch(_, e) => Some(e),
 		Stmt::Case(_, _) => None,
 		Stmt::Goto(_) => None,
-		Stmt::PushVar => None,
+		Stmt::PushVar(_) => None,
 		Stmt::PopVar => None,
-		Stmt::Line(_) => None,
-		Stmt::Debug(es) => es.last_mut(),
+		Stmt::Debug(_, es) => es.last_mut(),
+	}
+}
+
+fn stmt_line(stmt: &mut Stmt) -> Option<&mut Option<u16>> {
+	match stmt {
+		Stmt::Return(l, _) => Some(l),
+		Stmt::Expr(_) => None,
+		Stmt::Set(l, _, _) => Some(l),
+		Stmt::Label(_) => None,
+		Stmt::If(l, _, _) => Some(l),
+		Stmt::Switch(l, _) => Some(l),
+		Stmt::Case(_, _) => None,
+		Stmt::Goto(_) => None,
+		Stmt::PushVar(l) => Some(l),
+		Stmt::PopVar => None,
+		Stmt::Debug(l, _) => Some(l),
 	}
 }
