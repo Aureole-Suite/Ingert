@@ -133,7 +133,7 @@ impl<T: Display> Expr<T> {
 				}
 				a.display(f, p)?;
 				write!(f, " {o} ")?;
-				b.display(f, p)?;
+				b.display(f, p + 1)?;
 				if p < prio {
 					write!(f, ")")?;
 				}
@@ -146,7 +146,7 @@ impl<T: Display> Expr<T> {
 					}
 					a.display(f, p)?;
 					write!(f, " {l}@{o} ")?;
-					b.display(f, p)?;
+					b.display(f, p + 1)?;
 					if p < prio {
 						write!(f, ")")?;
 					}
