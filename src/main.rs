@@ -79,7 +79,7 @@ fn main() {
 
 		let printed = ingert::print::print(&scena, ingert::print::Settings {
 			use_lines: true,
-			show_lines: false,
+			show_lines: true,
 		});
 
 		writeln!(out, "{printed}");

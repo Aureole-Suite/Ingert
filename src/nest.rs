@@ -253,7 +253,9 @@ impl<'a> Ctx<'a> {
 					lines.push(l);
 					l = *n;
 				}
-				let is_loop = self.labels.contains(&self.pos()) && matches!(self.code[self.index - 1].1, Op::Line(_));
+				let is_loop = self.labels.contains(&self.pos())
+					&& matches!(self.code[self.index - 1].1, Op::Line(_))
+					|| matches!(self.stmts.last(), Some(Stmt::Expr(Expr::Call(CallKind::System(..), _))));
 				if is_loop {
 					lines.push(l);
 				}
@@ -358,7 +360,6 @@ impl<'a> Ctx<'a> {
 fn add_lines(expr: &mut Expr, l: &[u16]) {
 	fn tail(expr: &mut Expr) -> Option<&mut Expr> {
 		match expr {
-			Expr::Call(CallKind::System(..), _) => None,
 			Expr::Call(_, a) => a.last_mut(),
 			Expr::Unop(_, a) => Some(a),
 			Expr::Binop(_, a, _) => Some(a),

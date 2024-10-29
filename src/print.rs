@@ -31,7 +31,7 @@ impl Ctx {
 
 	fn space(&mut self, line: Option<u16>, inline: bool) {
 		let lines = if self.settings.use_lines {
-			line.unwrap_or(self.line + (inline as u16)).saturating_sub(self.line)
+			line.unwrap_or(self.line + (inline as u16)).saturating_sub(self.line).min(10)
 		} else {
 			1
 		};
