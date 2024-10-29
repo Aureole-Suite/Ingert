@@ -140,11 +140,11 @@ mod display {
 
 #[derive(Debug, snafu::Snafu)]
 pub enum Error {
-	#[snafu(display("unknown label: {label}"))]
+	#[snafu(display("unknown label: {label:?}"))]
 	Label { label: Label },
-	#[snafu(display("unexpected {stmt} when parsing switch: {why}"))]
+	#[snafu(display("unexpected {stmt:?} when parsing switch: {why}"))]
 	Switch { why: &'static str, stmt: nest::Stmt },
-	#[snafu(display("Unexpected jump to {label}"))]
+	#[snafu(display("Unexpected jump to {label:?}"))]
 	Jump { label: Label },
 }
 

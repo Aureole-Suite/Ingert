@@ -38,47 +38,6 @@ pub enum Error {
 	MissingLabel { label: Label },
 }
 
-mod display {
-	use super::*;
-	use std::fmt::{Display, Formatter, Result};
-
-	impl Display for Label {
-		fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-			std::fmt::Debug::fmt(self, f)
-		}
-	}
-
-	impl Display for StackSlot {
-		fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-			write!(f, "s[{}]", self.0)
-		}
-	}
-
-	impl Display for Stmt {
-		fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-			match self {
-				Stmt::Return(None) => write!(f, "return")?,
-				Stmt::Return(Some(e)) => write!(f, "return {e}")?,
-				Stmt::Expr(e) => write!(f, "{e}")?,
-				Stmt::Set(v, e) => write!(f, "{v} = {e}")?,
-				Stmt::Label(l) => write!(f, "{l}:")?,
-				Stmt::If(e, l) => write!(f, "if {e} goto {l}")?,
-				Stmt::Switch(e) => write!(f, "switch {e}")?,
-				Stmt::Case(n, l) => write!(f, "case {n} goto {l}")?,
-				Stmt::Goto(l) => write!(f, "goto {l}")?,
-				Stmt::PushVar => write!(f, "push")?,
-				Stmt::PopVar => write!(f, "pop")?,
-				Stmt::Line(l) => write!(f, "line {l}")?,
-				Stmt::Debug(args) => {
-					write!(f, "debug")?;
-					crate::expr::write_args(f, args)?;
-				}
-			}
-			Ok(())
-		}
-	}
-}
-
 type Result<T, E = Error> = std::result::Result<T, E>;
 
 macro_rules! pat {
