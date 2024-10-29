@@ -25,9 +25,9 @@ enum Space {
 
 #[derive(Debug, Clone)]
 struct Token {
+	space: Space,
 	line: Option<u16>,
 	text: String,
-	space: Space,
 }
 
 struct Ctx {
@@ -61,9 +61,9 @@ impl Ctx {
 
 	fn token(&mut self, text: impl ToString) -> &mut Self {
 		self.out.push(Token {
+			space: self.next_space,
 			line: self.next_line.take(),
 			text: text.to_string(),
-			space: self.next_space,
 		});
 		self.next_space = Space::Space;
 		self
