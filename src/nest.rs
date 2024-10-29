@@ -217,7 +217,7 @@ impl<'a> Ctx<'a> {
 					}
 					args.push(self.expr()?);
 				}
-				let expr = Expr::Call(CallKind::Tail(n.clone()), args);
+				let expr = Expr::Call(None, CallKind::Tail(n.clone()), args);
 				self.stmts.push(Stmt::Expr(expr));
 			}
 			Op::PushSpecial(0) => {
@@ -255,7 +255,7 @@ impl<'a> Ctx<'a> {
 				}
 				let is_loop = self.labels.contains(&self.pos())
 					&& matches!(self.code[self.index - 1].1, Op::Line(_))
-					|| matches!(self.stmts.last(), Some(Stmt::Expr(Expr::Call(CallKind::System(..), _))));
+					|| matches!(self.stmts.last(), Some(Stmt::Expr(Expr::Call(_, CallKind::System(..), _))));
 				if is_loop {
 					lines.push(l);
 				}
@@ -288,20 +288,20 @@ impl<'a> Ctx<'a> {
 	#[tracing::instrument(skip(self), fields(pos = ?self.pos()))]
 	fn expr(&mut self) -> Result<Expr> {
 		let expr = match self.next()? {
-			Op::Push(value) => Expr::Value(value.clone()),
-			Op::PushRef(n) => Expr::Ref(*n),
-			Op::GetVar(n) => Expr::Var(Lvalue::Stack(*n)),
-			Op::GetGlobal(n) => Expr::Var(Lvalue::Global(n.clone())),
-			Op::GetRef(n) => Expr::Var(Lvalue::Deref(*n)),
+			Op::Push(value) => Expr::Value(None, value.clone()),
+			Op::PushRef(n) => Expr::Ref(None, *n),
+			Op::GetVar(n) => Expr::Var(None, Lvalue::Stack(*n)),
+			Op::GetGlobal(n) => Expr::Var(None, Lvalue::Global(n.clone())),
+			Op::GetRef(n) => Expr::Var(None, Lvalue::Deref(*n)),
 			Op::Binop(op) => {
 				let mut b = self.expr()?;
 				self.maybe_line(&mut b)?;
 				let a = self.expr()?;
-				Expr::Binop(*op, Box::new(a), Box::new(b))
+				Expr::Binop(None, *op, Box::new(a), Box::new(b))
 			},
 			Op::Unop(op) => {
 				let a = self.expr()?;
-				Expr::Unop(*op, Box::new(a))
+				Expr::Unop(None, *op, Box::new(a))
 			}
 			Op::GetTemp(0) => self.call()?,
 			op => return e::Unexpected { op: op.clone(), what: "expression" }.fail()
@@ -342,7 +342,7 @@ impl<'a> Ctx<'a> {
 			}
 			op => return e::Unexpected { op: op.clone(), what: "call" }.fail()
 		};
-		Ok(Expr::Call(kind, args))
+		Ok(Expr::Call(None, kind, args))
 	}
 
 	fn maybe_line(&mut self, expr: &mut Expr) -> Result<()> {
@@ -360,10 +360,20 @@ impl<'a> Ctx<'a> {
 fn add_lines(expr: &mut Expr, l: &[u16]) {
 	fn tail(expr: &mut Expr) -> Option<&mut Expr> {
 		match expr {
-			Expr::Call(_, a) => a.last_mut(),
-			Expr::Unop(_, a) => Some(a),
-			Expr::Binop(_, a, _) => Some(a),
+			Expr::Call(None, _, a) => a.last_mut(),
+			Expr::Unop(None, _, a) => Some(a),
+			Expr::Binop(None, _, a, _) => Some(a),
 			_ => None,
+		}
+	}
+	fn line_of(expr: &mut Expr) -> Option<&mut Option<u16>> {
+		match expr {
+			Expr::Value(l, ..) => Some(l),
+			Expr::Var(l, ..) => Some(l),
+			Expr::Ref(l, ..) => Some(l),
+			Expr::Call(l, ..) => Some(l),
+			Expr::Unop(l, ..) => Some(l),
+			Expr::Binop(l, ..) => Some(l),
 		}
 	}
 	if let [rest @ .., l] = l {
@@ -374,8 +384,9 @@ fn add_lines(expr: &mut Expr, l: &[u16]) {
 				println!("tail {:?}", rest);
 			}
 		}
-		let e = std::mem::replace(expr, Expr::Value(Value::Int(0)));
-		*expr = Expr::Line(*l, Box::new(e));
+		if let Some(out) = line_of(expr) {
+			*out = Some(*l);
+		}
 	}
 }
 

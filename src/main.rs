@@ -111,8 +111,8 @@ enum Tiebreak<'a> {
 fn tiebreak_score(v: &ingert::Function) -> Tiebreak<'_> {
 	use ingert::*;
 	if let [Stmt::Expr(expr), Stmt::Return(None)] | [Stmt::Return(Some(expr))] = v.body.as_slice()
-		&& let Expr::Call(CallKind::System(a, b), args) = expr
-		&& args.iter().zip(0..).all(|(arg, i)| arg == &Expr::Var(Lvalue::Stack(StackVar(!i))))
+		&& let Expr::Call(_, CallKind::System(a, b), args) = expr
+		&& args.iter().zip(0..).all(|(arg, i)| matches!(arg, Expr::Var(_, Lvalue::Stack(j)) if j.0 == i))
 	{
 		Tiebreak::Syscall(*a, *b)
 	} else {

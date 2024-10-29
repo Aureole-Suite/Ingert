@@ -394,20 +394,19 @@ fn block(ctx: &mut Ctx, goto_allowed: GotoAllowed) -> Result<(Vec<Stmt>, Option<
 
 fn expr(stack: usize, e: &nest::Expr) -> Result<Expr> {
 	Ok(match e {
-		nest::Expr::Value(v) => Expr::Value(v.clone()),
-		nest::Expr::Var(v) => Expr::Var(lvalue(stack, v)?),
-		nest::Expr::Ref(v) => Expr::Ref(stack_slot(stack, v)?),
-		nest::Expr::Call(call, args) => {
+		nest::Expr::Value(l, v) => Expr::Value(*l, v.clone()),
+		nest::Expr::Var(l, v) => Expr::Var(*l, lvalue(stack, v)?),
+		nest::Expr::Ref(l, v) => Expr::Ref(*l, stack_slot(stack, v)?),
+		nest::Expr::Call(l, call, args) => {
 			let add = match call {
 				CallKind::System(..) => 0,
 				CallKind::Func(n) => if n.contains('.') { 5 } else { 2 },
 				CallKind::Tail(..) => 0,
 			};
-			Expr::Call(call.clone(), do_args(stack + add, args)?)
+			Expr::Call(*l, call.clone(), do_args(stack + add, args)?)
 		}
-		nest::Expr::Unop(o, a) => Expr::Unop(*o, expr(stack, a)?.into()),
-		nest::Expr::Binop(o, a, b) => Expr::Binop(*o, expr(stack, a)?.into(), expr(stack + 1, b)?.into()),
-		nest::Expr::Line(l, a) => Expr::Line(*l, expr(stack, a)?.into()),
+		nest::Expr::Unop(l, o, a) => Expr::Unop(*l, *o, expr(stack, a)?.into()),
+		nest::Expr::Binop(l, o, a, b) => Expr::Binop(*l, *o, expr(stack, a)?.into(), expr(stack + 1, b)?.into()),
 	})
 }
 

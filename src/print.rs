@@ -31,12 +31,14 @@ impl Ctx {
 
 	fn space(&mut self, line: Option<u16>, inline: bool) {
 		let lines = if self.settings.use_lines {
-			line.unwrap_or(self.line + (inline as u16)).saturating_sub(self.line).min(10)
+			line.unwrap_or(self.line).saturating_sub(self.line).min(10)
 		} else {
-			1
+			!(inline as u16)
 		};
 		if lines == 0 {
-			write!(self, " ");
+			if !inline {
+				write!(self, " ");
+			}
 		} else {
 			for _ in 0..lines {
 				writeln!(self)
@@ -248,48 +250,42 @@ fn expr(ctx: &mut Ctx, e: &Expr) {
 
 fn expr0(ctx: &mut Ctx, e: &Expr, prio: u32) {
 	match e {
-		Expr::Value(v) => value(ctx, v),
-		Expr::Var(v) => lvalue(ctx, v),
-		Expr::Ref(v) => {
+		Expr::Value(l, v) => {
+			ctx.space_explicit(*l, true);
+			value(ctx, v)
+		}
+		Expr::Var(l, v) => {
+			ctx.space_explicit(*l, true);
+			lvalue(ctx, v)
+		}
+		Expr::Ref(l, v) => {
+			ctx.space_explicit(*l, true);
 			write!(ctx, "&");
 			var(ctx, *v);
 		}
-		Expr::Call(c, a) => {
+		Expr::Call(l, c, a) => {
+			ctx.space_explicit(*l, true);
 			call(ctx, c);
 			args(ctx, a, |ctx, e| expr0(ctx, e, 0));
 		}
-		Expr::Unop(o, a) => {
+		Expr::Unop(l, o, a) => {
+			ctx.space_explicit(*l, true);
 			write!(ctx, "{}", o);
 			expr0(ctx, a, 10);
 		}
-		Expr::Binop(o, a, b) => {
+		Expr::Binop(l, o, a, b) => {
 			let p = op_prio(*o);
 			if p < prio {
 				write!(ctx, "(");
 			}
 			expr0(ctx, a, p);
-			write!(ctx, " {} ", o);
+			write!(ctx, " ");
+			ctx.space_explicit(*l, true);
+			write!(ctx, "{}", o);
+			write!(ctx, " ");
 			expr0(ctx, b, p + 1);
 			if p < prio {
 				write!(ctx, ")");
-			}
-		}
-		Expr::Line(l, e) => {
-			if let Expr::Binop(o, a, b) = &**e {
-				let p = op_prio(*o);
-				if p < prio {
-					write!(ctx, "(");
-				}
-				expr0(ctx, a, p);
-				ctx.space_explicit(Some(*l), true);
-				write!(ctx, "{}", o);
-				expr0(ctx, b, p + 1);
-				if p < prio {
-					write!(ctx, ")");
-				}
-			} else {
-				ctx.space_explicit(Some(*l), true);
-				expr0(ctx, e, prio);
 			}
 		}
 	}
@@ -366,13 +362,12 @@ impl FirstLine for Stmt {
 impl FirstLine for Expr {
 	fn first_line(&self) -> Option<u16> {
 		match self {
-			Expr::Value(_) => None,
-			Expr::Var(_) => None,
-			Expr::Ref(_) => None,
-			Expr::Call(_, args) => args.first_line(),
-			Expr::Unop(_, a) => a.first_line(),
-			Expr::Binop(_, a, b) => a.first_line().or_else(|| b.first_line()),
-			Expr::Line(l, _) => Some(*l),
+			Expr::Value(l, _) => *l,
+			Expr::Var(l, _) => *l,
+			Expr::Ref(l, _) => *l,
+			Expr::Call(l, _, args) => l.or_else(|| args.first_line()),
+			Expr::Unop(l, _, a) => l.or_else(|| a.first_line()),
+			Expr::Binop(l, _, a, b) => a.first_line().or(*l).or_else(|| b.first_line()),
 		}
 	}
 }

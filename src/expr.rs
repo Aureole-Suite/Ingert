@@ -9,13 +9,12 @@ pub enum Value {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr<T> {
-	Value(Value),
-	Var(Lvalue<T>),
-	Ref(T),
-	Call(CallKind, Vec<Expr<T>>),
-	Unop(Unop, Box<Expr<T>>),
-	Binop(Binop, Box<Expr<T>>, Box<Expr<T>>),
-	Line(u16, Box<Expr<T>>),
+	Value(Option<u16>, Value),
+	Var(Option<u16>, Lvalue<T>),
+	Ref(Option<u16>, T),
+	Call(Option<u16>, CallKind, Vec<Expr<T>>),
+	Unop(Option<u16>, Unop, Box<Expr<T>>),
+	Binop(Option<u16>, Binop, Box<Expr<T>>, Box<Expr<T>>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -115,49 +114,53 @@ impl<T: Display> Display for Lvalue<T> {
 impl<T: Display> Expr<T> {
 	fn display(&self, f: &mut Formatter, prio: u32) -> Result {
 		match self {
-			Expr::Value(v) => write!(f, "{v:?}")?,
-			Expr::Var(v) => write!(f, "{v}")?,
-			Expr::Ref(v) => write!(f, "&{v}")?,
-			Expr::Call(c, args) => {
+			Expr::Value(l, v) => {
+				line(f, l)?;
+				write!(f, "{v:?}")?;
+			}
+			Expr::Var(l, v) => {
+				line(f, l)?;
+				write!(f, "{v}")?;
+			}
+			Expr::Ref(l, v) => {
+				line(f, l)?;
+				write!(f, "&{v}")?;
+			}
+			Expr::Call(l, c, args) => {
+				line(f, l)?;
 				write!(f, "{c}")?;
 				write_args(f, args)?;
 			}
-			Expr::Unop(o, a) => {
+			Expr::Unop(l, o, a) => {
+				line(f, l)?;
 				write!(f, "{}", o)?;
 				a.display(f, 10)?;
 			}
-			Expr::Binop(o, a, b) => {
+			Expr::Binop(l, o, a, b) => {
 				let p = op_prio(*o);
 				if p < prio {
 					write!(f, "(")?;
 				}
 				a.display(f, p)?;
-				write!(f, " {o} ")?;
+				write!(f, " ")?;
+				line(f, l)?;
+				write!(f, "{o}")?;
+				write!(f, " ")?;
 				b.display(f, p + 1)?;
 				if p < prio {
 					write!(f, ")")?;
 				}
 			}
-			Expr::Line(l, e) => {
-				if let Expr::Binop(o, a, b) = &**e {
-					let p = op_prio(*o);
-					if p < prio {
-						write!(f, "(")?;
-					}
-					a.display(f, p)?;
-					write!(f, " {l}@{o} ")?;
-					b.display(f, p + 1)?;
-					if p < prio {
-						write!(f, ")")?;
-					}
-				} else {
-					write!(f, "{l}@")?;
-					e.display(f, prio)?;
-				}
-			}
 		}
 		Ok(())
 	}
+}
+
+pub fn line(f: &mut Formatter, l: &Option<u16>) -> Result {
+	if let Some(l) = l {
+		write!(f, "{l}@")?;
+	}
+	Ok(())
 }
 
 impl Display for CallKind {

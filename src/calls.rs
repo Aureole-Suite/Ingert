@@ -113,19 +113,18 @@ impl Infer for Stmt {
 impl Infer for Expr {
 	fn infer(&mut self, called: &mut Calls) -> Result<()> {
 		match self {
-			Expr::Value(_) => {},
-			Expr::Var(_) => {},
-			Expr::Ref(_) => {},
-			Expr::Call(c, a) => {
+			Expr::Value(_, _) => {},
+			Expr::Var(_, _) => {},
+			Expr::Ref(_, _) => {},
+			Expr::Call(_, c, a) => {
 				infer_call(called, c, a)?;
 				a.infer(called)?;
 			}
-			Expr::Unop(_, a) => a.infer(called)?,
-			Expr::Binop(_, a, b) => {
+			Expr::Unop(_, _, a) => a.infer(called)?,
+			Expr::Binop(_, _, a, b) => {
 				a.infer(called)?;
 				b.infer(called)?;
 			},
-			Expr::Line(_, a) => a.infer(called)?,
 		}
 		Ok(())
 	}
@@ -145,7 +144,13 @@ fn infer_call(called: &mut Calls, call: &mut CallKind, a: &mut Vec<Expr>) -> Res
 			let Some(default) = &func[i].default else {
 				return BadArgsSnafu { call: call.clone(), args: args.clone(), sig: func.to_vec() }.fail();
 			};
-			snafu::ensure!(a[i] == Expr::Value(default.clone()), BadArgsSnafu { call: call.clone(), args: args.clone(), sig: func.to_vec() });
+			if !matches!(&a[i], Expr::Value(_, v) if v == default) {
+				return BadArgsSnafu {
+					call: call.clone(),
+					args: args.clone(),
+					sig: func.to_vec(),
+				}.fail();
+			};
 		}
 		a.truncate(exp_args.len());
 	} else {
@@ -156,12 +161,11 @@ fn infer_call(called: &mut Calls, call: &mut CallKind, a: &mut Vec<Expr>) -> Res
 
 fn to_call_arg(expr: &Expr) -> CallArg {
 	match expr {
-		Expr::Value(v) => CallArg::Value(v.clone()),
-		Expr::Var(_) => CallArg::Var,
-		Expr::Ref(_) => CallArg::Var,
-		Expr::Call(_, _) => CallArg::Call,
-		Expr::Unop(_, _) => CallArg::Expr,
-		Expr::Binop(_, _, _) => CallArg::Expr,
-		Expr::Line(_, l) => to_call_arg(l),
+		Expr::Value(_, v) => CallArg::Value(v.clone()),
+		Expr::Var(..) => CallArg::Var,
+		Expr::Ref(..) => CallArg::Var,
+		Expr::Call(..) => CallArg::Call,
+		Expr::Unop(..) => CallArg::Expr,
+		Expr::Binop(..) => CallArg::Expr,
 	}
 }
