@@ -248,12 +248,16 @@ impl<'a> Ctx<'a> {
 			}
 			Op::Line(l) => {
 				let mut l = *l;
+				let mut lines = Vec::new();
 				while self.index > 0 && !self.labels.contains(&self.pos()) && let Some(n) = self.next_if(pat!(Op::Line(n) => n))? {
+					lines.push(*n);
+					l = *n;
+				}
+				if !lines.is_empty() {
 					let expr = self.stmts.last_mut()
 						.and_then(tail_expr)
-						.context(e::Unexpected { op: Op::Line(*n), what: "expression" }).expect("debug todo");
-					add_line(expr, l);
-					l = *n;
+						.context(e::Unexpected { op: Op::Line(l), what: "expression" }).expect("debug todo");
+					add_lines(expr, &lines);
 				}
 				self.stmts.push(Stmt::Line(l));
 			}
@@ -334,16 +338,39 @@ impl<'a> Ctx<'a> {
 	}
 
 	fn maybe_line(&mut self, expr: &mut Expr) -> Result<()> {
+		let mut lines = Vec::new();
 		while let Some(l) = self.next_if(pat!(Op::Line(l) => l))? {
-			add_line(expr, *l);
+			lines.push(*l);
+		}
+		if !lines.is_empty() {
+			add_lines(expr, &lines);
 		}
 		Ok(())
 	}
 }
 
-fn add_line(expr: &mut Expr, l: u16) {
-	let e = std::mem::replace(expr, Expr::Value(Value::Int(0)));
-	*expr = Expr::Line(l, Box::new(e));
+fn add_lines(expr: &mut Expr, l: &[u16]) {
+	println!("lines {l:?} {expr}");
+	fn tail(expr: &mut Expr) -> Option<&mut Expr> {
+		match expr {
+			Expr::Call(CallKind::System(..), _) => None,
+			Expr::Call(_, a) => a.last_mut(),
+			Expr::Unop(_, a) => Some(a),
+			Expr::Binop(_, a, _) => Some(a),
+			_ => None,
+		}
+	}
+	if let [rest @ .., l] = l {
+		if !rest.is_empty() {
+			if let Some(e) = tail(expr) {
+				add_lines(e, rest);
+			} else {
+				println!("tail {:?}", rest);
+			}
+		}
+		let e = std::mem::replace(expr, Expr::Value(Value::Int(0)));
+		*expr = Expr::Line(*l, Box::new(e));
+	}
 }
 
 fn tail_expr(stmt: &mut Stmt) -> Option<&mut Expr> {
