@@ -250,8 +250,12 @@ impl<'a> Ctx<'a> {
 				let mut l = *l;
 				let mut lines = Vec::new();
 				while self.index > 0 && !self.labels.contains(&self.pos()) && let Some(n) = self.next_if(pat!(Op::Line(n) => n))? {
-					lines.push(*n);
+					lines.push(l);
 					l = *n;
+				}
+				let is_loop = self.labels.contains(&self.pos()) && matches!(self.code[self.index - 1].1, Op::Line(_));
+				if is_loop {
+					lines.push(l);
 				}
 				if !lines.is_empty() {
 					let expr = self.stmts.last_mut()
@@ -259,7 +263,9 @@ impl<'a> Ctx<'a> {
 						.context(e::Unexpected { op: Op::Line(l), what: "expression" }).expect("debug todo");
 					add_lines(expr, &lines);
 				}
-				self.stmts.push(Stmt::Line(l));
+				if !is_loop {
+					self.stmts.push(Stmt::Line(l));
+				}
 			}
 			op => return e::Unexpected { op: op.clone(), what: "statement" }.fail()
 		}
@@ -350,7 +356,6 @@ impl<'a> Ctx<'a> {
 }
 
 fn add_lines(expr: &mut Expr, l: &[u16]) {
-	println!("lines {l:?} {expr}");
 	fn tail(expr: &mut Expr) -> Option<&mut Expr> {
 		match expr {
 			Expr::Call(CallKind::System(..), _) => None,
