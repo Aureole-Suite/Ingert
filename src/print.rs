@@ -33,22 +33,19 @@ struct Token {
 struct Ctx {
 	settings: Settings,
 	indent: u32,
-	out: Vec<Token>,
 	next_line: Option<u16>,
+	next_space: Space,
+	out: Vec<Token>,
 }
 
 impl Ctx {
 	fn tight(&mut self) -> &mut Self {
-		if let Some(token) = self.out.last_mut() {
-			token.space = token.space.min(Space::Tight);
-		}
+		self.next_space = self.next_space.min(Space::Tight);
 		self
 	}
 
 	fn line(&mut self) -> &mut Self {
-		if let Some(token) = self.out.last_mut() {
-			token.space = token.space.min(Space::Line(self.indent));
-		}
+		self.next_space = self.next_space.min(Space::Line(self.indent));
 		self
 	}
 
@@ -66,8 +63,9 @@ impl Ctx {
 		self.out.push(Token {
 			line: self.next_line.take(),
 			text: text.to_string(),
-			space: Space::Space,
+			space: self.next_space,
 		});
+		self.next_space = Space::Space;
 		self
 	}
 }
@@ -77,6 +75,7 @@ pub fn print(scena: &[Item], settings: Settings) -> String {
 		settings,
 		indent: 0,
 		next_line: None,
+		next_space: Space::Tight,
 		out: Vec::new(),
 	};
 	for i in scena {
@@ -86,10 +85,6 @@ pub fn print(scena: &[Item], settings: Settings) -> String {
 	let mut out = String::new();
 	for tok in &ctx.out {
 		use std::fmt::Write;
-		if let Some(l) = tok.line && ctx.settings.show_lines {
-			write!(out, "{l}@").unwrap();
-		}
-		out.push_str(&tok.text);
 		match tok.space {
 			Space::Tight => {},
 			Space::Line(l) => {
@@ -100,6 +95,10 @@ pub fn print(scena: &[Item], settings: Settings) -> String {
 			}
 			Space::Space => out.push(' '),
 		}
+		if let Some(l) = tok.line && ctx.settings.show_lines {
+			write!(out, "{l}@").unwrap();
+		}
+		out.push_str(&tok.text);
 	}
 	out
 }
