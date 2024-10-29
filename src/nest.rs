@@ -255,7 +255,7 @@ impl<'a> Ctx<'a> {
 				}
 				let is_loop = self.labels.contains(&self.pos())
 					&& matches!(self.code[self.index - 1].1, Op::Line(_))
-					|| matches!(self.stmts.last(), Some(Stmt::Expr(Expr::Call(_, CallKind::System(..), _))));
+					|| matches!(self.stmts.last(), Some(Stmt::Expr(_)));
 				if is_loop {
 					lines.push(l);
 				}
