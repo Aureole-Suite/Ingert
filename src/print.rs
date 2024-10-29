@@ -324,7 +324,7 @@ fn call(ctx: &mut Ctx, c: &CallKind) {
 
 fn var(ctx: &mut Ctx, v: StackVar) {
 	if v.0 < 0 {
-		ctx.token(format_args!("arg{}", -v.0));
+		ctx.token(format_args!("arg{}", !v.0));
 	} else {
 		ctx.token(format_args!("var{}", v.0));
 	}
