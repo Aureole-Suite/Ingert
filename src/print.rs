@@ -201,6 +201,7 @@ fn stmt(ctx: &mut Ctx, s: &Stmt) {
 		Stmt::Debug(l, es) => {
 			ctx.align(*l).token("debug");
 			args(ctx, es, expr);
+			ctx.semi();
 		}
 		Stmt::If(l, a, b, c) => {
 			ctx.align(*l).token("if");
