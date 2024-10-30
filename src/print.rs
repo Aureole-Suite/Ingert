@@ -3,7 +3,7 @@ use crate::expr::{op_prio, Type, Value};
 
 mod layout;
 
-use layout::{Space, Token};
+use layout::Token;
 
 #[derive(Debug, Clone)]
 pub struct Settings {
@@ -23,27 +23,30 @@ impl Default for Settings {
 struct Ctx {
 	settings: Settings,
 	indent: u32,
-	next_line: Option<u16>,
-	next_space: Space,
+	next_space: bool,
+	next_line: bool,
+	next_indent: u32,
+	next_align: Option<u16>,
 	out: Vec<Token>,
 }
 
 impl Ctx {
 	fn tight(&mut self) -> &mut Self {
-		self.next_space = self.next_space.min(Space::Tight);
+		self.next_space = false;
 		self
 	}
 
 	fn line(&mut self) -> &mut Self {
-		self.next_space = self.next_space.min(Space::Line(self.indent));
+		self.next_line = true;
+		self.next_indent = self.indent;
 		self
 	}
 
-	fn align(&mut self, line: Option<u16>) -> &mut Self {
-		assert_eq!(self.next_line, None);
-		self.next_line = line;
-		if self.settings.show_lines && let Some(line) = line {
-			self.token(format_args!("{line}@")).tight();
+	fn align(&mut self, align: Option<u16>) -> &mut Self {
+		assert_eq!(self.next_align, None);
+		self.next_align = align;
+		if self.settings.show_lines && let Some(align) = align {
+			self.token(format_args!("{align}@")).tight();
 		}
 		self
 	}
@@ -55,10 +58,14 @@ impl Ctx {
 	fn token(&mut self, text: impl ToString) -> &mut Self {
 		self.out.push(Token {
 			space: self.next_space,
-			line: self.next_line.take(),
+			line: self.next_line,
+			indent: if self.next_line { self.next_indent } else { self.next_indent + 5 },
+			align: self.next_align,
 			text: text.to_string(),
 		});
-		self.next_space = Space::Space;
+		self.next_space = true;
+		self.next_line = false;
+		self.next_align = None;
 		self
 	}
 }
@@ -67,8 +74,10 @@ pub fn print(scena: &[Item], settings: Settings) -> String {
 	let mut ctx = Ctx {
 		settings,
 		indent: 0,
-		next_line: None,
-		next_space: Space::Tight,
+		next_space: false,
+		next_line: false,
+		next_indent: 0,
+		next_align: None,
 		out: Vec::new(),
 	};
 	for i in scena {
@@ -249,9 +258,7 @@ fn lvalue(ctx: &mut Ctx, lv: &Lvalue) {
 }
 
 fn expr(ctx: &mut Ctx, e: &Expr) {
-	ctx.indent += 2;
 	expr0(ctx, e, 0);
-	ctx.indent -= 2;
 }
 
 fn expr0(ctx: &mut Ctx, e: &Expr, prio: u32) {

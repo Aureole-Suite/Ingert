@@ -60,22 +60,22 @@ fn main() {
 		});
 		prelude_order.push(prelude_funcs);
 
-		for item in &scena {
-			match item {
-				ingert::Item::Global(g) => {
-					if let Some(line) = g.line {
-						write!(out, "line {} ", line);
-					}
-					writeln!(out, "global {} = {}", g.name, g.ty);
-				}
-				ingert::Item::Function(f) => {
-					if f.is_prelude {
-						write!(out, "prelude ");
-					}
-					write_fn(&mut out, f);
-				}
-			}
-		}
+		// for item in &scena {
+		// 	match item {
+		// 		ingert::Item::Global(g) => {
+		// 			if let Some(line) = g.line {
+		// 				write!(out, "line {} ", line);
+		// 			}
+		// 			writeln!(out, "global {} = {}", g.name, g.ty);
+		// 		}
+		// 		ingert::Item::Function(f) => {
+		// 			if f.is_prelude {
+		// 				write!(out, "prelude ");
+		// 			}
+		// 			write_fn(&mut out, f);
+		// 		}
+		// 	}
+		// }
 
 		let printed = ingert::print::print(&scena, ingert::print::Settings {
 			use_lines: true,
