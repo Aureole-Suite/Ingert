@@ -27,6 +27,7 @@ struct Ctx {
 	next_line: bool,
 	next_indent: u32,
 	next_align: Option<u16>,
+	next_fill: bool,
 	out: Vec<Token>,
 }
 
@@ -39,6 +40,11 @@ impl Ctx {
 	fn line(&mut self) -> &mut Self {
 		self.next_line = true;
 		self.next_indent = self.indent;
+		self
+	}
+
+	fn fill(&mut self) -> &mut Self {
+		self.next_fill = true;
 		self
 	}
 
@@ -61,11 +67,13 @@ impl Ctx {
 			line: self.next_line,
 			indent: if self.next_line { self.next_indent } else { self.next_indent + 5 },
 			align: self.next_align,
+			fill: self.next_fill,
 			text: text.to_string(),
 		});
 		self.next_space = true;
 		self.next_line = false;
 		self.next_align = None;
+		self.next_fill = false;
 		self
 	}
 }
@@ -78,6 +86,7 @@ pub fn print(scena: &[Item], settings: Settings) -> String {
 		next_line: false,
 		next_indent: 0,
 		next_align: None,
+		next_fill: false,
 		out: Vec::new(),
 	};
 	for i in scena {
@@ -94,13 +103,13 @@ pub fn print(scena: &[Item], settings: Settings) -> String {
 fn item(ctx: &mut Ctx, item: &Item) {
 	match item {
 		Item::Global(g) => {
-			ctx.line().align(g.line).token("global");
+			ctx.line().fill().align(g.line).token("global");
 			ctx.token(&g.name).tight().token(":");
 			ty(ctx, g.ty);
 			ctx.semi();
 		}
 		Item::Function(f) => {
-			ctx.line();
+			ctx.line().fill();
 			if f.is_prelude {
 				ctx.token("prelude");
 			}
@@ -160,7 +169,7 @@ fn block(ctx: &mut Ctx, body: &[Stmt]) {
 	}
 	ctx.indent -= 1;
 	// TODO should this line be included if empty?
-	ctx.line();
+	ctx.line().fill();
 	ctx.token("}");
 }
 
@@ -202,11 +211,13 @@ fn stmt(ctx: &mut Ctx, s: &Stmt) {
 					block(ctx, c);
 				}
 			}
+			ctx.fill();
 		}
 		Stmt::While(l, a, b) => {
 			ctx.align(*l).token("while");
 			expr(ctx, a);
 			block(ctx, b);
+			ctx.fill();
 		}
 		Stmt::Switch(l, a, b) => {
 			ctx.align(*l).token("switch");
@@ -227,6 +238,7 @@ fn stmt(ctx: &mut Ctx, s: &Stmt) {
 			}
 			ctx.line();
 			ctx.token("}");
+			ctx.fill();
 		}
 		Stmt::Break => {
 			ctx.token("break").semi();

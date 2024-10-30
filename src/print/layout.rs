@@ -6,6 +6,7 @@ pub struct Token {
 	pub line: bool,
 	pub indent: u32,
 	pub align: Option<u16>,
+	pub fill: bool,
 	pub text: String,
 }
 
@@ -48,8 +49,15 @@ pub fn layout(mut tokens: &[Token]) -> String {
 		};
 		let formatted_count = seg.iter().filter(|t| t.line).count() as i32;
 
-		for tok in seg {
+		let fill_pos = seg.iter().rposition(|t| t.fill);
+
+		for (i, tok) in seg.iter().enumerate() {
 			if tok.line && formatted_count <= line_diff {
+				if fill_pos == Some(i) {
+					for _ in formatted_count+1..line_diff {
+						out.push('\n');
+					}
+				}
 				push_line(&mut out, tok.indent);
 			} else if tok.space {
 				out.push(' ');
@@ -60,8 +68,10 @@ pub fn layout(mut tokens: &[Token]) -> String {
 		if line_diff < 0 {
 			write!(out, "/*{line_diff}*/").unwrap();
 		}
-		for _ in formatted_count+1..line_diff {
-			out.push('\n');
+		if fill_pos.is_none() {
+			for _ in formatted_count+1..line_diff {
+				out.push('\n');
+			}
 		}
 		pending_line = formatted_count < line_diff;
 		last = next.align.unwrap();
