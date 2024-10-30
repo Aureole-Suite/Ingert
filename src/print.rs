@@ -28,6 +28,9 @@ impl Ctx {
 	fn align(&mut self, line: Option<u16>) -> &mut Self {
 		assert_eq!(self.next_line, None);
 		self.next_line = line;
+		if self.settings.show_lines && let Some(line) = line {
+			self.token(format_args!("{line}@")).tight();
+		}
 		self
 	}
 

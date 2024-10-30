@@ -41,9 +41,6 @@ pub fn layout(tokens: &[Token], settings: &Settings) -> String {
 			}
 			Space::Space => out.push(' '),
 		}
-		if let Some(l) = tok.line && settings.show_lines {
-			write!(out, "{l}@").unwrap();
-		}
 		out.push_str(&tok.text);
 	}
 	out
