@@ -1,34 +1,10 @@
 use crate::{CallKind, Expr, Function, Item, Lvalue, StackVar, Stmt};
 use crate::expr::{op_prio, Type, Value};
 
-#[derive(Debug, Clone)]
-pub struct Settings {
-	pub use_lines: bool,
-	pub show_lines: bool,
-}
+mod layout;
 
-impl Default for Settings {
-	fn default() -> Self {
-		Self {
-			use_lines: true,
-			show_lines: true,
-		}
-	}
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-enum Space {
-	Tight,
-	Line(u32),
-	Space,
-}
-
-#[derive(Debug, Clone)]
-struct Token {
-	space: Space,
-	line: Option<u16>,
-	text: String,
-}
+use layout::{Space, Token, layout};
+pub use layout::Settings;
 
 struct Ctx {
 	settings: Settings,
@@ -82,25 +58,7 @@ pub fn print(scena: &[Item], settings: Settings) -> String {
 		item(&mut ctx, i);
 	}
 
-	let mut out = String::new();
-	for tok in &ctx.out {
-		use std::fmt::Write;
-		match tok.space {
-			Space::Tight => {},
-			Space::Line(l) => {
-				out.push('\n');
-				for _ in 0..l {
-					out.push('\t');
-				}
-			}
-			Space::Space => out.push(' '),
-		}
-		if let Some(l) = tok.line && ctx.settings.show_lines {
-			write!(out, "{l}@").unwrap();
-		}
-		out.push_str(&tok.text);
-	}
-	out
+	layout(&ctx.out, &ctx.settings)
 }
 
 fn item(ctx: &mut Ctx, item: &Item) {
