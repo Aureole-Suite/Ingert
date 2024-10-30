@@ -1,10 +1,24 @@
-use crate::{CallKind, Expr, Function, Item, Lvalue, StackVar, Stmt};
+use crate::{CallKind, Expr, Item, Lvalue, StackVar, Stmt};
 use crate::expr::{op_prio, Type, Value};
 
 mod layout;
 
-use layout::{Space, Token, layout};
-pub use layout::Settings;
+use layout::{Space, Token};
+
+#[derive(Debug, Clone)]
+pub struct Settings {
+	pub use_lines: bool,
+	pub show_lines: bool,
+}
+
+impl Default for Settings {
+	fn default() -> Self {
+		Self {
+			use_lines: true,
+			show_lines: true,
+		}
+	}
+}
 
 struct Ctx {
 	settings: Settings,
@@ -61,7 +75,11 @@ pub fn print(scena: &[Item], settings: Settings) -> String {
 		item(&mut ctx, i);
 	}
 
-	layout(&ctx.out, &ctx.settings)
+	if ctx.settings.use_lines {
+		layout::layout(&ctx.out)
+	} else {
+		layout::naive_layout(&ctx.out)
+	}
 }
 
 fn item(ctx: &mut Ctx, item: &Item) {
