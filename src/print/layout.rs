@@ -58,6 +58,7 @@ pub fn layout(tokens: &[Token]) -> String {
 			let diff = align as i32 - line as i32;
 			if diff < 0 {
 				out.truncate(last_string_pos);
+				fill_index = None;
 				line = last_line;
 				for tok2 in &tokens[last_index+1..index] {
 					if tok2.space {
