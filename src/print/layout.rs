@@ -34,55 +34,58 @@ fn push_line(out: &mut String, indent: u32) {
 	}
 }
 
-pub fn layout(mut tokens: &[Token]) -> String {
-	let mut out = String::new();
-	let mut last = 1;
-	let mut pending_line = false;
-	while let Some((seg, next)) = next_segment(&mut tokens) {
-		let line_diff = next.align.unwrap() as i32 - last as i32;
-		let seg = if pending_line {
-			push_line(&mut out, seg[0].indent);
-			out.push_str(&seg[0].text);
-			&seg[1..]
-		} else {
-			seg
-		};
-		let formatted_count = seg.iter().filter(|t| t.line).count() as i32;
-
-		let fill_pos = seg.iter().rposition(|t| t.fill);
-
-		for (i, tok) in seg.iter().enumerate() {
-			if tok.line && formatted_count <= line_diff {
-				if fill_pos == Some(i) {
-					for _ in formatted_count+1..line_diff {
-						out.push('\n');
-					}
-				}
-				push_line(&mut out, tok.indent);
-			} else if tok.space {
-				out.push(' ');
-			}
-			out.push_str(&tok.text);
-		}
-
-		if line_diff < 0 {
-			write!(out, "/*{line_diff}*/").unwrap();
-		}
-		if fill_pos.is_none() {
-			for _ in formatted_count+1..line_diff {
-				out.push('\n');
-			}
-		}
-		pending_line = formatted_count < line_diff;
-		last = next.align.unwrap();
+pub fn layout(tokens: &[Token]) -> String {
+	#[derive(Debug, Clone, Copy)]
+	struct State {
+		line: u32,
+		string_offset: usize,
+		token: usize,
 	}
-	naive_layout_to(&mut out, tokens);
-	out
-}
 
-fn next_segment<'a>(tokens: &mut &'a [Token]) -> Option<(&'a [Token], &'a Token)> {
-	let pos = tokens.iter().enumerate().position(|(i, t)| t.align.is_some() && i > 0)?;
-	let (seg, rest) = tokens.split_at(pos);
-	*tokens = rest;
-	Some((seg, &rest[0]))
+	let mut current = State {
+		line: 1,
+		string_offset: 0,
+		token: 0,
+	};
+	let mut last = current;
+	let mut fill_index = None;
+
+	let mut out = String::new();
+	for (i, tok) in tokens.iter().enumerate() {
+		let mut do_indent = false;
+		if tok.line {
+			out.push('\n');
+			current.line += 1;
+			do_indent = true;
+			if tok.fill {
+				fill_index = Some(out.len());
+			}
+		}
+
+		if let Some(align) = tok.align {
+			let diff = align as i32 - current.line as i32;
+			if diff > 0 {
+				let fill_pos = fill_index.unwrap_or(out.len());
+				out.insert_str(fill_pos, &"\n".repeat(diff as usize));
+				current.line += diff as u32;
+				do_indent = fill_index.is_none();
+			} else if diff < 0 {
+				write!(out, "/*{diff}*/").unwrap();
+			}
+			fill_index = None;
+			current.string_offset = out.len();
+			last = current;
+		}
+
+		if do_indent {
+			for _ in 0..tok.indent {
+				out.push('\t');
+			}
+		} else if tok.space {
+			out.push(' ');
+		}
+
+		out.push_str(&tok.text);
+	}
+	out
 }
