@@ -35,27 +35,19 @@ fn push_line(out: &mut String, indent: u32) {
 }
 
 pub fn layout(tokens: &[Token]) -> String {
-	#[derive(Debug, Clone, Copy)]
-	struct State {
-		line: u32,
-		string_offset: usize,
-		token: usize,
-	}
-
-	let mut current = State {
-		line: 1,
-		string_offset: 0,
-		token: 0,
-	};
-	let mut last = current;
+	let mut last_string_pos = 0;
+	let mut last_index = 0;
+	let mut last_line = 0;
+	let mut line = 1;
 	let mut fill_index = None;
 
 	let mut out = String::new();
-	for (i, tok) in tokens.iter().enumerate() {
+	for (index, tok) in tokens.iter().enumerate() {
 		let mut do_indent = false;
+
 		if tok.line {
 			out.push('\n');
-			current.line += 1;
+			line += 1;
 			do_indent = true;
 			if tok.fill {
 				fill_index = Some(out.len());
@@ -63,18 +55,28 @@ pub fn layout(tokens: &[Token]) -> String {
 		}
 
 		if let Some(align) = tok.align {
-			let diff = align as i32 - current.line as i32;
+			let diff = align as i32 - line as i32;
+			if diff < 0 {
+				out.truncate(last_string_pos);
+				line = last_line;
+				for tok2 in &tokens[last_index+1..index] {
+					if tok2.space {
+						out.push(' ');
+					}
+					out.push_str(&tok2.text);
+				}
+				if align < last_line {
+					write!(out, "/*{diff}*/").unwrap();
+				}
+			}
+
+			let diff = align as i32 - line as i32;
 			if diff > 0 {
 				let fill_pos = fill_index.unwrap_or(out.len());
 				out.insert_str(fill_pos, &"\n".repeat(diff as usize));
-				current.line += diff as u32;
+				line += diff as u16;
 				do_indent = tok.line || fill_index.is_none();
-			} else if diff < 0 {
-				write!(out, "/*{diff}*/").unwrap();
 			}
-			fill_index = None;
-			current.string_offset = out.len();
-			last = current;
 		}
 
 		if do_indent {
@@ -86,6 +88,13 @@ pub fn layout(tokens: &[Token]) -> String {
 		}
 
 		out.push_str(&tok.text);
+
+		if tok.align.is_some() {
+			fill_index = None;
+			last_string_pos = out.len();
+			last_index = index;
+			last_line = line;
+		}
 	}
 	out
 }
