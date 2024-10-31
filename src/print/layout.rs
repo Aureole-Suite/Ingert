@@ -68,7 +68,7 @@ pub fn layout(tokens: &[Token]) -> String {
 				let fill_pos = fill_index.unwrap_or(out.len());
 				out.insert_str(fill_pos, &"\n".repeat(diff as usize));
 				current.line += diff as u32;
-				do_indent = fill_index.is_none();
+				do_indent = tok.line || fill_index.is_none();
 			} else if diff < 0 {
 				write!(out, "/*{diff}*/").unwrap();
 			}
