@@ -52,56 +52,17 @@ pub fn lines(tokens: &[(Label, Op)]) -> Vec<Line> {
 			continue;
 		}
 
-		if let Op::CallSystem(..) = op
-			&& let Some(prefix) = lines.last().copied()
-			&& let Some((_, Op::Line(next))) = iter.peek()
-			&& line < prefix
-			&& prefix < *next
-		{
+		macro_rules! test { ($pat:pat, $($tt:tt)*) => { if let $pat = op && $($tt)* { true } else { false } } }
+		if let Some(p) = lines.last().copied() && (
+			test!(Op::Unop(_), p != line)
+			|| test!(Op::Binop(_) | Op::GetTemp(0), let Some((_, Op::Line(next))) = iter.peek() && p == *next)
+			|| test!(Op::CallSystem(..), let Some((_, Op::Line(next))) = iter.peek() && line < p && p < *next)
+			|| test!(Op::If(_) | Op::SetGlobal(_) | Op::Debug(_), let Some((_, Op::Line(_))) = iter.peek())
+			|| test!(Op::Return, let Some((_, Op::Line(_))) | None = iter.peek())
+		) {
 			lines.pop();
 			out.push(Line::Op {
-				line: prefix,
-				why: Why::Prefix,
-				op: op.clone(),
-			});
-		} else if let Op::Unop(_) = op
-			&& let Some(prefix) = lines.last().copied()
-			&& prefix != line
-		{
-			lines.pop();
-			out.push(Line::Op {
-				line: prefix,
-				why: Why::Prefix,
-				op: op.clone(),
-			});
-		} else if let Op::Binop(_) | Op::GetTemp(0) = op
-			&& let Some(prefix) = lines.last().copied()
-			&& let Some((_, Op::Line(next))) = iter.peek()
-			&& prefix == *next
-		{
-			lines.pop();
-			out.push(Line::Op {
-				line: prefix,
-				why: Why::Prefix,
-				op: op.clone(),
-			});
-		} else if let Op::If(_) | Op::SetGlobal(_) | Op::Debug(_) = op
-			&& let Some(prefix) = lines.last().copied()
-			&& let Some((_, Op::Line(_))) = iter.peek()
-		{
-			lines.pop();
-			out.push(Line::Op {
-				line: prefix,
-				why: Why::Prefix,
-				op: op.clone(),
-			});
-		} else if let Op::Return = op
-			&& let Some(prefix) = lines.last().copied()
-			&& let Some((_, Op::Line(_))) | None = iter.peek()
-		{
-			lines.pop();
-			out.push(Line::Op {
-				line: prefix,
+				line: p,
 				why: Why::Prefix,
 				op: op.clone(),
 			});
