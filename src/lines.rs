@@ -52,13 +52,17 @@ pub fn lines(tokens: &[(Label, Op)]) -> Vec<Line> {
 			continue;
 		}
 
-		macro_rules! test { ($pat:pat, $($tt:tt)*) => { if let $pat = op && $($tt)* { true } else { false } } }
+		macro_rules! test { ($pat:pat if $($tt:tt)*) => { if let $pat = op && $($tt)* { true } else { false } } }
 		if let Some(p) = lines.last().copied() && (
-			test!(Op::Unop(_), p != line)
-			|| test!(Op::Binop(_) | Op::GetTemp(0), let Some((_, Op::Line(next))) = iter.peek() && p == *next)
-			|| test!(Op::CallSystem(..), let Some((_, Op::Line(next))) = iter.peek() && line < p && p < *next)
-			|| test!(Op::If(_) | Op::SetGlobal(_) | Op::Debug(_), let Some((_, Op::Line(_))) = iter.peek())
-			|| test!(Op::Return, let Some((_, Op::Line(_))) | None = iter.peek())
+			test!(Op::Unop(_) if p != line)
+			|| test!(Op::Binop(_) | Op::GetTemp(0)
+				if let Some((_, Op::Line(next))) = iter.peek() && p == *next)
+			|| test!(Op::CallSystem(..)
+				if let Some((_, Op::Line(next))) = iter.peek() && line < p && p < *next)
+			|| test!(Op::If(_) | Op::SetGlobal(_) | Op::Debug(_) | Op::Return
+				if let Some((_, Op::Line(_))) = iter.peek())
+			|| test!(Op::Return
+				if iter.peek().is_none())
 		) {
 			lines.pop();
 			out.push(Line::Op {
