@@ -57,12 +57,12 @@ pub fn lines(tokens: &[(Label, Op)]) -> Vec<Line> {
 			test!(Op::Unop(_) if p != line)
 			|| test!(Op::Binop(_) | Op::GetTemp(0)
 				if let Some((_, Op::Line(next))) = iter.peek() && p == *next)
+			|| test!(Op::If(_) | Op::SetGlobal(_) | Op::Debug(_)
+				if let Some((_, Op::Line(next))) = iter.peek() && p < *next)
 			|| test!(Op::CallSystem(..)
 				if let Some((_, Op::Line(next))) = iter.peek() && line < p && p < *next)
-			|| test!(Op::If(_) | Op::SetGlobal(_) | Op::Debug(_) | Op::Return
-				if let Some((_, Op::Line(_))) = iter.peek())
-			|| test!(Op::Return
-				if iter.peek().is_none())
+			|| test!(Op::SetTemp(0)
+				if let Some((_, Op::Return)) = iter.peek())
 		) {
 			lines.pop();
 			out.push(Line::Op {
