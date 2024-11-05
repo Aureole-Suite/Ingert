@@ -11,7 +11,6 @@ pub enum Why {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Line {
-	Spurious(u16),
 	Label(Label),
 	Op {
 		line: u16,
@@ -34,21 +33,18 @@ pub fn lines(tokens: &[(Label, Op)]) -> Vec<Line> {
 	while let Some((label, op)) = iter.next() {
 		if all_labels.contains(label) {
 			out.push(Line::Label(*label));
-			// println!("  {:?}", out.last().unwrap());
 		}
 
 		if let Op::Line(line) = op
 			&& let Some((_, Op::Line(_))) = iter.peek()
 		{
 			lines.push(*line);
-			// println!("Line({}) push", line);
 			continue
 		}
 
 		if let Op::Line(line_) = op {
 			line = *line_;
 			explicit = true;
-			// println!("Line({})", line_);
 			continue;
 		}
 
@@ -77,13 +73,10 @@ pub fn lines(tokens: &[(Label, Op)]) -> Vec<Line> {
 				op: op.clone(),
 			});
 		}
-		// println!("  {:?}", out.last().unwrap());
 		explicit = false;
 	}
-	// These are typically empty, but if they aren't, we should still emit them
 	for line in lines {
-		out.push(Line::Spurious(line));
-		println!("{:?}", out.last().unwrap());
+		tracing::warn!("unhandled line: {line}");
 	}
 	out
 }
