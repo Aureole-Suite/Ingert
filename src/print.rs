@@ -156,7 +156,22 @@ fn value(ctx: &mut Ctx, value: &Value) {
 	match value {
 		Value::Int(v) => ctx.token(format_args!("{v:?}")),
 		Value::Float(v) => ctx.token(format_args!("{v:?}")),
-		Value::String(v) => ctx.token(format_args!("{v:?}")),
+		Value::String(v) => {
+			let mut s = String::new();
+			s.push('"');
+			for c in v.chars() {
+				match c {
+					'\n' => s.push_str("\\n"),
+					'\r' => s.push_str("\\r"),
+					'\t' => s.push_str("\\t"),
+					'"' => s.push_str("\\\""),
+					'\\' => s.push_str("\\\\"),
+					c => s.push(c),
+				}
+			}
+			s.push('"');
+			ctx.token(s)
+		},
 	};
 }
 
