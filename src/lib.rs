@@ -8,6 +8,7 @@ pub mod lines;
 pub mod nest;
 pub mod decompile;
 pub mod calls;
+pub mod prelude;
 
 pub mod print;
 
