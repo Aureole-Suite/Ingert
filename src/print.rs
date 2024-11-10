@@ -101,15 +101,15 @@ pub fn print(scena: &[Item], settings: Settings) -> String {
 }
 
 fn item(ctx: &mut Ctx, item: &Item) {
+	ctx.line().token("").line().fill();
 	match item {
 		Item::Global(g) => {
-			ctx.line().fill().align(g.line).token("global");
+			ctx.align(g.line).token("global");
 			ctx.token(&g.name).tight().token(":");
 			ty(ctx, g.ty);
 			ctx.semi();
 		}
 		Item::Function(f) => {
-			ctx.line().fill();
 			if f.is_prelude {
 				ctx.token("prelude");
 			}
