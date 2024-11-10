@@ -1,5 +1,3 @@
-use std::fmt::{Display, Formatter, Result};
-
 #[derive(Clone, PartialEq)]
 pub enum Value {
 	Int(i32),
@@ -18,8 +16,8 @@ pub enum Expr<T> {
 }
 
 impl<T: std::fmt::Debug> std::fmt::Debug for Expr<T> {
-	fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-		fn line(f: &mut Formatter, l: &Option<u16>) -> Result {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		fn line(f: &mut std::fmt::Formatter, l: &Option<u16>) -> std::fmt::Result {
 			if let Some(l) = l {
 				write!(f, "{l}@")?;
 			}
@@ -139,106 +137,6 @@ impl std::fmt::Debug for Value {
 	}
 }
 
-impl<T: Display> Display for Expr<T> {
-	fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-		self.display(f, 0)
-	}
-}
-
-impl<T: Display> Display for Lvalue<T> {
-	fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-		match self {
-			Lvalue::Stack(s) => write!(f, "{s}"),
-			Lvalue::Deref(v) => write!(f, "*{v}"),
-			Lvalue::Global(n) => write!(f, ":{n}"),
-		}
-	}
-}
-
-impl<T: Display> Expr<T> {
-	fn display(&self, f: &mut Formatter, prio: u32) -> Result {
-		match self {
-			Expr::Value(l, v) => {
-				line(f, l)?;
-				write!(f, "{v:?}")?;
-			}
-			Expr::Var(l, v) => {
-				line(f, l)?;
-				write!(f, "{v}")?;
-			}
-			Expr::Ref(l, v) => {
-				line(f, l)?;
-				write!(f, "&{v}")?;
-			}
-			Expr::Call(l, c, args) => {
-				line(f, l)?;
-				write!(f, "{c}")?;
-				write_args(f, args)?;
-			}
-			Expr::Unop(l, o, a) => {
-				line(f, l)?;
-				write!(f, "{}", o)?;
-				a.display(f, 10)?;
-			}
-			Expr::Binop(l, o, a, b) => {
-				let p = op_prio(*o);
-				if p < prio {
-					write!(f, "(")?;
-				}
-				a.display(f, p)?;
-				write!(f, " ")?;
-				line(f, l)?;
-				write!(f, "{o}")?;
-				write!(f, " ")?;
-				b.display(f, p + 1)?;
-				if p < prio {
-					write!(f, ")")?;
-				}
-			}
-		}
-		Ok(())
-	}
-}
-
-pub fn line(f: &mut Formatter, l: &Option<u16>) -> Result {
-	if let Some(l) = l {
-		write!(f, "{l}@")?;
-	}
-	Ok(())
-}
-
-impl Display for CallKind {
-	fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-		match self {
-			CallKind::System(a, b) => write!(f, "system[{a},{b}]"),
-			CallKind::Func(a) => write!(f, "{a}"),
-			CallKind::Tail(a) => write!(f, "tail {a}"),
-		}
-	}
-}
-
-impl Display for Type {
-	fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-		f.write_str(match self {
-			Type::Number => "num",
-			Type::String => "str",
-		})
-	}
-}
-
-impl std::fmt::Display for Arg {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		if self.out {
-			write!(f, "out ")?;
-		}
-		write!(f, "{}", self.ty)?;
-		if let Some(default) = &self.default {
-			write!(f, "={:?}", default)?;
-		}
-		Ok(())
-	}
-}
-
 impl std::fmt::Display for Binop {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.write_str(match self {
@@ -282,17 +180,4 @@ pub fn op_prio(op: Binop) -> u32 {
 		BoolAnd => 2,
 		BoolOr => 1,
 	}
-}
-
-pub fn write_args<T: Display>(f: &mut Formatter, args: impl IntoIterator<Item=T>) -> Result {
-	f.write_str("(")?;
-	let mut it = args.into_iter();
-	if let Some(a) = it.next() {
-		write!(f, "{a}")?;
-		for a in it {
-			f.write_str(", ")?;
-			write!(f, "{a}")?;
-		}
-	}
-	f.write_str(")")
 }
