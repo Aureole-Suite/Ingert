@@ -14,6 +14,7 @@ tracing = { version = "0.1.40", features = ["attributes"] }
 glam = "0.29.0"
 crc32fast = "1.4.2"
 strum = { version = "0.26", features = ["derive"] }
+compact-debug = "0.1.1"
 
 [profile.dev.package."*"]
 opt-level = 3

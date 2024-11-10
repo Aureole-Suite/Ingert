@@ -7,7 +7,7 @@ pub enum Value {
 	String(String),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub enum Expr<T> {
 	Value(Option<u16>, Value),
 	Var(Option<u16>, Lvalue<T>),
@@ -15,6 +15,50 @@ pub enum Expr<T> {
 	Call(Option<u16>, CallKind, Vec<Expr<T>>),
 	Unop(Option<u16>, Unop, Box<Expr<T>>),
 	Binop(Option<u16>, Binop, Box<Expr<T>>, Box<Expr<T>>),
+}
+
+impl<T: std::fmt::Debug> std::fmt::Debug for Expr<T> {
+	fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+		fn line(f: &mut Formatter, l: &Option<u16>) -> Result {
+			if let Some(l) = l {
+				write!(f, "{l}@")?;
+			}
+			Ok(())
+		}
+		match self {
+			Self::Value(l, v) => {
+				line(f, l)?;
+				write!(f, "{v:?}")
+			}
+			Self::Var(l, lv) => {
+				line(f, l)?;
+				write!(f, "{lv:?}")
+			}
+			Self::Ref(l, var) => {
+				line(f, l)?;
+				f.debug_tuple("Ref").field(var).finish()
+			}
+			Self::Call(l, call, args) => {
+				line(f, l)?;
+				std::fmt::Debug::fmt(call, f)?;
+				let mut t = f.debug_tuple("");
+				for a in args {
+					t.field(a);
+				}
+				t.finish()
+			}
+			Self::Unop(l, op, a) => {
+				line(f, l)?;
+				std::fmt::Debug::fmt(op, f)?;
+				f.debug_list().entry(a).finish()
+			}
+			Self::Binop(l, op, a, b) => {
+				line(f, l)?;
+				std::fmt::Debug::fmt(op, f)?;
+				f.debug_list().entry(a).entry(b).finish()
+			}
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

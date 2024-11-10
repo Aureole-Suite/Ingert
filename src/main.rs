@@ -12,6 +12,7 @@ fn main() {
 	tracing_subscriber::fmt::fmt()
 		.with_writer(std::io::stderr)
 		.init();
+	unsafe { compact_debug::enable(true) };
 	let args = Args::parse();
 
 	let mut prelude = BTreeMap::new();

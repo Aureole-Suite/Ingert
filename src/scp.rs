@@ -359,6 +359,7 @@ pub enum Op {
 	Debug(u8),
 }
 
+#[derive(Debug, Clone, PartialEq)]
 pub struct Scp {
 	pub items: Vec<Item>,
 }
