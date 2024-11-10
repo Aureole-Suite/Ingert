@@ -64,30 +64,6 @@ fn main() {
 	let out = std::fs::File::create(&out).unwrap();
 	let out = std::io::BufWriter::new(out);
 	let mut out = ingert::Write(Box::new(out));
-	for f in prelude.into_scena() {
-		if let ingert::Item::Function(f) = f {
-			write_fn(&mut out, &f);
-		}
-	}
-}
-
-fn write_fn(out: &mut ingert::Write, f: &ingert::Function) {
-	write!(out, "function {}(", f.name);
-	for (i, arg) in f.args.iter().enumerate() {
-		if i != 0 {
-			write!(out, ", ");
-		}
-		write!(out, "{}", arg);
-	}
-	writeln!(out, ")");
-	if f.dup {
-		writeln!(out, " (dup)");
-	}
-	struct Block<'a>(&'a [ingert::decompile::Stmt]);
-	impl std::fmt::Display for Block<'_> {
-		fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-			ingert::decompile::Stmt::display_block(self.0, f, 1)
-		}
-	}
-	writeln!(out, "{}", Block(&f.body));
+	let printed = ingert::print::print(&prelude.into_scena(), ingert::print::Settings::default());
+	writeln!(out, "{printed}");
 }
