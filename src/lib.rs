@@ -14,14 +14,6 @@ pub mod print;
 
 pub use decompile::{Stmt, Expr, Lvalue, CallKind, StackVar};
 
-#[repr(transparent)]
-pub struct Write(pub Box<dyn std::io::Write>);
-impl Write {
-	pub fn write_fmt(&mut self, args: std::fmt::Arguments<'_>) {
-		self.0.write_fmt(args).unwrap()
-	}
-}
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum Item {
 	Global(expr::Global),

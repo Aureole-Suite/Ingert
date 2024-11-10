@@ -28,23 +28,16 @@ fn main() {
 		};
 
 		let mut scena = ingert::decompile(&data).unwrap();
-		let out = Path::new("out").join(file.file_name().unwrap());
-		let out = std::fs::File::create(&out).unwrap();
-		let out = std::io::BufWriter::new(out);
-		let mut out = ingert::Write(Box::new(out));
-
 		prelude.add(&mut scena);
 
+		let out = Path::new("out").join(file.file_name().unwrap());
 		let printed = ingert::print::print(&scena, ingert::print::Settings::default());
-		writeln!(out, "{printed}");
+		std::fs::write(out, &printed).unwrap();
 
 		// println!("{:#?}", ingert::scp::parse_scp(&data));
 	}
 
 	let out = Path::new("out").join("prelude.da");
-	let out = std::fs::File::create(&out).unwrap();
-	let out = std::io::BufWriter::new(out);
-	let mut out = ingert::Write(Box::new(out));
 	let printed = ingert::print::print(&prelude.into_scena(), ingert::print::Settings::default());
-	writeln!(out, "{printed}");
+	std::fs::write(out, &printed).unwrap();
 }
