@@ -26,18 +26,19 @@ fn main() {
 			tracing::error!("Failed to read file");
 			continue;
 		};
+		// println!("{:#?}", ingert::scp::parse_scp(&data));
 
 		let mut scena = ingert::decompile(&data).unwrap();
 		prelude.add(&mut scena);
 
-		let out = Path::new("out").join(file.file_name().unwrap());
-		let printed = ingert::print::print(&scena, ingert::print::Settings::default());
-		std::fs::write(out, &printed).unwrap();
-
-		// println!("{:#?}", ingert::scp::parse_scp(&data));
+		print(file.file_name().unwrap(), &scena);
 	}
 
-	let out = Path::new("out").join("prelude.da");
-	let printed = ingert::print::print(&prelude.into_scena(), ingert::print::Settings::default());
+	print("prelude.da", &prelude.into_scena());
+}
+
+fn print(name: impl AsRef<Path>, scena: &[ingert::Item]) {
+	let out = Path::new("out").join(name);
+	let printed = ingert::print::print(scena, ingert::print::Settings::default());
 	std::fs::write(out, &printed).unwrap();
 }
