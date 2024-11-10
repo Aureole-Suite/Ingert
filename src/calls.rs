@@ -137,17 +137,17 @@ fn infer_call(called: &mut Calls, call: &mut CallKind, a: &mut Vec<Expr>) -> Res
 	snafu::ensure!(call == exp_call, DifferentCallSnafu { call: call.clone(), exp_call: exp_call.clone() });
 	snafu::ensure!(args.starts_with(exp_args), DifferentArgsSnafu { call: call.clone(), args: args.clone(), exp_args: exp_args.clone() });
 	if let CallKind::Func(name) = call && !name.contains('.') {
-		let func = called.functable.get(name.as_str()).expect("name was looked up from table in the first place");
-		snafu::ensure!(args.len() == func.len(), BadArgsSnafu { call: call.clone(), args: args.clone(), sig: func.to_vec() });
+		let sig = *called.functable.get(name.as_str()).expect("name was looked up from table in the first place");
+		snafu::ensure!(args.len() == sig.len(), BadArgsSnafu { call: call.clone(), args: args.clone(), sig });
 		for i in a.len()..exp_args.len() {
-			let Some(default) = &func[i].default else {
-				return BadArgsSnafu { call: call.clone(), args: args.clone(), sig: func.to_vec() }.fail();
+			let Some(default) = &sig[i].default else {
+				return BadArgsSnafu { call: call.clone(), args: args.clone(), sig }.fail();
 			};
 			if !matches!(&a[i], Expr::Value(_, v) if v == default) {
 				return BadArgsSnafu {
 					call: call.clone(),
 					args: args.clone(),
-					sig: func.to_vec(),
+					sig,
 				}.fail();
 			};
 		}
