@@ -78,10 +78,7 @@ fn main() {
 		// 	}
 		// }
 
-		let printed = ingert::print::print(&scena, ingert::print::Settings {
-			use_lines: true,
-			show_lines: true,
-		});
+		let printed = ingert::print::print(&scena, ingert::print::Settings::default());
 
 		writeln!(out, "{printed}");
 	}

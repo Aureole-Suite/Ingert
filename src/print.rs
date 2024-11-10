@@ -14,8 +14,8 @@ pub struct Settings {
 impl Default for Settings {
 	fn default() -> Self {
 		Self {
-			use_lines: true,
-			show_lines: true,
+			use_lines: false,
+			show_lines: false,
 		}
 	}
 }
