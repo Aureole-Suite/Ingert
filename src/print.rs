@@ -1,5 +1,5 @@
 use crate::{CallKind, Expr, Item, Lvalue, StackVar, Stmt};
-use crate::expr::{op_prio, Type, Value};
+use crate::expr::{op_prio, Type, Unop, Value};
 
 mod layout;
 
@@ -309,7 +309,13 @@ fn expr0(ctx: &mut Ctx, e: &Expr, prio: u32) {
 		}
 		Expr::Unop(l, o, a) => {
 			ctx.align(*l).token(o).tight();
-			expr0(ctx, a, 10);
+			if matches!(o, Unop::Neg) && matches!(**a, Expr::Value(..)) {
+				ctx.token("(").tight();
+				expr0(ctx, a, 10);
+				ctx.tight().token(")");
+			} else {
+				expr0(ctx, a, 10);
+			}
 		}
 		Expr::Binop(l, o, a, b) => {
 			let p = op_prio(*o);
