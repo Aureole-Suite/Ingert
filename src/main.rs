@@ -39,6 +39,12 @@ fn main() {
 
 fn print(name: impl AsRef<Path>, scena: &[ingert::Item]) {
 	let out = Path::new("out").join(name);
-	let printed = ingert::print::print(scena, ingert::print::Settings::default());
+	let _span = tracing::info_span!("print", path = %out.display()).entered();
+	let printed = ingert::print::print(scena, ingert::print::Settings {
+		show_lines: true,
+		..ingert::print::Settings::default()
+	});
 	std::fs::write(out, &printed).unwrap();
+
+	ingert::parse::parse(&printed).unwrap();
 }

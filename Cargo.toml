@@ -15,6 +15,10 @@ glam = "0.29.0"
 crc32fast = "1.4.2"
 strum = { version = "0.26", features = ["derive"] }
 compact-debug = "0.1.1"
+lalrpop-util = { version = "0.22.0", features = ["lexer", "unicode"] }
+
+[build-dependencies]
+lalrpop = "0.22.0"
 
 [profile.dev.package."*"]
 opt-level = 3

@@ -11,6 +11,7 @@ pub mod calls;
 pub mod prelude;
 
 pub mod print;
+pub mod parse;
 
 pub use decompile::{Stmt, Expr, Lvalue, CallKind, StackVar};
 

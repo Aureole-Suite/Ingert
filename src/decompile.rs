@@ -5,8 +5,8 @@ pub use nest::CallKind;
 use snafu::OptionExt as _;
 
 use crate::expr;
-pub type Expr = expr::Expr<StackVar>;
-pub type Lvalue = expr::Lvalue<StackVar>;
+pub type Expr<T = StackVar> = expr::Expr<T>;
+pub type Lvalue<T = StackVar> = expr::Lvalue<T>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct StackVar(pub i32);
@@ -17,18 +17,18 @@ pub struct StackVar(pub i32);
 // }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Stmt {
-	Expr(Expr),
-	PushVar(Option<u16>, StackVar, Option<Expr>),
-	Set(Option<u16>, Lvalue, Expr),
-	Debug(Option<u16>, Vec<Expr>),
+pub enum Stmt<T = StackVar> {
+	Expr(Expr<T>),
+	PushVar(Option<u16>, T, Option<Expr<T>>),
+	Set(Option<u16>, Lvalue<T>, Expr<T>),
+	Debug(Option<u16>, Vec<Expr<T>>),
 
-	If(Option<u16>, Expr, Vec<Stmt>, Option<Vec<Stmt>>),
-	While(Option<u16>, Expr, Vec<Stmt>),
-	Switch(Option<u16>, Expr, Vec<(Option<i32>, Vec<Stmt>)>),
+	If(Option<u16>, Expr<T>, Vec<Stmt<T>>, Option<Vec<Stmt<T>>>),
+	While(Option<u16>, Expr<T>, Vec<Stmt<T>>),
+	Switch(Option<u16>, Expr<T>, Vec<(Option<i32>, Vec<Stmt<T>>)>),
 	Break,
 	Continue,
-	Return(Option<u16>, Option<Expr>),
+	Return(Option<u16>, Option<Expr<T>>),
 }
 
 #[derive(Debug, snafu::Snafu)]

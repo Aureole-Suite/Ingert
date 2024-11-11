@@ -53,10 +53,10 @@ impl<T: std::fmt::Debug> std::fmt::Debug for Expr<T> {
 			Self::Binop(l, op, a, b) => {
 				line(f, l)?;
 				std::fmt::Debug::fmt(op, f)?;
-				f.debug_list().entry(a).entry(b).finish()
+				f.debug_tuple("").field(a).field(b).finish()
 			}
-        }
-    }
+		}
+	}
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

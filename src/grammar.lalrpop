@@ -1,0 +1,192 @@
+use lalrpop_util::ParseError;
+use super::ast::*;
+
+grammar;
+
+match {
+	r"[a-zA-Z_][a-zA-Z_0-9]*" => IDENT,
+	r"-?\d+" => INTEGER,
+	r"-?\d+\.\d+" => FLOAT,
+	r#""(\\[\\"nrt]|[^"\\])*""# => STRING,
+	r"\d+@" => LINE,
+	_
+}
+
+pub Scena: Vec<Item> = Item*;
+
+Item: Item = {
+	Global => Item::Global(<>),
+	Function => Item::Function(<>),
+}
+
+Global: Global = {
+	"global"
+	<name: Name>
+	":" <ty: Type>
+	=> Global { <> }
+}
+
+Function: Function = {
+	<prelude: Opt<"prelude">>
+	"function"
+	<name: Name>
+	"(" <args: Comma<Arg>> ")"
+	<dup: Opt<"dup">>
+	<body: Block>
+	=> Function { <> }
+}
+
+Arg: Arg = {
+	<name: Name>
+	":" <out: Opt<"&">> <ty: Type>
+	<default: ("=" <Value>)?>
+	=> Arg { <> }
+}
+
+Type: Type = {
+	"num" => Type::Number,
+	"str" => Type::String,
+}
+
+Value: Value = {
+	INTEGER =>? {
+		let v = (<>).parse().map_err(|_| ParseError::User { error: "invalid integer" })?;
+		Ok(Value::Int(v))
+	},
+	FLOAT =>? {
+		let v = (<>).parse().map_err(|_| ParseError::User { error: "invalid float" })?;
+		Ok(Value::Float(v))
+	},
+	STRING => Value::String(unescape(<>)),
+}
+
+Comma<T>: Vec<T> = {
+	<mut v:(<T> ",")*> <e:T?> => { v.extend(e); v }
+}
+
+Opt<T>: bool = { T? => <>.is_some() }
+
+Name: String = {
+	IDENT => String::from(<>),
+	"system" => String::from(<>),
+}
+
+ExternName: String = {
+	Name,
+	<a:Name> "." <b:Name> => format!("{a}.{b}"),
+}
+
+Line: Option<u16> = {
+	LINE =>? {
+		let v = <>.strip_suffix('@').unwrap().parse().map_err(|_| ParseError::User { error: "invalid integer" })?;
+		Ok(Some(v))
+	},
+	=> None
+}
+
+Block: Vec<Stmt> = { "{" <Stmts> "}" }
+
+Stmts: Vec<Stmt> = { ";"* <(<Stmt> ";"*)*> }
+
+Stmt: Stmt = {
+	<Line> "return" <Expr?> ";" => Stmt::Return(<>),
+	If,
+	<Line> "while" <Expr> <Block> => Stmt::While(<>),
+	<Line> "switch" <Expr> "{" <SwitchCases> "}" => Stmt::Switch(<>),
+	<Line> "var" <Name> <("=" <Expr>)?> ";" => Stmt::PushVar(<>),
+	<Line> <Lvalue> "=" <Expr> ";" => Stmt::Set(<>),
+	<Call> ";" => Stmt::Expr(<>),
+	"break" ";" => Stmt::Break,
+	"continue" ";" => Stmt::Continue,
+}
+
+If: Stmt = {
+	<Line> "if" <Expr> <Block> <("else" <Else>)?> => Stmt::If(<>),
+}
+
+Else: Vec<Stmt> = { Block, If => vec![<>] }
+
+SwitchCases: Vec<(Option<i32>, Vec<Stmt>)> = {
+	=> Vec::new(),
+	// This is quadratic time but who cares
+	<mut cs: SwitchCases> <k: SwitchKey> ":" <v: Stmts> =>? {
+		if cs.iter().any(|i| i.0 == k) {
+			Err(ParseError::User { error: "duplicate case" })
+		} else {
+			cs.push((k, v));
+			Ok(cs)
+		}
+	}
+}
+
+SwitchKey: Option<i32> = {
+	"default" => None,
+	"case" <INTEGER> =>? {
+		let v = <>.parse().map_err(|_| ParseError::User { error: "invalid integer" })?;
+		Ok(Some(v))
+	}
+}
+
+Expr: Expr = { Atom (Line Binop Atom)* => expr(<>) }
+
+Atom: Expr = {
+	Line Value => Expr::Value(<>),
+	Line Lvalue => Expr::Var(<>),
+	Call,
+	Line Unop Box<Atom> => Expr::Unop(<>),
+	"(" <Expr> ")",
+}
+
+Binop: Binop = {
+	"+" => Binop::Add,
+	"-" => Binop::Sub,
+	"*" => Binop::Mul,
+	"/" => Binop::Div,
+	"%" => Binop::Mod,
+	"==" => Binop::Eq,
+	"!=" => Binop::Ne,
+	">" => Binop::Gt,
+	">=" => Binop::Ge,
+	"<" => Binop::Lt,
+	"<=" => Binop::Le,
+	"&" => Binop::BitAnd,
+	"|" => Binop::BitOr,
+	"&&" => Binop::BoolAnd,
+	"||" => Binop::BoolOr,
+}
+
+Unop: Unop = {
+	"-" => Unop::Neg,
+	"!" => Unop::BoolNot,
+	"~" => Unop::BitNot,
+}
+
+Call: Expr = {
+	<Line> <CallKind> "(" <Comma<CallArg>> ")" => Expr::Call(<>)
+}
+
+// TODO should we ensure ref is only used in arg in other parts?
+CallArg: Expr = {
+	Expr,
+	<Line> "&" <Name> => Expr::Ref(<>),
+}
+
+Lvalue: Lvalue = {
+	<Name> => Lvalue::Stack(<>),
+	"*" <Name> => Lvalue::Deref(<>),
+	":" <Name> => Lvalue::Global(<>),
+}
+
+CallKind: CallKind = {
+	ExternName => CallKind::Func(<>),
+	"system" "[" <u8> "," <u8> "]" => CallKind::System(<>),
+}
+
+u8: u8 = {
+	INTEGER =>? {
+		let v = <>.parse().map_err(|_| ParseError::User { error: "invalid integer" })?;
+		Ok(v)
+	}
+}
+
+Box<T>: Box<T> = { T => Box::new(<>) }
