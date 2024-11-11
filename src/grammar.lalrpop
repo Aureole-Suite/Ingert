@@ -9,7 +9,17 @@ match {
 	r"-?\d+\.\d+" => FLOAT,
 	r#""(\\[\\"nrt]|[^"\\])*""# => STRING,
 	r"\d+@" => LINE,
-	_
+
+	"global", "function",
+	"prelude", "dup", "num", "str", // I'd rather not have these be keywords, but dunno how to avoid
+	"if", "else", "while", "switch", "case", "default",
+	"return", "break", "continue",
+	"var", "system",
+	"(", ")", "[", "]", "{", "}",
+	":", ";", "=", ",", ".",
+	"+", "-", "*", "/", "%",
+	"==", "!=", ">", ">=", "<", "<=",
+	"&", "&&", "|", "||", "~", "!",
 }
 
 pub Scena: Vec<Item> = Item*;
