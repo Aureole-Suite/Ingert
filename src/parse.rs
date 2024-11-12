@@ -14,6 +14,7 @@ mod ast {
 
 	#[derive(Debug)]
 	pub struct Global {
+		pub line: Option<u16>,
 		pub name: String,
 		pub ty: Type,
 	}

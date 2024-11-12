@@ -30,9 +30,11 @@ Item: Item = {
 }
 
 Global: Global = {
+	<line: Line>
 	"global"
 	<name: Name>
 	":" <ty: Type>
+	";"
 	=> Global { <> }
 }
 
