@@ -42,7 +42,7 @@ Function: Function = {
 	<prelude: Opt<"prelude">>
 	"function"
 	<name: Name>
-	"(" <args: Comma<Arg>> ")"
+	<args: Comma<Arg>>
 	<dup: Opt<"dup">>
 	<body: Block>
 	=> Function { <> }
@@ -73,7 +73,7 @@ Value: Value = {
 }
 
 Comma<T>: Vec<T> = {
-	<mut v:(<T> ",")*> <e:T?> => { v.extend(e); v }
+	"(" <mut v:(<T> ",")*> <e:T?> ")" => { v.extend(e); v }
 }
 
 Opt<T>: bool = { T? => <>.is_some() }
@@ -110,7 +110,7 @@ Stmt: Stmt = {
 	<Call> ";" => Stmt::Expr(<>),
 	"break" ";" => Stmt::Break,
 	"continue" ";" => Stmt::Continue,
-	<l:Line> "tailcall" <n:ExternName> "(" <a:Comma<CallArg>> ")" ";" => Stmt::Expr(Expr::Call(l, CallKind::Tail(n), a)),
+	<l:Line> "tailcall" <n:ExternName> <a:Comma<CallArg>> ";" => Stmt::Expr(Expr::Call(l, CallKind::Tail(n), a)),
 }
 
 If: Stmt = {
@@ -175,7 +175,7 @@ Unop: Unop = {
 }
 
 Call: Expr = {
-	<Line> <CallKind> "(" <Comma<CallArg>> ")" => Expr::Call(<>)
+	<Line> <CallKind> <Comma<CallArg>> => Expr::Call(<>)
 }
 
 // TODO should we ensure ref is only used in arg in other parts?
