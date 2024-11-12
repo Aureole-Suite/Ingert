@@ -76,6 +76,18 @@ impl Ctx {
 		self.next_fill = false;
 		self
 	}
+
+	fn name(&mut self, text: impl ToString) -> &mut Self {
+		let text = text.to_string();
+		if !text.is_empty()
+			&& text.chars().all(|c: char| c.is_ascii_alphanumeric() || c == '_')
+			&& text.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_')
+		{
+			self.token(text)
+		} else {
+			self.token(format_args!("`{text}`"))
+		}
+	}
 }
 
 pub fn print(scena: &[Item], settings: Settings) -> String {
@@ -105,7 +117,7 @@ fn item(ctx: &mut Ctx, item: &Item) {
 	match item {
 		Item::Global(g) => {
 			ctx.align(g.line).token("global");
-			ctx.token(&g.name).tight().token(":");
+			ctx.name(&g.name).tight().token(":");
 			ty(ctx, g.ty);
 			ctx.semi();
 		}
@@ -113,7 +125,7 @@ fn item(ctx: &mut Ctx, item: &Item) {
 			if f.is_prelude {
 				ctx.token("prelude");
 			}
-			ctx.token("function").token(&f.name);
+			ctx.token("function").name(&f.name);
 			let mut n = 0;
 			args(ctx, &f.args, |ctx, arg| {
 				ctx.token(format_args!("arg{}", n)).tight().token(":");
@@ -334,10 +346,25 @@ fn expr0(ctx: &mut Ctx, e: &Expr, prio: u32) {
 
 fn call(ctx: &mut Ctx, c: &CallKind) {
 	match c {
-		CallKind::System(a, b) => ctx.token(format_args!("system[{a},{b}]")),
-		CallKind::Func(a) => ctx.token(a),
-		CallKind::Tail(a) => ctx.token("tailcall").token(a),
-	};
+		CallKind::System(a, b) => {
+			ctx.token(format_args!("system[{a},{b}]"));
+		}
+		CallKind::Func(a) => {
+			dotted_name(ctx, a);
+		}
+		CallKind::Tail(a) => {
+			ctx.token("tailcall");
+			dotted_name(ctx, a);
+		}
+	}
+}
+
+fn dotted_name(ctx: &mut Ctx, name: &str) {
+	if let Some((a, b)) = name.split_once('.') {
+		ctx.name(a).tight().token(".").tight().name(b);
+	} else {
+		ctx.name(name);
+	}
 }
 
 fn var(ctx: &mut Ctx, v: StackVar) {

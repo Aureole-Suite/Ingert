@@ -8,6 +8,7 @@ match {
 	r"-?\d+" => INTEGER,
 	r"-?\d+\.\d+" => FLOAT,
 	r#""(\\[\\"nrt]|[^"\\])*""# => STRING,
+	r#"`(\\[\\`nrt]|[^`\\])*`"# => QUOTED_IDENT,
 	r"\d+@" => LINE,
 
 	"global", "function",
@@ -69,7 +70,7 @@ Value: Value = {
 		let v = (<>).parse().map_err(|_| ParseError::User { error: "invalid float" })?;
 		Ok(Value::Float(v))
 	},
-	STRING => Value::String(unescape(<>)),
+	STRING => Value::String(unescape(<>, '"')),
 }
 
 Comma<T>: Vec<T> = {
@@ -80,6 +81,7 @@ Opt<T>: bool = { T? => <>.is_some() }
 
 Name: String = {
 	IDENT => String::from(<>),
+	QUOTED_IDENT => unescape(<>, '`'),
 }
 
 ExternName: String = {

@@ -51,7 +51,7 @@ mod ast {
 		Return(Option<u16>, Option<Expr>),
 	}
 
-	pub fn unescape(s: &str) -> String {
+	pub fn unescape(s: &str, del: char) -> String {
 		let mut out = String::new();
 		let mut chars = s[1..s.len()-1].chars();
 		while let Some(c) = chars.next() {
@@ -60,7 +60,7 @@ mod ast {
 					Some('n') => out.push('\n'),
 					Some('r') => out.push('\r'),
 					Some('t') => out.push('\t'),
-					Some('"') => out.push('\"'),
+					Some(c) if c == del => out.push(del),
 					Some('\\') => out.push('\\'),
 					_ => unreachable!(),
 				}
