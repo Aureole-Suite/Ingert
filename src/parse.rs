@@ -2,8 +2,6 @@ lalrpop_util::lalrpop_mod!(grammar);
 
 mod ast {
 	pub use crate::expr::{Type, Value, CallKind, Binop, Unop};
-	pub type Lvalue = crate::expr::Lvalue<String>;
-	pub type Expr = crate::expr::Expr<String>;
 
 	#[derive(Debug)]
 	pub enum Item {
@@ -49,6 +47,23 @@ mod ast {
 		Break,
 		Continue,
 		Return(Option<u16>, Option<Expr>),
+	}
+
+	#[derive(Debug, Clone, PartialEq)]
+	pub enum Expr {
+		Value(Option<u16>, Value),
+		Var(Option<u16>, Lvalue),
+		Ref(Option<u16>, String),
+		Call(Option<u16>, CallKind, Vec<Expr>),
+		Unop(Option<u16>, Unop, Box<Expr>),
+		Binop(Option<u16>, Binop, Box<Expr>, Box<Expr>),
+	}
+
+	#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+	pub enum Lvalue {
+		Stack(String),
+		Deref(String),
+		Global(String),
 	}
 
 	pub fn unescape(s: &str, del: char) -> String {
