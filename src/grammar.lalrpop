@@ -14,7 +14,7 @@ match {
 	"prelude", "dup", "num", "str", // I'd rather not have these be keywords, but dunno how to avoid
 	"if", "else", "while", "switch", "case", "default",
 	"return", "break", "continue", "tailcall",
-	"var", "system",
+	"var",
 	"(", ")", "[", "]", "{", "}",
 	":", ";", "=", ",", ".",
 	"+", "-", "*", "/", "%",
@@ -80,7 +80,6 @@ Opt<T>: bool = { T? => <>.is_some() }
 
 Name: String = {
 	IDENT => String::from(<>),
-	"system" => String::from(<>),
 }
 
 ExternName: String = {
@@ -192,7 +191,13 @@ Lvalue: Lvalue = {
 
 CallKind: CallKind = {
 	ExternName => CallKind::Func(<>),
-	"system" "[" <u8> "," <u8> "]" => CallKind::System(<>),
+	<name: IDENT> "[" <a: u8> "," <b: u8> "]" =>? {
+		if name == "system" {
+			Ok(CallKind::System(a, b))
+		} else {
+			Err(ParseError::User { error: "expected 'system'" })
+		}
+	}
 }
 
 u8: u8 = {
