@@ -17,18 +17,18 @@ pub struct StackVar(pub i32);
 // }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Stmt<T = StackVar> {
-	Expr(Expr<T>),
-	PushVar(Option<u16>, T, Option<Expr<T>>),
-	Set(Option<u16>, Lvalue<T>, Expr<T>),
-	Debug(Option<u16>, Vec<Expr<T>>),
+pub enum Stmt {
+	Expr(Expr),
+	PushVar(Option<u16>, StackVar, Option<Expr>),
+	Set(Option<u16>, Lvalue, Expr),
+	Debug(Option<u16>, Vec<Expr>),
 
-	If(Option<u16>, Expr<T>, Vec<Stmt<T>>, Option<Vec<Stmt<T>>>),
-	While(Option<u16>, Expr<T>, Vec<Stmt<T>>),
-	Switch(Option<u16>, Expr<T>, Vec<(Option<i32>, Vec<Stmt<T>>)>),
+	If(Option<u16>, Expr, Vec<Stmt>, Option<Vec<Stmt>>),
+	While(Option<u16>, Expr, Vec<Stmt>),
+	Switch(Option<u16>, Expr, Vec<(Option<i32>, Vec<Stmt>)>),
 	Break,
 	Continue,
-	Return(Option<u16>, Option<Expr<T>>),
+	Return(Option<u16>, Option<Expr>),
 }
 
 #[derive(Debug, snafu::Snafu)]

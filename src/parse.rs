@@ -3,7 +3,6 @@ lalrpop_util::lalrpop_mod!(grammar);
 mod ast {
 	pub use crate::expr::{Type, Value, CallKind, Binop, Unop};
 	pub type Lvalue = crate::expr::Lvalue<String>;
-	pub type Stmt = crate::Stmt<String>;
 	pub type Expr = crate::expr::Expr<String>;
 
 	#[derive(Debug)]
@@ -34,6 +33,22 @@ mod ast {
 		pub out: bool,
 		pub ty: Type,
 		pub default: Option<Value>,
+	}
+
+
+	#[derive(Debug, Clone, PartialEq)]
+	pub enum Stmt {
+		Expr(Expr),
+		PushVar(Option<u16>, String, Option<Expr>),
+		Set(Option<u16>, Lvalue, Expr),
+		Debug(Option<u16>, Vec<Expr>),
+
+		If(Option<u16>, Expr, Vec<Stmt>, Option<Vec<Stmt>>),
+		While(Option<u16>, Expr, Vec<Stmt>),
+		Switch(Option<u16>, Expr, Vec<(Option<i32>, Vec<Stmt>)>),
+		Break,
+		Continue,
+		Return(Option<u16>, Option<Expr>),
 	}
 
 	pub fn unescape(s: &str) -> String {
