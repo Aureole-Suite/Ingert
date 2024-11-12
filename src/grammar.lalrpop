@@ -13,7 +13,7 @@ match {
 	"global", "function",
 	"prelude", "dup", "num", "str", // I'd rather not have these be keywords, but dunno how to avoid
 	"if", "else", "while", "switch", "case", "default",
-	"return", "break", "continue",
+	"return", "break", "continue", "tailcall",
 	"var", "system",
 	"(", ")", "[", "]", "{", "}",
 	":", ";", "=", ",", ".",
@@ -110,6 +110,7 @@ Stmt: Stmt = {
 	<Call> ";" => Stmt::Expr(<>),
 	"break" ";" => Stmt::Break,
 	"continue" ";" => Stmt::Continue,
+	<l:Line> "tailcall" <n:ExternName> "(" <a:Comma<CallArg>> ")" ";" => Stmt::Expr(Expr::Call(l, CallKind::Tail(n), a)),
 }
 
 If: Stmt = {
