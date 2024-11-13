@@ -4,6 +4,53 @@ mod ast {
 	pub use crate::expr::{Type, Value, CallKind, Binop, Unop};
 
 	#[derive(Debug)]
+	pub enum Error {
+		IntParse(std::num::ParseIntError),
+		FloatParse(std::num::ParseFloatError),
+		ExpectedLiteral(&'static [&'static str]),
+	}
+
+	pub type Result<T, E = Error> = std::result::Result<T, E>;
+	pub type Unwrap<T> = <T as _Unwrap>::Value;
+	pub trait _Unwrap {
+		type Value;
+	}
+	impl<T, E> _Unwrap for std::result::Result<T, E> {
+		type Value = T;
+	}
+	impl<T> _Unwrap for Option<T> {
+		type Value = T;
+	}
+
+	#[derive(Debug)]
+	pub struct SpannedError {
+		pub error: Error,
+		pub start: usize,
+		pub end: usize,
+	}
+
+	#[allow(non_snake_case)]
+	pub fn SpannedError<L, T, E: Into<Error>>(start: usize, end: usize) -> impl FnOnce(E) -> lalrpop_util::ParseError<L, T, SpannedError> {
+		move |e| SpannedError { error: e.into(), start, end }.into()
+	}
+
+	impl std::fmt::Display for Error {
+		fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+			match self {
+				Self::IntParse(e) => write!(f, "failed to parse integer: {}", e),
+				Self::FloatParse(e) => write!(f, "failed to parse float: {}", e),
+				Self::ExpectedLiteral(lits) => write!(f, "expected one of: {}", lits.join(", ")),
+			}
+		}
+	}
+
+	impl std::fmt::Display for SpannedError {
+		fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+			write!(f, "{} at {}:{}", self.error, self.start, self.end)
+		}
+	}
+
+	#[derive(Debug)]
 	pub enum Item {
 		Global(Global),
 		Function(Function),

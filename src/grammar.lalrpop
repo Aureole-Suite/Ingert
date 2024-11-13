@@ -1,7 +1,10 @@
-use lalrpop_util::ParseError;
 use super::ast::*;
 
 grammar;
+
+extern {
+    type Error = SpannedError;
+}
 
 match {
 	r"[a-zA-Z_][a-zA-Z_0-9]*" => IDENT,
@@ -62,16 +65,14 @@ Type: Type = {
 }
 
 Value: Value = {
-	INTEGER =>? {
-		let v = (<>).parse().map_err(|_| ParseError::User { error: "invalid integer" })?;
-		Ok(Value::Int(v))
-	},
-	FLOAT =>? {
-		let v = (<>).parse().map_err(|_| ParseError::User { error: "invalid float" })?;
-		Ok(Value::Float(v))
-	},
+	Try<i32> => Value::Int(<>),
+	Try<f32> => Value::Float(<>),
 	STRING => Value::String(unescape(<>, '"')),
 }
+
+i32: Result<i32> = { INTEGER => <>.parse().map_err(Error::IntParse) }
+u8: Result<u8> = { INTEGER => <>.parse().map_err(Error::IntParse) }
+f32: Result<f32> = { FLOAT => <>.parse().map_err(Error::FloatParse) }
 
 Comma<T>: Vec<T> = {
 	"(" <mut v:(<T> ",")*> <e:T?> ")" => { v.extend(e); v }
@@ -87,14 +88,6 @@ Name: String = {
 ExternName: String = {
 	Name,
 	<a:Name> "." <b:Name> => format!("{a}.{b}"),
-}
-
-Line: Option<u16> = {
-	LINE =>? {
-		let v = <>.strip_suffix('@').unwrap().parse().map_err(|_| ParseError::User { error: "invalid integer" })?;
-		Ok(Some(v))
-	},
-	=> None
 }
 
 Block: Vec<Stmt> = { "{" <Stmts> "}" }
@@ -122,23 +115,15 @@ Else: Vec<Stmt> = { Block, If => vec![<>] }
 
 SwitchCases: Vec<(Option<i32>, Vec<Stmt>)> = {
 	=> Vec::new(),
-	// This is quadratic time but who cares
-	<mut cs: SwitchCases> <k: SwitchKey> ":" <v: Stmts> =>? {
-		if cs.iter().any(|i| i.0 == k) {
-			Err(ParseError::User { error: "duplicate case" })
-		} else {
-			cs.push((k, v));
-			Ok(cs)
-		}
+	<mut cs: SwitchCases> <k: SwitchKey> ":" <v: Stmts> => {
+		cs.push((k, v));
+		cs
 	}
 }
 
 SwitchKey: Option<i32> = {
 	"default" => None,
-	"case" <INTEGER> =>? {
-		let v = <>.parse().map_err(|_| ParseError::User { error: "invalid integer" })?;
-		Ok(Some(v))
-	}
+	"case" <Try<i32>> => Some(<>),
 }
 
 Expr: Expr = { Atom (Line Binop Atom)* => expr(<>) }
@@ -193,20 +178,26 @@ Lvalue: Lvalue = {
 
 CallKind: CallKind = {
 	ExternName => CallKind::Func(<>),
-	<name: IDENT> "[" <a: u8> "," <b: u8> "]" =>? {
-		if name == "system" {
-			Ok(CallKind::System(a, b))
-		} else {
-			Err(ParseError::User { error: "expected 'system'" })
-		}
-	}
+	Try<_System> "[" <Try<u8>> "," <Try<u8>> "]" => CallKind::System(<>)
 }
 
-u8: u8 = {
-	INTEGER =>? {
-		let v = <>.parse().map_err(|_| ParseError::User { error: "invalid integer" })?;
-		Ok(v)
+_System: Result<()> = {
+	IDENT => if <> == "system" {
+		Ok(())
+	} else {
+		Err(Error::ExpectedLiteral(&["system"]))
 	}
 }
 
 Box<T>: Box<T> = { T => Box::new(<>) }
+Try<T>: Unwrap<T> = { <l: @L> <val: T> <r: @R> =>? val.map_err(SpannedError(l, r)) }
+
+Line: Option<u16> = {
+	<l: @L> <val: LINE> <r: @R> =>? {
+		val.strip_suffix('@').unwrap().parse()
+			.map_err(Error::IntParse)
+			.map_err(SpannedError(l, r - 1))
+			.map(Some)
+	},
+	=> None
+}
