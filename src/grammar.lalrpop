@@ -102,8 +102,8 @@ Stmt: Stmt = {
 	<Line> "var" <Spanned<Name>> <("=" <Expr>)?> ";" => Stmt::PushVar(<>),
 	<Line> <Lvalue> "=" <Expr> ";" => Stmt::Set(<>),
 	<Call> ";" => Stmt::Expr(<>),
-	"break" ";" => Stmt::Break,
-	"continue" ";" => Stmt::Continue,
+	<Spanned<"break">> ";" => Stmt::Break(<>.span),
+	<Spanned<"continue">> ";" => Stmt::Continue(<>.span),
 	<l:Line> "tailcall" <n:Spanned<ExternName>> <a:Comma<CallArg>> ";" => Stmt::Expr(Expr::Call(l, CallKind::Tail(n), a)),
 }
 
@@ -113,9 +113,9 @@ If: Stmt = {
 
 Else: Vec<Stmt> = { Block, If => vec![<>] }
 
-SwitchCases: Vec<(Option<i32>, Vec<Stmt>)> = {
+SwitchCases: Vec<(Spanned<Option<i32>>, Vec<Stmt>)> = {
 	=> Vec::new(),
-	<mut cs: SwitchCases> <k: SwitchKey> ":" <v: Stmts> => {
+	<mut cs: SwitchCases> <k: Spanned<SwitchKey>> ":" <v: Stmts> => {
 		cs.push((k, v));
 		cs
 	}

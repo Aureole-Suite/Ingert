@@ -13,6 +13,7 @@ pub mod prelude;
 pub mod print;
 pub mod parse;
 
+pub use expr::{Global, Arg};
 pub use decompile::{Stmt, Expr, Lvalue, CallKind, StackVar};
 
 #[derive(Debug, Clone, PartialEq)]

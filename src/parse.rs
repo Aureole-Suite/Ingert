@@ -1,5 +1,7 @@
 lalrpop_util::lalrpop_mod!(grammar);
 
+pub mod lower;
+
 mod ast {
 	pub use crate::expr::{Type, Value, Binop, Unop};
 
@@ -96,13 +98,12 @@ mod ast {
 		Expr(Expr),
 		PushVar(Option<u16>, Ident, Option<Expr>),
 		Set(Option<u16>, Lvalue, Expr),
-		Debug(Option<u16>, Vec<Expr>),
 
 		If(Option<u16>, Expr, Vec<Stmt>, Option<Vec<Stmt>>),
 		While(Option<u16>, Expr, Vec<Stmt>),
-		Switch(Option<u16>, Expr, Vec<(Option<i32>, Vec<Stmt>)>),
-		Break,
-		Continue,
+		Switch(Option<u16>, Expr, Vec<(Spanned<Option<i32>>, Vec<Stmt>)>),
+		Break(Span),
+		Continue(Span),
 		Return(Option<u16>, Option<Expr>),
 	}
 
@@ -201,6 +202,9 @@ pub fn parse(text: &str) -> Result<(), ()> {
 	match grammar::ScenaParser::new().parse(text) {
 		Ok(v) => {
 			tracing::info!("{:#?}", v);
+			let (a, b) = lower::lower(&v);
+			tracing::info!("{:#?}", a);
+			tracing::info!("{:#?}", b);
 		},
 		Err(e) => {
 			tracing::warn!("{}", e);
