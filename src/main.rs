@@ -29,7 +29,7 @@ fn main() {
 		// println!("{:#?}", ingert::scp::parse_scp(&data));
 
 		let mut scena = ingert::decompile(&data).unwrap();
-		prelude.add(&mut scena);
+		// prelude.add(&mut scena);
 
 		print(file.file_name().unwrap(), &scena);
 	}
@@ -46,5 +46,6 @@ fn print(name: impl AsRef<Path>, scena: &[ingert::Item]) {
 	});
 	std::fs::write(out, &printed).unwrap();
 
-	ingert::parse::parse(&printed).unwrap();
+	let (a, b) = ingert::parse::parse(&printed).unwrap();
+	similar_asserts::assert_eq!(scena, &a);
 }

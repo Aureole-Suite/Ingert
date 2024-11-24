@@ -198,17 +198,18 @@ mod ast {
 	}
 }
 
-pub fn parse(text: &str) -> Result<(), ()> {
+pub fn parse(text: &str) -> Result<(Vec<crate::Item>, Vec<lower::Error>), ()> {
 	match grammar::ScenaParser::new().parse(text) {
 		Ok(v) => {
 			tracing::info!("{:#?}", v);
 			let (a, b) = lower::lower(&v);
 			tracing::info!("{:#?}", a);
 			tracing::info!("{:#?}", b);
+			Ok((a, b))
 		},
 		Err(e) => {
 			tracing::warn!("{}", e);
+			Err(())
 		}
 	}
-	Ok(())
 }
