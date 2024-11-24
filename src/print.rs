@@ -139,6 +139,9 @@ fn item(ctx: &mut Ctx, item: &Item) {
 				}
 				n += 1;
 			});
+			if f.dup {
+				ctx.token("dup");
+			}
 			block(ctx, &f.body);
 		}
 	}
