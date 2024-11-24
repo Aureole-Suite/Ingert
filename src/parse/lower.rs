@@ -30,6 +30,10 @@ pub enum Error {
 		name: String,
 		span: Span,
 	},
+	ReservedFunctionName {
+		name: String,
+		span: Span,
+	},
 }
 
 #[derive(Default)]
@@ -96,6 +100,12 @@ pub fn lower(items: &[ast::Item]) -> (Vec<crate::Item>, Vec<Error>) {
 				}));
 			}
 			ast::Item::Function(f) => {
+				if f.name.value == "debug" {
+					ctx.diag.error(Error::ReservedFunctionName {
+						name: f.name.value.clone(),
+						span: f.name.span,
+					});
+				}
 				out.push(crate::Item::Function(lower_fn(&ctx, f)));
 			}
 		}
@@ -144,7 +154,15 @@ fn map_stmts<'a>(mut scope: Scope<'a>, body: &'a [ast::Stmt]) -> Vec<crate::Stmt
 	for stmt in body {
 		match stmt {
 			ast::Stmt::Expr(e) => {
-				out.push(crate::Stmt::Expr(map_expr(&scope, e)));
+				if let ast::Expr::Call(l, c, args) = e
+					&& let ast::CallKind::Func(name) = c
+					&& name.value == "debug"
+				{
+					let args = args.iter().map(|a| map_expr(&scope, a)).collect();
+					out.push(crate::Stmt::Debug(*l, args));
+				} else {
+					out.push(crate::Stmt::Expr(map_expr(&scope, e)));
+				}
 			}
 			ast::Stmt::PushVar(l, v, e) => {
 				scope.root.diag.insert("local", &mut scope.locals, &v.value, (v.span, scope.nlocals as i32), |(s, _)| *s);
