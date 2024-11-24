@@ -36,7 +36,7 @@ Item: Item = {
 Global: Global = {
 	<line: Line>
 	"global"
-	<name: Name>
+	<name: Spanned<Name>>
 	":" <ty: Type>
 	";"
 	=> Global { <> }
@@ -45,7 +45,7 @@ Global: Global = {
 Function: Function = {
 	<prelude: Opt<"prelude">>
 	"function"
-	<name: Name>
+	<name: Spanned<Name>>
 	<args: Comma<Arg>>
 	<dup: Opt<"dup">>
 	<body: Block>
@@ -53,7 +53,7 @@ Function: Function = {
 }
 
 Arg: Arg = {
-	<name: Name>
+	<name: Spanned<Name>>
 	":" <out: Opt<"&">> <ty: Type>
 	<default: ("=" <Value>)?>
 	=> Arg { <> }
@@ -99,12 +99,12 @@ Stmt: Stmt = {
 	If,
 	<Line> "while" <Expr> <Block> => Stmt::While(<>),
 	<Line> "switch" <Expr> "{" <SwitchCases> "}" => Stmt::Switch(<>),
-	<Line> "var" <Name> <("=" <Expr>)?> ";" => Stmt::PushVar(<>),
+	<Line> "var" <Spanned<Name>> <("=" <Expr>)?> ";" => Stmt::PushVar(<>),
 	<Line> <Lvalue> "=" <Expr> ";" => Stmt::Set(<>),
 	<Call> ";" => Stmt::Expr(<>),
 	"break" ";" => Stmt::Break,
 	"continue" ";" => Stmt::Continue,
-	<l:Line> "tailcall" <n:ExternName> <a:Comma<CallArg>> ";" => Stmt::Expr(Expr::Call(l, CallKind::Tail(n), a)),
+	<l:Line> "tailcall" <n:Spanned<ExternName>> <a:Comma<CallArg>> ";" => Stmt::Expr(Expr::Call(l, CallKind::Tail(n), a)),
 }
 
 If: Stmt = {
@@ -167,17 +167,17 @@ Call: Expr = {
 // TODO should we ensure ref is only used in arg in other parts?
 CallArg: Expr = {
 	Expr,
-	<Line> "&" <Name> => Expr::Ref(<>),
+	<Line> "&" <Spanned<Name>> => Expr::Ref(<>),
 }
 
 Lvalue: Lvalue = {
-	<Name> => Lvalue::Stack(<>),
-	"*" <Name> => Lvalue::Deref(<>),
-	":" <Name> => Lvalue::Global(<>),
+	<Spanned<Name>> => Lvalue::Stack(<>),
+	"*" <Spanned<Name>> => Lvalue::Deref(<>),
+	":" <Spanned<Name>> => Lvalue::Global(<>),
 }
 
 CallKind: CallKind = {
-	ExternName => CallKind::Func(<>),
+	Spanned<ExternName> => CallKind::Func(<>),
 	Try<_System> "[" <Try<u8>> "," <Try<u8>> "]" => CallKind::System(<>)
 }
 
@@ -190,6 +190,7 @@ _System: Result<()> = {
 }
 
 Box<T>: Box<T> = { T => Box::new(<>) }
+Spanned<T>: Spanned<T> = { <start: @L> <value: T> <end: @R> => Spanned { value, start, end } }
 Try<T>: Unwrap<T> = { <l: @L> <val: T> <r: @R> =>? val.map_err(SpannedError(l, r)) }
 
 Line: Option<u16> = {

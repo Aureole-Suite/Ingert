@@ -1,7 +1,7 @@
 lalrpop_util::lalrpop_mod!(grammar);
 
 mod ast {
-	pub use crate::expr::{Type, Value, CallKind, Binop, Unop};
+	pub use crate::expr::{Type, Value, Binop, Unop};
 
 	#[derive(Debug)]
 	pub enum Error {
@@ -50,31 +50,40 @@ mod ast {
 		}
 	}
 
-	#[derive(Debug)]
+	#[derive(Debug, Clone, PartialEq)]
+	pub struct Spanned<T> {
+		pub value: T,
+		pub start: usize,
+		pub end: usize,
+	}
+
+	pub type Ident = Spanned<String>;
+
+	#[derive(Debug, Clone, PartialEq)]
 	pub enum Item {
 		Global(Global),
 		Function(Function),
 	}
 
-	#[derive(Debug)]
+	#[derive(Debug, Clone, PartialEq)]
 	pub struct Global {
 		pub line: Option<u16>,
-		pub name: String,
+		pub name: Ident,
 		pub ty: Type,
 	}
 
-	#[derive(Debug)]
+	#[derive(Debug, Clone, PartialEq)]
 	pub struct Function {
-		pub name: String,
+		pub name: Ident,
 		pub prelude: bool,
 		pub dup: bool,
 		pub args: Vec<Arg>,
 		pub body: Vec<Stmt>,
 	}
 
-	#[derive(Debug)]
+	#[derive(Debug, Clone, PartialEq)]
 	pub struct Arg {
-		pub name: String,
+		pub name: Ident,
 		pub out: bool,
 		pub ty: Type,
 		pub default: Option<Value>,
@@ -84,7 +93,7 @@ mod ast {
 	#[derive(Debug, Clone, PartialEq)]
 	pub enum Stmt {
 		Expr(Expr),
-		PushVar(Option<u16>, String, Option<Expr>),
+		PushVar(Option<u16>, Ident, Option<Expr>),
 		Set(Option<u16>, Lvalue, Expr),
 		Debug(Option<u16>, Vec<Expr>),
 
@@ -100,17 +109,24 @@ mod ast {
 	pub enum Expr {
 		Value(Option<u16>, Value),
 		Var(Option<u16>, Lvalue),
-		Ref(Option<u16>, String),
+		Ref(Option<u16>, Ident),
 		Call(Option<u16>, CallKind, Vec<Expr>),
 		Unop(Option<u16>, Unop, Box<Expr>),
 		Binop(Option<u16>, Binop, Box<Expr>, Box<Expr>),
 	}
 
-	#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+	#[derive(Debug, Clone, PartialEq)]
 	pub enum Lvalue {
-		Stack(String),
-		Deref(String),
-		Global(String),
+		Stack(Ident),
+		Deref(Ident),
+		Global(Ident),
+	}
+
+	#[derive(Debug, Clone, PartialEq)]
+	pub enum CallKind {
+		System(u8, u8),
+		Func(Ident),
+		Tail(Ident),
 	}
 
 	pub fn unescape(s: &str, del: char) -> String {
@@ -183,7 +199,7 @@ mod ast {
 pub fn parse(text: &str) -> Result<(), ()> {
 	match grammar::ScenaParser::new().parse(text) {
 		Ok(v) => {
-			// tracing::info!("{:#?}", v);
+			tracing::info!("{:#?}", v);
 		},
 		Err(e) => {
 			tracing::warn!("{}", e);
