@@ -22,11 +22,8 @@ pub enum Error {
 	IllegalContinue {
 		span: Span,
 	},
-	MissingFunction {
-		name: String,
-		span: Span,
-	},
-	MissingGlobal {
+	MissingSymbol {
+		kind: SymbolKind,
 		name: String,
 		span: Span,
 	},
@@ -34,6 +31,13 @@ pub enum Error {
 		name: String,
 		span: Span,
 	},
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SymbolKind {
+	Local,
+	Global,
+	Function,
 }
 
 #[derive(Default)]
@@ -278,7 +282,8 @@ fn lookup_local(scope: &Scope, v: &ast::Ident) -> crate::StackVar {
 	if let Some((_, i)) = scope.locals.get(v.value.as_str()) {
 		crate::StackVar(*i)
 	} else {
-		scope.root.diag.error(Error::MissingGlobal {
+		scope.root.diag.error(Error::MissingSymbol {
+			kind: SymbolKind::Local,
 			name: v.value.clone(),
 			span: v.span,
 		});
@@ -288,7 +293,8 @@ fn lookup_local(scope: &Scope, v: &ast::Ident) -> crate::StackVar {
 
 fn lookup_global(scope: &Scope, g: &ast::Ident) -> String {
 	if !scope.root.globals.contains_key(g.value.as_str()) {
-		scope.root.diag.error(Error::MissingGlobal {
+		scope.root.diag.error(Error::MissingSymbol {
+			kind: SymbolKind::Global,
 			name: g.value.clone(),
 			span: g.span,
 		});
@@ -298,7 +304,8 @@ fn lookup_global(scope: &Scope, g: &ast::Ident) -> String {
 
 fn lookup_fn(scope: &Scope, name: &ast::Ident) {
 	if !name.value.contains('.') && !scope.root.functions.contains_key(name.value.as_str()) {
-		scope.root.diag.error(Error::MissingFunction {
+		scope.root.diag.error(Error::MissingSymbol {
+			kind: SymbolKind::Function,
 			name: name.value.clone(),
 			span: name.span,
 		});
