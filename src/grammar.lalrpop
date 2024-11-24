@@ -190,7 +190,7 @@ _System: Result<()> = {
 }
 
 Box<T>: Box<T> = { T => Box::new(<>) }
-Spanned<T>: Spanned<T> = { <start: @L> <value: T> <end: @R> => Spanned { value, start, end } }
+Spanned<T>: Spanned<T> = { <start: @L> <value: T> <end: @R> => Spanned { value, span: Span(start, end) } }
 Try<T>: Unwrap<T> = { <l: @L> <val: T> <r: @R> =>? val.map_err(SpannedError(l, r)) }
 
 Line: Option<u16> = {

@@ -10,6 +10,9 @@ mod ast {
 		ExpectedLiteral(&'static [&'static str]),
 	}
 
+	#[derive(Debug, Clone, Copy, PartialEq)]
+	pub struct Span(pub usize, pub usize);
+
 	pub type Result<T, E = Error> = std::result::Result<T, E>;
 	pub type Unwrap<T> = <T as _Unwrap>::Value;
 	pub trait _Unwrap {
@@ -25,13 +28,12 @@ mod ast {
 	#[derive(Debug)]
 	pub struct SpannedError {
 		pub error: Error,
-		pub start: usize,
-		pub end: usize,
+		pub span: Span,
 	}
 
 	#[allow(non_snake_case)]
 	pub fn SpannedError<L, T, E: Into<Error>>(start: usize, end: usize) -> impl FnOnce(E) -> lalrpop_util::ParseError<L, T, SpannedError> {
-		move |e| SpannedError { error: e.into(), start, end }.into()
+		move |e| SpannedError { error: e.into(), span: Span(start, end) }.into()
 	}
 
 	impl std::fmt::Display for Error {
@@ -46,15 +48,14 @@ mod ast {
 
 	impl std::fmt::Display for SpannedError {
 		fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-			write!(f, "{} at {}:{}", self.error, self.start, self.end)
+			write!(f, "{} at {}:{}", self.error, self.span.0, self.span.1)
 		}
 	}
 
 	#[derive(Debug, Clone, PartialEq)]
 	pub struct Spanned<T> {
 		pub value: T,
-		pub start: usize,
-		pub end: usize,
+		pub span: Span,
 	}
 
 	pub type Ident = Spanned<String>;
