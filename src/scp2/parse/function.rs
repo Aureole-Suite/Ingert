@@ -1,9 +1,10 @@
+use std::collections::HashMap;
+
 use gospel::read::{Le as _, Reader};
 use snafu::{ResultExt as _, ensure};
 use crate::scp2::{Arg, ArgType};
 
 use super::value::{string_value, value, ValueError};
-use super::Pointers;
 
 mod call;
 use call::{call, RawCall, CallError};
@@ -41,7 +42,72 @@ pub enum FunctionError {
 	Call { number: usize, source: CallError },
 }
 
-pub fn function(f: &mut Reader, ptrs: &mut Pointers) -> Result<RawFunction, FunctionError> {
+pub fn functions(f: &mut Reader, func_count: usize) -> Result<(Vec<RawFunction>, HashMap<String, usize>), super::ScpError> {
+	let mut functions = Vec::with_capacity(func_count);
+	let mut func_names = HashMap::with_capacity(func_count);
+	if func_count > 0 {
+		let mut ptrs = Pointers::default();
+		for number in 0..func_count {
+			let _span = tracing::info_span!("function", number = number);
+			let start = f.pos();
+			let func = function(f, &mut ptrs).context(super::FunctionSnafu { number, start })?;
+			func_names.insert(func.name.clone(), number);
+			functions.push(func);
+		}
+		let pos = f.pos();
+		let pos = ptrs.def.check_start("default values", pos);
+		let pos = ptrs.arg.check_start("argument types", pos);
+		let pos = ptrs.called.check_start("call table", pos);
+		let pos = ptrs.call_arg.check_start("call arguments", pos);
+		f.seek(pos)?;
+	}
+
+	if !functions.is_sorted_by_key(|f| &f.name) {
+		tracing::warn!("function names are not sorted");
+	}
+
+	functions.sort_by_key(|f| f.code_start);
+
+	Ok((functions, func_names))
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
+struct Pointers {
+	def: Pointer,
+	arg: Pointer,
+	called: Pointer,
+	call_arg: Pointer,
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
+struct Pointer {
+	value: Option<(usize, usize)>,
+}
+
+impl Pointer {
+	fn check(&mut self, what: &str, pos: usize) {
+		if let Some((_, end)) = self.value {
+			super::check_pos(what, end, pos);
+		} else {
+			self.value = Some((pos, pos));
+		}
+	}
+
+	fn set(&mut self, pos: usize) {
+		self.value.as_mut().unwrap().1 = pos;
+	}
+
+	fn check_start(&self, arg: &str, pos: usize) -> usize {
+		if let Some((start, end)) = self.value {
+			super::check_pos(arg, start, pos);
+			end
+		} else {
+			pos
+		}
+	}
+}
+
+fn function(f: &mut Reader, ptrs: &mut Pointers) -> Result<RawFunction, FunctionError> {
 	let code_start = f.u32()? as usize;
 	let arg_count = f.u8()? as usize;
 	let flags = f.u16()?;

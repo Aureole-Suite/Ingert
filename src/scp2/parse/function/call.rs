@@ -1,6 +1,8 @@
 use gospel::read::{Le as _, Reader};
 use snafu::{ResultExt as _, ensure};
-use super::{super::super::CallArg, ValueError, super::Pointer, value};
+use crate::scp2::CallArg;
+
+use super::{ValueError, Pointer, value};
 
 #[derive(Debug, Clone, PartialEq)]
 enum RawCallKind {
