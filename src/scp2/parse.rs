@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use gospel::read::{Le as _, Reader};
 use snafu::{ResultExt as _, ensure};
-use super::{Arg, ArgType, CallArg, Scp, Value};
+use super::{Arg, ArgType, CallArg, Scp, Value, Global, GlobalType};
 
 fn check_pos(what: &str, pos: usize, expected: usize) {
 	if pos != expected {
@@ -20,6 +20,7 @@ pub enum ScpError {
 		location: snafu::Location,
 	},
 	Function { number: usize, start: usize, source: FunctionError },
+	Global { number: usize, start: usize, source: GlobalError },
 }
 
 pub fn scp(data: &[u8]) -> Result<Scp, ScpError> {
@@ -52,14 +53,23 @@ pub fn scp(data: &[u8]) -> Result<Scp, ScpError> {
 		f.seek(pos)?;
 	}
 
+	check_pos("globals start", global_start, f.pos());
+	f.seek(global_start)?;
+	let mut globals = Vec::with_capacity(global_count);
+	if global_count > 0 {
+		for number in 0..global_count {
+			let _span = tracing::info_span!("global", number = number);
+			let start = f.pos();
+			let global = global(&mut f).context(scp::Global { number, start })?;
+			globals.push(global);
+		}
+	}
+
 	if !functions.is_sorted_by_key(|f| &f.name) {
 		tracing::warn!("function names are not sorted");
 	}
 
 	functions.sort_by_key(|f| f.code_start);
-
-	check_pos("globals start", global_start, f.pos());
-	f.seek(global_start)?;
 
 	todo!();
 }
@@ -379,3 +389,28 @@ fn call(f: &mut Reader, ptr: &mut Pointer) -> Result<RawCall, CallError> {
 	Ok(RawCall { kind, args })
 }
 
+
+#[derive(Debug, snafu::Snafu)]
+#[snafu(module(global), context(suffix(false)))]
+pub enum GlobalError {
+	#[snafu(display("invalid read (at {location})"), context(false))]
+	Read {
+		source: gospel::read::Error,
+		#[snafu(implicit)]
+		location: snafu::Location,
+	},
+	#[snafu(display("parsing name"))]
+	Name { source: ValueError },
+	#[snafu(display("unknown global type {ty}"))]
+	Type { ty: u32 },
+}
+
+fn global(f: &mut Reader) -> Result<Global, GlobalError> {
+	let name = string_value(f).context(global::Name)?;
+	let ty = match f.u32()? {
+		0 => GlobalType::Number,
+		1 => GlobalType::String,
+		ty => global::Type { ty }.fail()?
+	};
+	Ok(Global { name, ty, line: None })
+}
