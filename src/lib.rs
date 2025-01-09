@@ -4,6 +4,7 @@ use snafu::ResultExt as _;
 
 pub mod expr;
 pub mod scp;
+pub mod scp2;
 pub mod lines;
 pub mod nest;
 pub mod decompile;
