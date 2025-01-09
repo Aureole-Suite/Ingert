@@ -12,7 +12,6 @@ use global::{global, GlobalError};
 use function::{function, FunctionError};
 
 #[derive(Debug, snafu::Snafu)]
-#[snafu(module(scp), context(suffix(false)))]
 pub enum ScpError {
 	#[snafu(display("invalid read (at {location})"), context(false))]
 	Read {
@@ -42,7 +41,7 @@ pub fn scp(data: &[u8]) -> Result<Scp, ScpError> {
 		for number in 0..func_count {
 			let _span = tracing::info_span!("function", number = number);
 			let start = f.pos();
-			let func = function(&mut f, &mut ptrs).context(scp::Function { number, start })?;
+			let func = function(&mut f, &mut ptrs).context(FunctionSnafu { number, start })?;
 			func_names.insert(func.name.clone(), number);
 			functions.push(func);
 		}
@@ -61,7 +60,7 @@ pub fn scp(data: &[u8]) -> Result<Scp, ScpError> {
 		for number in 0..global_count {
 			let _span = tracing::info_span!("global", number = number);
 			let start = f.pos();
-			let global = global(&mut f).context(scp::Global { number, start })?;
+			let global = global(&mut f).context(GlobalSnafu { number, start })?;
 			globals.push(global);
 		}
 	}

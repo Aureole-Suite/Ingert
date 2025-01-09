@@ -18,7 +18,6 @@ pub struct RawFunction {
 }
 
 #[derive(Debug, snafu::Snafu)]
-#[snafu(module(function), context(suffix(false)))]
 pub enum FunctionError {
 	#[snafu(display("invalid read (at {location})"), context(false))]
 	Read {
@@ -52,13 +51,13 @@ pub fn function(f: &mut Reader, ptrs: &mut Pointers) -> Result<RawFunction, Func
 	let called_count = f.u32()? as usize;
 	let called_start = f.u32()? as usize;
 	let expected_crc32 = f.u32()?;
-	let name = string_value(f).context(function::Name)?;
+	let name = string_value(f).context(NameSnafu)?;
 
 	let is_prelude = flags & 1 != 0;
-	ensure!(flags & !0x0001 == 0, function::Flags { flags });
+	ensure!(flags & !0x0001 == 0, FlagsSnafu { flags });
 
 	let actual_crc32 = !crc32fast::hash(name.as_bytes());
-	ensure!(expected_crc32 == actual_crc32, function::Checksum {
+	ensure!(expected_crc32 == actual_crc32, ChecksumSnafu {
 		actual: actual_crc32,
 		expected: expected_crc32,
 	});
@@ -67,7 +66,7 @@ pub fn function(f: &mut Reader, ptrs: &mut Pointers) -> Result<RawFunction, Func
 	let mut g = f.at(def_start)?;
 	let mut defaults = Vec::with_capacity(def_count);
 	for number in 0..def_count {
-		defaults.push(value(&mut g).context(function::Default { number })?);
+		defaults.push(value(&mut g).context(DefaultSnafu { number })?);
 	}
 	ptrs.def.set(g.pos());
 
@@ -80,7 +79,7 @@ pub fn function(f: &mut Reader, ptrs: &mut Pointers) -> Result<RawFunction, Func
 	ptrs.arg.set(g.pos());
 
 	let num_defaults = arg_types.iter().filter(|&&t| t & 8 != 0).count();
-	ensure!(num_defaults == def_count, function::DefaultCount {
+	ensure!(num_defaults == def_count, DefaultCountSnafu {
 		actual: num_defaults,
 		expected: def_count,
 	});
@@ -92,7 +91,7 @@ pub fn function(f: &mut Reader, ptrs: &mut Pointers) -> Result<RawFunction, Func
 			1 => ArgType::Number,
 			2 => ArgType::String,
 			5 => ArgType::NumberRef,
-			_ => function::ArgType { number, ty: bits }.fail()?
+			_ => ArgTypeSnafu { number, ty: bits }.fail()?
 		};
 		let default = if bits & 8 != 0 {
 			Some(defaults.next().expect("default count mismatch"))
@@ -107,7 +106,7 @@ pub fn function(f: &mut Reader, ptrs: &mut Pointers) -> Result<RawFunction, Func
 	let mut calls = Vec::with_capacity(called_count);
 	for number in 0..called_count {
 		let call = call(&mut g, &mut ptrs.call_arg)
-			.context(function::Call { number })?;
+			.context(CallSnafu { number })?;
 		calls.push(call);
 	}
 	ptrs.called.set(g.pos());

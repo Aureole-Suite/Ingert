@@ -21,7 +21,6 @@ pub struct RawCall {
 }
 
 #[derive(Debug, snafu::Snafu)]
-#[snafu(module(call), context(suffix(false)))]
 pub enum CallError {
 	#[snafu(display("invalid read (at {location})"), context(false))]
 	Read {
@@ -53,7 +52,7 @@ pub fn call(f: &mut Reader, ptr: &mut Pointer) -> Result<RawCall, CallError> {
 		g.slice(4)?;
 		let val = match g.u32()? {
 			0 => {
-				let val = value(&mut h).context(call::Value { number })?;
+				let val = value(&mut h).context(ValueSnafu { number })?;
 				CallArg::Value(val)
 			}
 			1 => {
@@ -68,7 +67,7 @@ pub fn call(f: &mut Reader, ptr: &mut Pointer) -> Result<RawCall, CallError> {
 				h.check_u32(0)?;
 				CallArg::Expr
 			}
-			ty => call::BadArgType { ty }.fail()?
+			ty => BadArgTypeSnafu { ty }.fail()?
 		};
 		args.push(val);
 	}
@@ -76,22 +75,22 @@ pub fn call(f: &mut Reader, ptr: &mut Pointer) -> Result<RawCall, CallError> {
 
 	let kind = match kind {
 		0 => {
-			ensure!(func_id >= 0, call::BadFuncId { kind, func_id });
+			ensure!(func_id >= 0, BadFuncIdSnafu { kind, func_id });
 			RawCallKind::Local(func_id as u32)
 		}
 		1 => {
-			ensure!(func_id == -1, call::BadFuncId { kind, func_id });
+			ensure!(func_id == -1, BadFuncIdSnafu { kind, func_id });
 			RawCallKind::Extern
 		}
 		2 => {
-			ensure!(func_id >= -1, call::BadFuncId { kind, func_id });
+			ensure!(func_id >= -1, BadFuncIdSnafu { kind, func_id });
 			RawCallKind::Tailcall(if func_id == -1 { None } else { Some(func_id as u32) })
 		}
 		3 => {
-			ensure!(func_id == -1, call::BadFuncId { kind, func_id });
+			ensure!(func_id == -1, BadFuncIdSnafu { kind, func_id });
 			RawCallKind::Syscall
 		}
-		kind => call::BadKind { kind }.fail()?
+		kind => BadKindSnafu { kind }.fail()?
 	};
 
 	Ok(RawCall { kind, args })

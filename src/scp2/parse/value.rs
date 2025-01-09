@@ -3,7 +3,6 @@ use snafu::ResultExt as _;
 pub use super::super::Value;
 
 #[derive(Debug, snafu::Snafu)]
-#[snafu(module(value), context(suffix(false)))]
 pub enum ValueError {
 	#[snafu(display("invalid read (at {location})"), context(false))]
 	Read {
@@ -27,7 +26,7 @@ pub fn value(f: &mut Reader) -> Result<Value, ValueError> {
 	let hi = v >> 30;
 	let lo = v & 0x3FFFFFFF;
 	match hi {
-		0 => value::Special { v }.fail()?,
+		0 => SpecialSnafu { v }.fail()?,
 		1 => Ok(Value::Int((lo as i32) << 2 >> 2)),
 		2 => Ok(Value::Float(f30(lo))),
 		3 => Ok(Value::String(string(&mut f.at(lo as usize)?)?)),
@@ -60,7 +59,7 @@ fn f30(v: u32) -> f32 {
 
 fn string(f: &mut Reader) -> Result<String, ValueError> {
 	let zs = f.cstr()?.to_bytes();
-	let s = std::str::from_utf8(zs).with_context(|_| value::Utf8 {
+	let s = std::str::from_utf8(zs).with_context(|_| Utf8Snafu {
 		lossy_string: String::from_utf8_lossy(zs).into_owned(),
 	})?;
 	Ok(s.to_string())
@@ -69,6 +68,6 @@ fn string(f: &mut Reader) -> Result<String, ValueError> {
 pub fn string_value(f: &mut Reader) -> Result<String, ValueError> {
 	match value(f)? {
 		Value::String(s) => Ok(s),
-		value => value::NeedString { value }.fail(),
+		value => NeedStringSnafu { value }.fail(),
 	}
 }

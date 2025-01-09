@@ -4,7 +4,6 @@ use crate::scp2::{Global, GlobalType};
 use super::value::{string_value, ValueError};
 
 #[derive(Debug, snafu::Snafu)]
-#[snafu(module(global), context(suffix(false)))]
 pub enum GlobalError {
 	#[snafu(display("invalid read (at {location})"), context(false))]
 	Read {
@@ -19,11 +18,11 @@ pub enum GlobalError {
 }
 
 pub fn global(f: &mut Reader) -> Result<Global, GlobalError> {
-	let name = string_value(f).context(global::Name)?;
+	let name = string_value(f).context(NameSnafu)?;
 	let ty = match f.u32()? {
 		0 => GlobalType::Number,
 		1 => GlobalType::String,
-		ty => global::Type { ty }.fail()?
+		ty => TypeSnafu { ty }.fail()?
 	};
 	Ok(Global { name, ty, line: None })
 }
