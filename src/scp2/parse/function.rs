@@ -40,18 +40,7 @@ pub enum FunctionError {
 	Call { number: usize, source: call::CallError },
 }
 
-pub fn functions(f: &mut Reader, func_count: usize) -> Result<Vec<RawFunction>, super::ScpError> {
-	let mut functions = Vec::with_capacity(func_count);
-	for number in 0..func_count {
-		let _span = tracing::info_span!("function", number = number).entered();
-		let start = f.pos();
-		let func = function(number, f).context(super::FunctionSnafu { number, start })?;
-		functions.push(func);
-	}
-	Ok(functions)
-}
-
-fn function(number: usize, f: &mut Reader) -> Result<RawFunction, FunctionError> {
+pub fn function(number: usize, f: &mut Reader) -> Result<RawFunction, FunctionError> {
 	let code_start = f.u32()? as usize;
 	let arg_count = f.u8()? as usize;
 	let flags = f.u16()?;

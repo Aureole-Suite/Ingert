@@ -3,6 +3,7 @@ mod function;
 mod global;
 
 use gospel::read::{Le as _, Reader};
+use snafu::ResultExt as _;
 use super::Scp;
 
 #[derive(Debug, snafu::Snafu)]
@@ -27,10 +28,24 @@ pub fn scp(data: &[u8]) -> Result<Scp, ScpError> {
 	f.check_u32(0)?;
 
 	f.seek(func_start)?;
-	let mut raw_functions = function::functions(&mut f, func_count)?;
+	let mut raw_functions = Vec::with_capacity(func_count);
+	for number in 0..func_count {
+		let _span = tracing::info_span!("function", number = number).entered();
+		let start = f.pos();
+		let func = function::function(number, &mut f).context(FunctionSnafu { number, start })?;
+		raw_functions.push(func);
+	}
 
 	f.seek(global_start)?;
-	let globals = global::globals(&mut f, global_count)?;
+	let mut globals = Vec::with_capacity(global_count);
+	if global_count > 0 {
+		for number in 0..global_count {
+			let _span = tracing::info_span!("global", number = number).entered();
+			let start = f.pos();
+			let global = global::global(&mut f).context(GlobalSnafu { number, start })?;
+			globals.push(global);
+		}
+	}
 
 	let func_names = raw_functions.iter().map(|f| f.name.clone()).collect::<Vec<_>>();
 	let global_names = globals.iter().map(|g| g.name.clone()).collect::<Vec<_>>();
