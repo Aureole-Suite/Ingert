@@ -4,16 +4,15 @@ use crate::scp2::{Arg, ArgType};
 
 use super::value::{string_value, value, ValueError};
 
-mod call;
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct RawFunction {
 	pub name: String,
 	pub args: Vec<Arg>,
 	pub number: usize,
-	calls: Vec<call::RawCall>,
 	pub is_prelude: bool,
 	pub code_start: usize,
+	pub called_start: usize,
+	pub called_count: usize,
 }
 
 #[derive(Debug, snafu::Snafu)]
@@ -36,8 +35,6 @@ pub enum FunctionError {
 	DefaultCount { actual: usize, expected: usize },
 	#[snafu(display("unknown argument type {ty} for argument {number}"))]
 	ArgType { number: usize, ty: u32 },
-	#[snafu(display("parsing call table entry {number}"))]
-	Call { number: usize, source: call::CallError },
 }
 
 pub fn function(number: usize, f: &mut Reader) -> Result<RawFunction, FunctionError> {
@@ -96,16 +93,14 @@ pub fn function(number: usize, f: &mut Reader) -> Result<RawFunction, FunctionEr
 		args.push(Arg { ty, default });
 	}
 
-	let mut g = f.at(called_start)?;
-	let calls = call::calls(&mut g, called_count)?;
-
 	Ok(RawFunction {
 		name,
 		number,
 		args,
-		calls,
 		is_prelude,
 		code_start,
+		called_start,
+		called_count,
 	})
 }
 

@@ -1,5 +1,6 @@
 mod value;
 mod function;
+mod called;
 mod global;
 
 use gospel::read::{Le as _, Reader};
@@ -16,6 +17,7 @@ pub enum ScpError {
 	},
 	Function { number: usize, start: usize, source: function::FunctionError },
 	Global { number: usize, start: usize, source: global::GlobalError },
+	Called { name: String, number: usize, start: usize, source: called::CalledError },
 }
 
 pub fn scp(data: &[u8]) -> Result<Scp, ScpError> {
@@ -53,6 +55,19 @@ pub fn scp(data: &[u8]) -> Result<Scp, ScpError> {
 		tracing::warn!("function names are not sorted");
 	}
 	raw_functions.sort_by_key(|f| f.code_start);
+
+	for func in raw_functions {
+		f.seek(func.called_start)?;
+		let mut called = Vec::with_capacity(func.called_count);
+		for number in 0..func.called_count {
+			let _span = tracing::info_span!("call", name = &func.name, number = number).entered();
+			let start = f.pos();
+			let call = called::called(&mut f, &func_names).context(CalledSnafu { start, name: &func.name, number })?;
+			called.push(call);
+		}
+		dbg!(func, called);
+
+	}
 
 	todo!();
 }
