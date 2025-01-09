@@ -58,10 +58,12 @@ fn f30(v: u32) -> f32 {
 }
 
 fn string(f: &mut Reader) -> Result<String, ValueError> {
+	let pos = f.pos();
 	let zs = f.cstr()?.to_bytes();
 	let s = std::str::from_utf8(zs).with_context(|_| Utf8Snafu {
 		lossy_string: String::from_utf8_lossy(zs).into_owned(),
 	})?;
+	tracing::trace!(pos, string = %s);
 	Ok(s.to_string())
 }
 

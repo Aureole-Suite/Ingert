@@ -9,6 +9,7 @@ struct Args {
 
 fn main() {
 	tracing_subscriber::fmt::fmt()
+		.with_max_level(tracing::Level::TRACE)
 		.with_writer(std::io::stderr)
 		.init();
 	unsafe { compact_debug::enable(true) };

@@ -7,13 +7,12 @@ use crate::scp2::{Arg, ArgType};
 use super::value::{string_value, value, ValueError};
 
 mod call;
-use call::{call, RawCall, CallError};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct RawFunction {
 	pub name: String,
 	pub args: Vec<Arg>,
-	calls: Vec<RawCall>,
+	calls: Vec<call::RawCall>,
 	pub is_prelude: bool,
 	pub code_start: usize,
 }
@@ -39,7 +38,7 @@ pub enum FunctionError {
 	#[snafu(display("unknown argument type {ty} for argument {number}"))]
 	ArgType { number: usize, ty: u32 },
 	#[snafu(display("parsing call table entry {number}"))]
-	Call { number: usize, source: CallError },
+	Call { number: usize, source: call::CallError },
 }
 
 pub fn functions(f: &mut Reader, func_count: usize) -> Result<(Vec<RawFunction>, HashMap<String, usize>), super::ScpError> {
@@ -48,7 +47,7 @@ pub fn functions(f: &mut Reader, func_count: usize) -> Result<(Vec<RawFunction>,
 	if func_count > 0 {
 		let mut ptrs = Pointers::default();
 		for number in 0..func_count {
-			let _span = tracing::info_span!("function", number = number);
+			let _span = tracing::info_span!("function", number = number).entered();
 			let start = f.pos();
 			let func = function(f, &mut ptrs).context(super::FunctionSnafu { number, start })?;
 			func_names.insert(func.name.clone(), number);
@@ -169,12 +168,7 @@ fn function(f: &mut Reader, ptrs: &mut Pointers) -> Result<RawFunction, Function
 
 	ptrs.called.check("call table", called_start);
 	let mut g = f.at(called_start)?;
-	let mut calls = Vec::with_capacity(called_count);
-	for number in 0..called_count {
-		let call = call(&mut g, &mut ptrs.call_arg)
-			.context(CallSnafu { number })?;
-		calls.push(call);
-	}
+	let calls = call::calls(&mut g, called_count, &mut ptrs.call_arg)?;
 	ptrs.called.set(g.pos());
 
 	Ok(RawFunction {

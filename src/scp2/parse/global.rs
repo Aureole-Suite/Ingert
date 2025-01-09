@@ -21,7 +21,7 @@ pub fn globals(f: &mut Reader, global_count: usize) -> Result<Vec<Global>, super
 	let mut globals = Vec::with_capacity(global_count);
 	if global_count > 0 {
 		for number in 0..global_count {
-			let _span = tracing::info_span!("global", number = number);
+			let _span = tracing::info_span!("global", number = number).entered();
 			let start = f.pos();
 			let global = global(f).context(super::GlobalSnafu { number, start })?;
 			globals.push(global);

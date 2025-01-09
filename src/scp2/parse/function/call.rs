@@ -40,7 +40,17 @@ pub enum CallError {
 	Value { number: usize, source: ValueError },
 }
 
-pub fn call(f: &mut Reader, ptr: &mut Pointer) -> Result<RawCall, CallError> {
+pub fn calls(f: &mut Reader, count: usize, ptr: &mut Pointer) -> Result<Vec<RawCall>, super::FunctionError> {
+	let mut calls = Vec::with_capacity(count);
+	for number in 0..count {
+		let _span = tracing::info_span!("call", number = number).entered();
+		let call = call(f, ptr).context(super::CallSnafu { number })?;
+		calls.push(call);
+	}
+	Ok(calls)
+}
+
+fn call(f: &mut Reader, ptr: &mut Pointer) -> Result<RawCall, CallError> {
 	let func_id = f.i32()?;
 	let kind = f.u16()?;
 	let arg_count = f.u16()? as usize;
