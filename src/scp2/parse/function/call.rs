@@ -2,7 +2,7 @@ use gospel::read::{Le as _, Reader};
 use snafu::{ResultExt as _, ensure};
 use crate::scp2::CallArg;
 
-use super::{ValueError, Pointer, value};
+use super::{ValueError, value};
 
 #[derive(Debug, Clone, PartialEq)]
 enum RawCallKind {
@@ -40,23 +40,22 @@ pub enum CallError {
 	Value { number: usize, source: ValueError },
 }
 
-pub fn calls(f: &mut Reader, count: usize, ptr: &mut Pointer) -> Result<Vec<RawCall>, super::FunctionError> {
+pub fn calls(f: &mut Reader, count: usize) -> Result<Vec<RawCall>, super::FunctionError> {
 	let mut calls = Vec::with_capacity(count);
 	for number in 0..count {
 		let _span = tracing::info_span!("call", number = number).entered();
-		let call = call(f, ptr).context(super::CallSnafu { number })?;
+		let call = call(f).context(super::CallSnafu { number })?;
 		calls.push(call);
 	}
 	Ok(calls)
 }
 
-fn call(f: &mut Reader, ptr: &mut Pointer) -> Result<RawCall, CallError> {
+fn call(f: &mut Reader) -> Result<RawCall, CallError> {
 	let func_id = f.i32()?;
 	let kind = f.u16()?;
 	let arg_count = f.u16()? as usize;
 	let arg_start = f.u32()? as usize;
 
-	ptr.check("call arguments", arg_start);
 	let mut g = f.at(arg_start)?;
 	let mut args = Vec::with_capacity(arg_count);
 	for number in 0..arg_count {
@@ -83,7 +82,6 @@ fn call(f: &mut Reader, ptr: &mut Pointer) -> Result<RawCall, CallError> {
 		};
 		args.push(val);
 	}
-	ptr.set(g.pos());
 
 	let kind = match kind {
 		0 => {

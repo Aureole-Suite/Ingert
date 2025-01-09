@@ -42,62 +42,16 @@ pub enum FunctionError {
 
 pub fn functions(f: &mut Reader, func_count: usize) -> Result<Vec<RawFunction>, super::ScpError> {
 	let mut functions = Vec::with_capacity(func_count);
-	if func_count > 0 {
-		let mut ptrs = Pointers::default();
-		for number in 0..func_count {
-			let _span = tracing::info_span!("function", number = number).entered();
-			let start = f.pos();
-			let func = function(number, f, &mut ptrs).context(super::FunctionSnafu { number, start })?;
-			functions.push(func);
-		}
-		let pos = f.pos();
-		let pos = ptrs.def.check_start("default values", pos);
-		let pos = ptrs.arg.check_start("argument types", pos);
-		let pos = ptrs.called.check_start("call table", pos);
-		let pos = ptrs.call_arg.check_start("call arguments", pos);
-		f.seek(pos)?;
+	for number in 0..func_count {
+		let _span = tracing::info_span!("function", number = number).entered();
+		let start = f.pos();
+		let func = function(number, f).context(super::FunctionSnafu { number, start })?;
+		functions.push(func);
 	}
-
 	Ok(functions)
 }
 
-#[derive(Debug, Clone, PartialEq, Default)]
-struct Pointers {
-	def: Pointer,
-	arg: Pointer,
-	called: Pointer,
-	call_arg: Pointer,
-}
-
-#[derive(Debug, Clone, PartialEq, Default)]
-struct Pointer {
-	value: Option<(usize, usize)>,
-}
-
-impl Pointer {
-	fn check(&mut self, what: &str, pos: usize) {
-		if let Some((_, end)) = self.value {
-			super::check_pos(what, end, pos);
-		} else {
-			self.value = Some((pos, pos));
-		}
-	}
-
-	fn set(&mut self, pos: usize) {
-		self.value.as_mut().unwrap().1 = pos;
-	}
-
-	fn check_start(&self, arg: &str, pos: usize) -> usize {
-		if let Some((start, end)) = self.value {
-			super::check_pos(arg, start, pos);
-			end
-		} else {
-			pos
-		}
-	}
-}
-
-fn function(number: usize, f: &mut Reader, ptrs: &mut Pointers) -> Result<RawFunction, FunctionError> {
+fn function(number: usize, f: &mut Reader) -> Result<RawFunction, FunctionError> {
 	let code_start = f.u32()? as usize;
 	let arg_count = f.u8()? as usize;
 	let flags = f.u16()?;
@@ -118,21 +72,17 @@ fn function(number: usize, f: &mut Reader, ptrs: &mut Pointers) -> Result<RawFun
 		expected: expected_crc32,
 	});
 
-	ptrs.def.check("default values", def_start);
 	let mut g = f.at(def_start)?;
 	let mut defaults = Vec::with_capacity(def_count);
 	for number in 0..def_count {
 		defaults.push(value(&mut g).context(DefaultSnafu { number })?);
 	}
-	ptrs.def.set(g.pos());
 
-	ptrs.arg.check("argument types", arg_start);
 	let mut g = f.at(arg_start)?;
 	let mut arg_types = Vec::with_capacity(arg_count);
 	for _ in 0..arg_count {
 		arg_types.push(g.u32()?);
 	}
-	ptrs.arg.set(g.pos());
 
 	let num_defaults = arg_types.iter().filter(|&&t| t & 8 != 0).count();
 	ensure!(num_defaults == def_count, DefaultCountSnafu {
@@ -157,10 +107,8 @@ fn function(number: usize, f: &mut Reader, ptrs: &mut Pointers) -> Result<RawFun
 		args.push(Arg { ty, default });
 	}
 
-	ptrs.called.check("call table", called_start);
 	let mut g = f.at(called_start)?;
-	let calls = call::calls(&mut g, called_count, &mut ptrs.call_arg)?;
-	ptrs.called.set(g.pos());
+	let calls = call::calls(&mut g, called_count)?;
 
 	Ok(RawFunction {
 		name,
