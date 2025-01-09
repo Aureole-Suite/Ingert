@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use gospel::read::{Le as _, Reader};
 use snafu::{ResultExt as _, ensure};
 use crate::scp2::{Arg, ArgType};
@@ -12,6 +10,7 @@ mod call;
 pub struct RawFunction {
 	pub name: String,
 	pub args: Vec<Arg>,
+	pub number: usize,
 	calls: Vec<call::RawCall>,
 	pub is_prelude: bool,
 	pub code_start: usize,
@@ -41,16 +40,14 @@ pub enum FunctionError {
 	Call { number: usize, source: call::CallError },
 }
 
-pub fn functions(f: &mut Reader, func_count: usize) -> Result<(Vec<RawFunction>, HashMap<String, usize>), super::ScpError> {
+pub fn functions(f: &mut Reader, func_count: usize) -> Result<Vec<RawFunction>, super::ScpError> {
 	let mut functions = Vec::with_capacity(func_count);
-	let mut func_names = HashMap::with_capacity(func_count);
 	if func_count > 0 {
 		let mut ptrs = Pointers::default();
 		for number in 0..func_count {
 			let _span = tracing::info_span!("function", number = number).entered();
 			let start = f.pos();
-			let func = function(f, &mut ptrs).context(super::FunctionSnafu { number, start })?;
-			func_names.insert(func.name.clone(), number);
+			let func = function(number, f, &mut ptrs).context(super::FunctionSnafu { number, start })?;
 			functions.push(func);
 		}
 		let pos = f.pos();
@@ -61,13 +58,7 @@ pub fn functions(f: &mut Reader, func_count: usize) -> Result<(Vec<RawFunction>,
 		f.seek(pos)?;
 	}
 
-	if !functions.is_sorted_by_key(|f| &f.name) {
-		tracing::warn!("function names are not sorted");
-	}
-
-	functions.sort_by_key(|f| f.code_start);
-
-	Ok((functions, func_names))
+	Ok(functions)
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -106,7 +97,7 @@ impl Pointer {
 	}
 }
 
-fn function(f: &mut Reader, ptrs: &mut Pointers) -> Result<RawFunction, FunctionError> {
+fn function(number: usize, f: &mut Reader, ptrs: &mut Pointers) -> Result<RawFunction, FunctionError> {
 	let code_start = f.u32()? as usize;
 	let arg_count = f.u8()? as usize;
 	let flags = f.u16()?;
@@ -173,6 +164,7 @@ fn function(f: &mut Reader, ptrs: &mut Pointers) -> Result<RawFunction, Function
 
 	Ok(RawFunction {
 		name,
+		number,
 		args,
 		calls,
 		is_prelude,
