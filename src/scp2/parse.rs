@@ -6,6 +6,8 @@ mod code;
 
 use gospel::read::{Le as _, Reader};
 use snafu::ResultExt as _;
+use crate::scp2::Function;
+
 use super::Scp;
 
 #[derive(Debug, snafu::Snafu)]
@@ -58,12 +60,8 @@ pub fn scp(data: &[u8]) -> Result<Scp, ScpError> {
 	}
 	raw_functions.sort_by_key(|f| f.code_start);
 
-	for func in &raw_functions {
-		tracing::info!("function: {} {} {}", func.name, func.number, func.code_start);
-	}
-
 	let func_ends = raw_functions.iter().skip(1).map(|f| Some(f.code_start)).chain([None]).collect::<Vec<_>>();
-
+	let mut functions = Vec::new();
 	for (func, end) in std::iter::zip(raw_functions, func_ends) {
 		let _span = tracing::info_span!("function", name = func.name, number = func.number).entered();
 		f.seek(func.called_start)?;
@@ -79,8 +77,14 @@ pub fn scp(data: &[u8]) -> Result<Scp, ScpError> {
 		f.seek(func.code_start)?;
 		let code = code::parse(&mut f, end, func.number, &func_names, &global_names)
 			.context(CodeSnafu { name: &func.name, number: func.number, start: func.code_start })?;
-		// dbg!(func, code);
+		functions.push(Function {
+			name: func.name,
+			args: func.args,
+			called,
+			is_prelude: func.is_prelude,
+			code,
+		});
 	}
 
-	todo!();
+	Ok(Scp { globals, functions })
 }

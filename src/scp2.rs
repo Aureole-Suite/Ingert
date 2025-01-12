@@ -3,13 +3,8 @@ pub use parse::scp as parse;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Scp {
-	pub items: Vec<Item>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum Item {
-	Global(Global),
-	Function(Function),
+	pub globals: Vec<Global>,
+	pub functions: Vec<Function>,
 }
 
 #[derive(Clone, PartialEq)]
@@ -46,9 +41,9 @@ pub enum GlobalType {
 pub struct Function {
 	pub name: String,
 	pub args: Vec<Arg>,
-	pub calls: Vec<Call>,
+	pub called: Vec<Call>,
 	pub is_prelude: bool,
-	// pub code: Vec<Op>,
+	pub code: Vec<Op>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
