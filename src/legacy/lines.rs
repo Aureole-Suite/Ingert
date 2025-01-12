@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use crate::scp::{Op, Label};
+use crate::legacy::scp::{Op, Label};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Why {

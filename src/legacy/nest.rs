@@ -1,13 +1,13 @@
 use std::collections::HashSet;
 
-use crate::scp::{self, Op};
-use crate::expr::{Binop, Value};
+use crate::legacy::scp::{self, Op};
+use crate::legacy::expr::{Binop, Value};
 pub use scp::{Label, StackSlot};
 use snafu::OptionExt as _;
 
-pub type Expr = crate::expr::Expr<StackSlot>;
-pub type Lvalue = crate::expr::Lvalue<StackSlot>;
-pub use crate::expr::CallKind;
+pub type Expr = crate::legacy::expr::Expr<StackSlot>;
+pub type Lvalue = crate::legacy::expr::Lvalue<StackSlot>;
+pub use crate::legacy::expr::CallKind;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Stmt {

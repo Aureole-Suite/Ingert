@@ -1,5 +1,5 @@
-use crate::{CallKind, Expr, Item, Lvalue, StackVar, Stmt};
-use crate::expr::{op_prio, Type, Unop, Value};
+use crate::legacy::{CallKind, Expr, Item, Lvalue, StackVar, Stmt};
+use crate::legacy::expr::{op_prio, Type, Unop, Value};
 
 mod layout;
 

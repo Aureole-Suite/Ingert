@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 
-use crate::nest::{self, Label};
+use crate::legacy::nest::{self, Label};
 pub use nest::CallKind;
 use snafu::OptionExt as _;
 
-use crate::expr;
+use crate::legacy::expr;
 pub type Expr<T = StackVar> = expr::Expr<T>;
 pub type Lvalue<T = StackVar> = expr::Lvalue<T>;
 

@@ -3,7 +3,7 @@ lalrpop_util::lalrpop_mod!(grammar);
 pub mod lower;
 
 mod ast {
-	pub use crate::expr::{Type, Value, Binop, Unop};
+	pub use crate::legacy::expr::{Type, Value, Binop, Unop};
 
 	#[derive(Debug)]
 	pub enum Error {
@@ -173,7 +173,7 @@ mod ast {
 			}
 
 			pub fn push(&mut self, op: (Option<u16>, Binop, Expr)) {
-				use crate::expr::op_prio;
+				use crate::legacy::expr::op_prio;
 				while let Some(top) = self.ops.last() && op_prio(top.1) >= op_prio(op.1) {
 					self.pop();
 				}
@@ -198,7 +198,7 @@ mod ast {
 	}
 }
 
-pub fn parse(text: &str) -> Result<(Vec<crate::Item>, Vec<lower::Error>), ()> {
+pub fn parse(text: &str) -> Result<(Vec<crate::legacy::Item>, Vec<lower::Error>), ()> {
 	match grammar::ScenaParser::new().parse(text) {
 		Ok(v) => {
 			tracing::info!("{:#?}", v);

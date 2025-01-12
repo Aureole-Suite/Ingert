@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
-use crate::expr::Arg;
-use crate::scp::{Call, CallArg, Item};
-use crate::decompile::{Expr, Stmt, CallKind};
+use crate::legacy::expr::Arg;
+use crate::legacy::scp::{Call, CallArg, Item};
+use crate::legacy::decompile::{Expr, Stmt, CallKind};
 // It might be tempting to do this on nest rather than decompile, but that might screw up stack usage.
 
 #[derive(Debug, snafu::Snafu)]

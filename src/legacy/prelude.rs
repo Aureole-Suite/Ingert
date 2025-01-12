@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::{CallKind, Expr, Function, Item, Lvalue, Stmt};
+use crate::legacy::{CallKind, Expr, Function, Item, Lvalue, Stmt};
 
 #[derive(Debug, Clone, Default)]
 pub struct Prelude {

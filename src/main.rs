@@ -15,7 +15,7 @@ fn main() {
 	unsafe { compact_debug::enable(true) };
 	let args = Args::parse();
 
-	let mut prelude = ingert::prelude::Prelude::new();
+	let mut prelude = ingert::legacy::prelude::Prelude::new();
 	for file in &args.files {
 		let _span = tracing::info_span!("file", path = %file.display()).entered();
 		if file.ends_with("mon9996_c00.da") {
@@ -29,13 +29,12 @@ fn main() {
 		};
 		// println!("{:#?}", ingert::scp::parse_scp(&data));
 
-		let scp = ingert::scp::parse_scp(&data).unwrap();
+		let scp = ingert::legacy::scp::parse_scp(&data).unwrap();
 		let scp2 = ingert::scp2::read(&data).unwrap();
 		let data2 = ingert::scp2::write(&scp2).unwrap();
 		std::fs::write("a.bin", &data).unwrap();
 		std::fs::write("b.bin", &data2).unwrap();
-		// dbg!(scp2);
-		let mut scena = ingert::decompile(&data).unwrap();
+		let mut scena = ingert::legacy::decompile(&data).unwrap();
 		// prelude.add(&mut scena);
 
 		// print(file.file_name().unwrap(), &scena);
@@ -44,15 +43,15 @@ fn main() {
 	print("prelude.da", &prelude.into_scena());
 }
 
-fn print(name: impl AsRef<Path>, scena: &[ingert::Item]) {
+fn print(name: impl AsRef<Path>, scena: &[ingert::legacy::Item]) {
 	let out = Path::new("out").join(name);
 	let _span = tracing::info_span!("print", path = %out.display()).entered();
-	let printed = ingert::print::print(scena, ingert::print::Settings {
+	let printed = ingert::legacy::print::print(scena, ingert::legacy::print::Settings {
 		show_lines: true,
-		..ingert::print::Settings::default()
+		..ingert::legacy::print::Settings::default()
 	});
 	std::fs::write(out, &printed).unwrap();
 
-	let (a, b) = ingert::parse::parse(&printed).unwrap();
+	let (a, b) = ingert::legacy::parse::parse(&printed).unwrap();
 	similar_asserts::assert_eq!(scena, &a);
 }

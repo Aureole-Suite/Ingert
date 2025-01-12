@@ -1,7 +1,7 @@
 use gospel::read::{Le as _, Reader};
 use std::cell::Cell;
 use snafu::{OptionExt as _, ResultExt as _};
-use crate::expr::{Arg, Binop, CallKind, Global, Type, Unop, Value};
+use crate::legacy::expr::{Arg, Binop, CallKind, Global, Type, Unop, Value};
 
 #[derive(Debug, snafu::Snafu)]
 #[snafu(module(scp), context(suffix(false)))]

@@ -76,7 +76,7 @@ struct RootCtx<'a> {
 	diag: Diag,
 }
 
-pub fn lower(items: &[ast::Item]) -> (Vec<crate::Item>, Vec<Error>) {
+pub fn lower(items: &[ast::Item]) -> (Vec<crate::legacy::Item>, Vec<Error>) {
 	let mut ctx = RootCtx {
 		functions: HashMap::new(),
 		globals: HashMap::new(),
@@ -97,7 +97,7 @@ pub fn lower(items: &[ast::Item]) -> (Vec<crate::Item>, Vec<Error>) {
 	for item in items {
 		match item {
 			ast::Item::Global(g) => {
-				out.push(crate::Item::Global(crate::Global {
+				out.push(crate::legacy::Item::Global(crate::legacy::Global {
 					line: g.line,
 					name: g.name.value.clone(),
 					ty: g.ty,
@@ -110,7 +110,7 @@ pub fn lower(items: &[ast::Item]) -> (Vec<crate::Item>, Vec<Error>) {
 						span: f.name.span,
 					});
 				}
-				out.push(crate::Item::Function(lower_fn(&ctx, f)));
+				out.push(crate::legacy::Item::Function(lower_fn(&ctx, f)));
 			}
 		}
 	}
@@ -127,7 +127,7 @@ struct Scope<'a> {
 	cont: bool,
 }
 
-fn lower_fn(ctx: &RootCtx, f: &ast::Function) -> crate::Function {
+fn lower_fn(ctx: &RootCtx, f: &ast::Function) -> crate::legacy::Function {
 	let mut scope = Scope {
 		root: ctx,
 		locals: HashMap::new(),
@@ -137,14 +137,14 @@ fn lower_fn(ctx: &RootCtx, f: &ast::Function) -> crate::Function {
 	};
 	let mut args = Vec::new();
 	for (arg, i) in f.args.iter().zip(0..) {
-		args.push(crate::Arg {
+		args.push(crate::legacy::Arg {
 			out: arg.out,
 			ty: arg.ty,
 			default: arg.default.clone(),
 		});
 		scope.root.diag.insert("arg", &mut scope.locals, &arg.name.value, (arg.name.span, !i), |(s, _)| *s);
 	}
-	crate::Function {
+	crate::legacy::Function {
 		name: f.name.value.clone(),
 		args,
 		body: map_stmts(scope, &f.body),
@@ -153,7 +153,7 @@ fn lower_fn(ctx: &RootCtx, f: &ast::Function) -> crate::Function {
 	}
 }
 
-fn map_stmts<'a>(mut scope: Scope<'a>, body: &'a [ast::Stmt]) -> Vec<crate::Stmt> {
+fn map_stmts<'a>(mut scope: Scope<'a>, body: &'a [ast::Stmt]) -> Vec<crate::legacy::Stmt> {
 	let mut out = Vec::new();
 	for stmt in body {
 		match stmt {
@@ -163,9 +163,9 @@ fn map_stmts<'a>(mut scope: Scope<'a>, body: &'a [ast::Stmt]) -> Vec<crate::Stmt
 					&& name.value == "debug"
 				{
 					let args = args.iter().map(|a| map_expr(&scope, a)).collect();
-					out.push(crate::Stmt::Debug(*l, args));
+					out.push(crate::legacy::Stmt::Debug(*l, args));
 				} else {
-					out.push(crate::Stmt::Expr(map_expr(&scope, e)));
+					out.push(crate::legacy::Stmt::Expr(map_expr(&scope, e)));
 				}
 			}
 			ast::Stmt::PushVar(l, v, e) => {
@@ -173,18 +173,18 @@ fn map_stmts<'a>(mut scope: Scope<'a>, body: &'a [ast::Stmt]) -> Vec<crate::Stmt
 				scope.nlocals += 1;
 				let v = lookup_local(&scope, v);
 				let e = e.as_ref().map(|e| map_expr(&scope, e));
-				out.push(crate::Stmt::PushVar(*l, v, e));
+				out.push(crate::legacy::Stmt::PushVar(*l, v, e));
 			}
 			ast::Stmt::Set(l, v, e) => {
 				let v = map_lvalue(&scope, v);
 				let e = map_expr(&scope, e);
-				out.push(crate::Stmt::Set(*l, v, e));
+				out.push(crate::legacy::Stmt::Set(*l, v, e));
 			}
 			ast::Stmt::If(l, e, yes, no) => {
 				let e = map_expr(&scope, e);
 				let yes = map_stmts(scope.clone(), yes);
 				let no = no.as_ref().map(|no| map_stmts(scope.clone(), no));
-				out.push(crate::Stmt::If(*l, e, yes, no));
+				out.push(crate::legacy::Stmt::If(*l, e, yes, no));
 			}
 			ast::Stmt::While(l, e, body) => {
 				let e = map_expr(&scope, e);
@@ -192,7 +192,7 @@ fn map_stmts<'a>(mut scope: Scope<'a>, body: &'a [ast::Stmt]) -> Vec<crate::Stmt
 				inner.brk = true;
 				inner.cont = true;
 				let body = map_stmts(inner, body);
-				out.push(crate::Stmt::While(*l, e, body));
+				out.push(crate::legacy::Stmt::While(*l, e, body));
 			}
 			ast::Stmt::Switch(l, e, cases) => {
 				let e = map_expr(&scope, e);
@@ -211,83 +211,83 @@ fn map_stmts<'a>(mut scope: Scope<'a>, body: &'a [ast::Stmt]) -> Vec<crate::Stmt
 					let body = map_stmts(inner, body);
 					out_cases.push((case.value, body));
 				}
-				out.push(crate::Stmt::Switch(*l, e, out_cases));
+				out.push(crate::legacy::Stmt::Switch(*l, e, out_cases));
 			}
 			ast::Stmt::Break(span) => {
 				if !scope.brk {
 					scope.root.diag.error(Error::IllegalBreak { span: *span });
 				}
-				out.push(crate::Stmt::Break);
+				out.push(crate::legacy::Stmt::Break);
 			}
 			ast::Stmt::Continue(span) => {
 				if !scope.cont {
 					scope.root.diag.error(Error::IllegalContinue { span: *span });
 				}
-				out.push(crate::Stmt::Continue);
+				out.push(crate::legacy::Stmt::Continue);
 			}
 			ast::Stmt::Return(l, e) => {
 				let e = e.as_ref().map(|e| map_expr(&scope, e));
-				out.push(crate::Stmt::Return(*l, e));
+				out.push(crate::legacy::Stmt::Return(*l, e));
 			}
 		}
 	}
 	out
 }
 
-fn map_expr(scope: &Scope, e: &ast::Expr) -> crate::Expr {
+fn map_expr(scope: &Scope, e: &ast::Expr) -> crate::legacy::Expr {
 	match e {
-		ast::Expr::Value(l, v) => crate::Expr::Value(*l, v.clone()),
-		ast::Expr::Var(l, v) => crate::Expr::Var(*l, map_lvalue(scope, v)),
-		ast::Expr::Ref(l, v) => crate::Expr::Ref(*l, lookup_local(scope, v)),
+		ast::Expr::Value(l, v) => crate::legacy::Expr::Value(*l, v.clone()),
+		ast::Expr::Var(l, v) => crate::legacy::Expr::Var(*l, map_lvalue(scope, v)),
+		ast::Expr::Ref(l, v) => crate::legacy::Expr::Ref(*l, lookup_local(scope, v)),
 		ast::Expr::Call(l, c, args) => {
 			let c = map_call(scope, c);
 			let args = args.iter().map(|a| map_expr(scope, a)).collect();
-			crate::Expr::Call(*l, c, args)
+			crate::legacy::Expr::Call(*l, c, args)
 		}
 		ast::Expr::Unop(l, o, a) => {
 			let a = map_expr(scope, a);
-			crate::Expr::Unop(*l, *o, Box::new(a))
+			crate::legacy::Expr::Unop(*l, *o, Box::new(a))
 		}
 		ast::Expr::Binop(l, o, a, b) => {
 			let a = map_expr(scope, a);
 			let b = map_expr(scope, b);
-			crate::Expr::Binop(*l, *o, Box::new(a), Box::new(b))
+			crate::legacy::Expr::Binop(*l, *o, Box::new(a), Box::new(b))
 		}
 	}
 }
 
-fn map_lvalue(scope: &Scope, v: &ast::Lvalue) -> crate::Lvalue {
+fn map_lvalue(scope: &Scope, v: &ast::Lvalue) -> crate::legacy::Lvalue {
 	match v {
-		ast::Lvalue::Stack(s) => crate::Lvalue::Stack(lookup_local(scope, s)),
-		ast::Lvalue::Deref(d) => crate::Lvalue::Deref(lookup_local(scope, d)),
-		ast::Lvalue::Global(g) => crate::Lvalue::Global(lookup_global(scope, g)),
+		ast::Lvalue::Stack(s) => crate::legacy::Lvalue::Stack(lookup_local(scope, s)),
+		ast::Lvalue::Deref(d) => crate::legacy::Lvalue::Deref(lookup_local(scope, d)),
+		ast::Lvalue::Global(g) => crate::legacy::Lvalue::Global(lookup_global(scope, g)),
 	}
 }
 
-fn map_call(scope: &Scope, c: &ast::CallKind) -> crate::CallKind {
+fn map_call(scope: &Scope, c: &ast::CallKind) -> crate::legacy::CallKind {
 	match c {
-		ast::CallKind::System(a, b) => crate::CallKind::System(*a, *b),
+		ast::CallKind::System(a, b) => crate::legacy::CallKind::System(*a, *b),
 		ast::CallKind::Func(name) => {
 			lookup_fn(scope, name);
-			crate::CallKind::Func(name.value.clone())
+			crate::legacy::CallKind::Func(name.value.clone())
 		}
 		ast::CallKind::Tail(name) => {
 			lookup_fn(scope, name);
-			crate::CallKind::Tail(name.value.clone())
+			crate::legacy::CallKind::Tail(name.value.clone())
 		}
 	}
 }
 
-fn lookup_local(scope: &Scope, v: &ast::Ident) -> crate::StackVar {
+fn lookup_local(scope: &Scope, v: &ast::Ident) -> crate::legacy::StackVar {
 	if let Some((_, i)) = scope.locals.get(v.value.as_str()) {
-		crate::StackVar(*i)
+		crate::legacy::StackVar(*i)
 	} else {
 		scope.root.diag.error(Error::MissingSymbol {
 			kind: SymbolKind::Local,
 			name: v.value.clone(),
 			span: v.span,
 		});
-		crate::StackVar(i32::MAX)
+		crate::legacy::StackVar(i32::MAX)
 	}
 }
 
