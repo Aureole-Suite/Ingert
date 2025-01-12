@@ -150,7 +150,7 @@ pub fn write(scp: &Scp) -> Result<Vec<u8>, WriteError> {
 	let func_start = w.f_functions.here();
 	let global_start = w.f_globals.here();
 
-	let func_labels = scp.functions.iter().enumerate().map(|(i, f)| (f.name.as_str(), (Label::new(), i))).collect::<HashMap<_, _>>();
+	let func_labels = sorted_funcs.iter().enumerate().map(|(i, f)| (f.name.as_str(), (Label::new(), i))).collect::<HashMap<_, _>>();
 
 	for func in sorted_funcs {
 		let _span = tracing::info_span!("function", name = &func.name).entered();
