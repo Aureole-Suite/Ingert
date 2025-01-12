@@ -32,9 +32,8 @@ pub fn read(f: &mut Reader) -> Result<Global, ReadError> {
 pub enum WriteError {}
 
 pub fn write(global: &Global, w: &mut super::WCtx) -> Result<(), WriteError> {
-	todo!("globals");
 	let f = &mut w.f_globals;
-	// write_string_value(f, &mut w.f_strings, &global.name);
+	write_string_value(f, &mut w.f_globals_strings, &global.name);
 	match global.ty {
 		GlobalType::Number => f.u32(0),
 		GlobalType::String => f.u32(1),

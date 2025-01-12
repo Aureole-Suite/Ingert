@@ -122,6 +122,7 @@ struct WCtx<'a> {
 	f_functions_strings: Writer,
 	f_defaults_strings: Writer,
 	f_called_strings: Writer,
+	f_globals_strings: Writer,
 }
 
 pub fn write(scp: &Scp) -> Result<Vec<u8>, WriteError> {
@@ -145,6 +146,7 @@ pub fn write(scp: &Scp) -> Result<Vec<u8>, WriteError> {
 		f_functions_strings: Writer::new(),
 		f_defaults_strings: Writer::new(),
 		f_called_strings: Writer::new(),
+		f_globals_strings: Writer::new(),
 	};
 
 	let func_start = w.f_functions.here();
@@ -192,6 +194,7 @@ pub fn write(scp: &Scp) -> Result<Vec<u8>, WriteError> {
 	f.append(w.f_functions_strings);
 	f.append(w.f_defaults_strings);
 	f.append(w.f_called_strings);
+	f.append(w.f_globals_strings);
 
 	Ok(f.finish().unwrap())
 }
