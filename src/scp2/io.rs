@@ -103,18 +103,19 @@ pub enum WriteError {
 	},
 	Function { name: String, source: function::WriteError },
 	// Global { name: String, source: global::WriteError },
-	// Called { name: String, source: called::WriteError },
+	Called { name: String, source: called::WriteError },
 	// Code { name: String, source: code::WriteError },
 }
 
 struct WCtx<'a> {
-	function_names: HashMap<&'a str, usize>,
-	global_names: HashMap<&'a str, usize>,
+	function_names: HashMap<&'a String, usize>,
+	global_names: HashMap<&'a String, usize>,
 	f_functions: Writer,
 	f_args: Writer,
 	f_defaults: Writer,
 	f_globals: Writer,
 	f_called: Writer,
+	f_called_arg: Writer,
 	f_code: Writer,
 	f_strings: Writer,
 }
@@ -123,8 +124,8 @@ pub fn write(scp: &Scp) -> Result<Vec<u8>, WriteError> {
 	let mut sorted_funcs = scp.functions.iter().collect::<Vec<_>>();
 	sorted_funcs.sort_by_key(|f| f.name.as_str());
 
-	let function_names = sorted_funcs.iter().enumerate().map(|(i, f)| (f.name.as_str(), i)).collect::<HashMap<_, _>>();
-	let global_names = scp.globals.iter().enumerate().map(|(i, g)| (g.name.as_str(), i)).collect::<HashMap<_, _>>();
+	let function_names = sorted_funcs.iter().enumerate().map(|(i, f)| (&f.name, i)).collect::<HashMap<_, _>>();
+	let global_names = scp.globals.iter().enumerate().map(|(i, g)| (&g.name, i)).collect::<HashMap<_, _>>();
 
 	let mut w = WCtx {
 		function_names,
@@ -134,6 +135,7 @@ pub fn write(scp: &Scp) -> Result<Vec<u8>, WriteError> {
 		f_defaults: Writer::new(),
 		f_globals: Writer::new(),
 		f_called: Writer::new(),
+		f_called_arg: Writer::new(),
 		f_code: Writer::new(),
 		f_strings: Writer::new(),
 	};
@@ -147,7 +149,9 @@ pub fn write(scp: &Scp) -> Result<Vec<u8>, WriteError> {
 		let _span = tracing::info_span!("function", name = &func.name).entered();
 		let label = func_labels[func.name.as_str()];
 		function::write(func, label, &mut w).context(write::Function { name: &func.name })?;
-		// called::write(&func.called, &mut w).context(write::Called { name: &func.name })?;
+		for call in &func.called {
+			called::write(call, &mut w).context(write::Called { name: &func.name })?;
+		}
 	}
 
 	for global in &scp.globals {
@@ -174,6 +178,7 @@ pub fn write(scp: &Scp) -> Result<Vec<u8>, WriteError> {
 	f.append(w.f_defaults);
 	f.append(w.f_args);
 	f.append(w.f_called);
+	f.append(w.f_called_arg);
 	f.append(w.f_globals);
 	f.append(w.f_code);
 	f.append(w.f_strings);

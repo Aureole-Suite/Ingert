@@ -1,8 +1,9 @@
 use gospel::read::{Le as _, Reader};
+use gospel::write::Le as _;
 use snafu::{ensure, ResultExt as _};
 use crate::scp2::{CallArg, CallKind, Call};
 
-use super::value::{Value, ValueError, value};
+use super::value::{value, write_string_value, write_value, Value, ValueError};
 
 #[derive(Debug, snafu::Snafu)]
 pub enum ReadError {
@@ -126,4 +127,80 @@ fn make_sense(name: Option<String>, kind: RawCallKind, args: Vec<CallArg>) -> Op
 		}
 	};
 	Some(Call { kind, args: args.collect() })
+}
+
+#[derive(Debug, snafu::Snafu)]
+#[snafu(module(write), context(suffix(false)))]
+pub enum WriteError {
+	#[snafu(display("missing function {name}"))]
+	MissingFunction { name: String },
+}
+
+pub fn write(call: &Call, w: &mut super::WCtx) -> Result<(), WriteError> {
+	let f = &mut w.f_called;
+	let g = &mut w.f_called_arg;
+	let nargs = call.args.len() as u16;
+	let arg_start = g.here();
+	match &call.kind {
+		CallKind::Normal(name) if !name.contains('.') => {
+			let Some(id) = w.function_names.get(name).copied() else {
+				return write::MissingFunction { name }.fail();
+			};
+			f.u32(id as u32);
+			f.u16(0);
+			f.u16(nargs);
+		}
+		CallKind::Normal(name) => {
+			f.u32(0xFFFFFFFF);
+			f.u16(1);
+			f.u16(1 + nargs);
+			write_string_value(g, &mut w.f_strings, name);
+			g.u32(0);
+		}
+		CallKind::Tailcall(name) => {
+			if name.contains('.') {
+				f.u32(0xFFFFFFFF);
+			} else if let Some(id) = w.function_names.get(name).copied() {
+				f.u32(id as u32);
+			} else {
+				tracing::warn!("tail call to missing function {name}");
+				f.u32(0xFFFFFFFF);
+			}
+			f.u16(2);
+			f.u16(1 + nargs);
+			write_string_value(g, &mut w.f_strings, name);
+			g.u32(0);
+		}
+		CallKind::Syscall(a, b) => {
+			f.u32(0xFFFFFFFF);
+			f.u16(3);
+			f.u16(2 + nargs);
+			write_value(g, &mut w.f_strings, &Value::Int(*a as i32));
+			g.u32(0);
+			write_value(g, &mut w.f_strings, &Value::Int(*b as i32));
+			g.u32(0);
+		}
+	}
+	f.label32(arg_start);
+	for value in &call.args {
+		match value {
+			CallArg::Value(v) => {
+				write_value(g, &mut w.f_strings, v);
+				g.u32(0);
+			}
+			CallArg::Call => {
+				g.u32(0);
+				g.u32(1);
+			}
+			CallArg::Var => {
+				g.u32(0);
+				g.u32(2);
+			}
+			CallArg::Expr => {
+				g.u32(0);
+				g.u32(3);
+			}
+		}
+	}
+	Ok(())
 }
