@@ -102,9 +102,9 @@ pub enum WriteError {
 		location: snafu::Location,
 	},
 	Function { name: String, source: function::WriteError },
-	// Global { name: String, source: global::WriteError },
+	Global { name: String, source: global::WriteError },
 	Called { name: String, source: called::WriteError },
-	// Code { name: String, source: code::WriteError },
+	Code { name: String, source: code::WriteError },
 }
 
 struct WCtx<'a> {
@@ -143,11 +143,11 @@ pub fn write(scp: &Scp) -> Result<Vec<u8>, WriteError> {
 	let func_start = w.f_functions.here();
 	let global_start = w.f_globals.here();
 
-	let func_labels = scp.functions.iter().map(|f| (f.name.as_str(), Label::new())).collect::<HashMap<_, _>>();
+	let func_labels = scp.functions.iter().enumerate().map(|(i, f)| (f.name.as_str(), (Label::new(), i))).collect::<HashMap<_, _>>();
 
 	for func in sorted_funcs {
 		let _span = tracing::info_span!("function", name = &func.name).entered();
-		let label = func_labels[func.name.as_str()];
+		let label = func_labels[func.name.as_str()].0;
 		function::write(func, label, &mut w).context(write::Function { name: &func.name })?;
 		for call in &func.called {
 			called::write(call, &mut w).context(write::Called { name: &func.name })?;
@@ -156,14 +156,14 @@ pub fn write(scp: &Scp) -> Result<Vec<u8>, WriteError> {
 
 	for global in &scp.globals {
 		let _span = tracing::info_span!("global", name = &global.name).entered();
-		// global::write(global, &mut w).context(write::Global { name: &global.name })?;
+		global::write(global, &mut w).context(write::Global { name: &global.name })?;
 	}
 
 	for func in &scp.functions {
 		let _span = tracing::info_span!("function", name = &func.name).entered();
-		let label = func_labels[func.name.as_str()];
+		let (label, i) = func_labels[func.name.as_str()];
 		w.f_code.place(label);
-		// code::write(&func.code, &mut w).context(write::Code { name: &func.name })?;
+		code::write(&func.code, i, &mut w).context(write::Code { name: &func.name })?;
 	}
 
 	let mut f = Writer::new();
