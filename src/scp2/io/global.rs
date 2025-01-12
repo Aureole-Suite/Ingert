@@ -24,5 +24,5 @@ pub fn read(f: &mut Reader) -> Result<Global, ReadError> {
 		1 => GlobalType::String,
 		ty => TypeSnafu { ty }.fail()?
 	};
-	Ok(Global { name, ty, line: None })
+	Ok(Global { name, ty })
 }

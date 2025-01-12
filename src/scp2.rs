@@ -28,7 +28,6 @@ impl std::fmt::Debug for Value {
 pub struct Global {
 	pub name: String,
 	pub ty: GlobalType,
-	pub line: Option<u16>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
