@@ -62,7 +62,9 @@ pub fn scp(data: &[u8]) -> Result<Scp, ScpError> {
 		tracing::info!("function: {} {} {}", func.name, func.number, func.code_start);
 	}
 
-	for func in raw_functions {
+	let func_ends = raw_functions.iter().skip(1).map(|f| Some(f.code_start)).chain([None]).collect::<Vec<_>>();
+
+	for (func, end) in std::iter::zip(raw_functions, func_ends) {
 		let _span = tracing::info_span!("function", name = func.name, number = func.number).entered();
 		f.seek(func.called_start)?;
 		let mut called = Vec::with_capacity(func.called_count);
@@ -75,7 +77,7 @@ pub fn scp(data: &[u8]) -> Result<Scp, ScpError> {
 		}
 
 		f.seek(func.code_start)?;
-		let code = code::parse(&mut f, func.number, &func_names, &global_names)
+		let code = code::parse(&mut f, end, func.number, &func_names, &global_names)
 			.context(CodeSnafu { name: &func.name, number: func.number, start: func.code_start })?;
 		// dbg!(func, code);
 	}

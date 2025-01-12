@@ -33,6 +33,7 @@ pub enum CodeError {
 
 pub fn parse(
 	f: &mut Reader,
+	end: Option<usize>,
 	func_id: usize,
 	funcs: &[String],
 	globals: &[String],
@@ -123,9 +124,13 @@ pub fn parse(
 			op@40.. => return OpSnafu { op, pos }.fail(),
 		};
 		tracing::trace!("{pos} {op:?}");
-		let end = op == Op::Return && pos >= extent.get();
+		let is_end = if let Some(end) = end {
+			f.pos() >= end
+		} else {
+			op == Op::Return && pos >= extent.get()
+		};
 		ops.push((pos, op));
-		if end {
+		if is_end {
 			break;
 		}
 	}
