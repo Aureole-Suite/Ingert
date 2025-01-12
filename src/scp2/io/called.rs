@@ -35,7 +35,7 @@ pub enum RawCallKind {
 	Syscall,
 }
 
-pub fn called(f: &mut Reader, func_names: &[String]) -> Result<Call, CalledError> {
+pub fn read(f: &mut Reader, func_names: &[String]) -> Result<Call, CalledError> {
 	let start = f.pos();
 	let (name, kind, args) = parse(f, func_names)?;
 	if let Some(call) = make_sense(name, kind, args) {

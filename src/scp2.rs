@@ -1,5 +1,5 @@
-mod parse;
-pub use parse::scp as parse;
+mod io;
+pub use io::read;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Scp {

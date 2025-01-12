@@ -24,7 +24,7 @@ pub enum ScpError {
 	Code { name: String, number: usize, start: usize, source: code::CodeError },
 }
 
-pub fn scp(data: &[u8]) -> Result<Scp, ScpError> {
+pub fn read(data: &[u8]) -> Result<Scp, ScpError> {
 	let mut f = Reader::new(data);
 	f.check(b"#scp")?;
 	let func_start = f.u32()? as usize;
@@ -38,7 +38,7 @@ pub fn scp(data: &[u8]) -> Result<Scp, ScpError> {
 	for number in 0..func_count {
 		let _span = tracing::info_span!("function", number = number).entered();
 		let start = f.pos();
-		let func = function::function(number, &mut f).context(FunctionSnafu { number, start })?;
+		let func = function::read(number, &mut f).context(FunctionSnafu { number, start })?;
 		raw_functions.push(func);
 	}
 
@@ -48,7 +48,7 @@ pub fn scp(data: &[u8]) -> Result<Scp, ScpError> {
 		for number in 0..global_count {
 			let _span = tracing::info_span!("global", number = number).entered();
 			let start = f.pos();
-			let global = global::global(&mut f).context(GlobalSnafu { number, start })?;
+			let global = global::read(&mut f).context(GlobalSnafu { number, start })?;
 			globals.push(global);
 		}
 	}
@@ -69,13 +69,13 @@ pub fn scp(data: &[u8]) -> Result<Scp, ScpError> {
 		for number in 0..func.called_count {
 			let _span = tracing::info_span!("call", name = &func.name, number = number).entered();
 			let start = f.pos();
-			let call = called::called(&mut f, &func_names)
+			let call = called::read(&mut f, &func_names)
 				.context(CalledSnafu { start, name: &func.name, number })?;
 			called.push(call);
 		}
 
 		f.seek(func.code_start)?;
-		let code = code::parse(&mut f, end, func.number, &func_names, &global_names)
+		let code = code::read(&mut f, end, func.number, &func_names, &global_names)
 			.context(CodeSnafu { name: &func.name, number: func.number, start: func.code_start })?;
 		functions.push(Function {
 			name: func.name,

@@ -37,7 +37,7 @@ pub enum FunctionError {
 	ArgType { number: usize, ty: u32 },
 }
 
-pub fn function(number: usize, f: &mut Reader) -> Result<RawFunction, FunctionError> {
+pub fn read(number: usize, f: &mut Reader) -> Result<RawFunction, FunctionError> {
 	let code_start = f.u32()? as usize;
 	let arg_count = f.u8()? as usize;
 	let flags = f.u16()?;

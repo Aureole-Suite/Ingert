@@ -17,7 +17,7 @@ pub enum GlobalError {
 	Type { ty: u32 },
 }
 
-pub fn global(f: &mut Reader) -> Result<Global, GlobalError> {
+pub fn read(f: &mut Reader) -> Result<Global, GlobalError> {
 	let name = string_value(f).context(NameSnafu)?;
 	let ty = match f.u32()? {
 		0 => GlobalType::Number,

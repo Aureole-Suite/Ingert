@@ -31,7 +31,7 @@ pub enum CodeError {
 	Function { id: usize },
 }
 
-pub fn parse(
+pub fn read(
 	f: &mut Reader,
 	end: Option<usize>,
 	func_id: usize,
