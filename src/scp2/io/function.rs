@@ -119,12 +119,12 @@ pub fn write(func: &crate::scp2::Function, code: Label, w: &mut super::WCtx) -> 
 	f.u32(func.called.len() as u32);
 	f.label32(w.f_called.here());
 	f.u32(!crc32fast::hash(func.name.as_bytes()));
-	write_string_value(f, &mut w.f_strings, &func.name);
+	write_string_value(f, &mut w.f_functions_strings, &func.name);
 
 	let f = &mut w.f_defaults;
 	for arg in &func.args {
 		if let Some(v) = &arg.default {
-			write_value(f, &mut w.f_strings, v);
+			write_value(f, &mut w.f_defaults_strings, v);
 		}
 	}
 

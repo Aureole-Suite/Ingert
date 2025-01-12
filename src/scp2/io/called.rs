@@ -154,7 +154,7 @@ pub fn write(call: &Call, w: &mut super::WCtx) -> Result<(), WriteError> {
 			f.u32(0xFFFFFFFF);
 			f.u16(1);
 			f.u16(1 + nargs);
-			write_string_value(g, &mut w.f_strings, name);
+			write_string_value(g, &mut w.f_called_strings, name);
 			g.u32(0);
 		}
 		CallKind::Tailcall(name) => {
@@ -168,16 +168,16 @@ pub fn write(call: &Call, w: &mut super::WCtx) -> Result<(), WriteError> {
 			}
 			f.u16(2);
 			f.u16(1 + nargs);
-			write_string_value(g, &mut w.f_strings, name);
+			write_string_value(g, &mut w.f_called_strings, name);
 			g.u32(0);
 		}
 		CallKind::Syscall(a, b) => {
 			f.u32(0xFFFFFFFF);
 			f.u16(3);
 			f.u16(2 + nargs);
-			write_value(g, &mut w.f_strings, &Value::Int(*a as i32));
+			write_value(g, &mut w.f_called_strings, &Value::Int(*a as i32));
 			g.u32(0);
-			write_value(g, &mut w.f_strings, &Value::Int(*b as i32));
+			write_value(g, &mut w.f_called_strings, &Value::Int(*b as i32));
 			g.u32(0);
 		}
 	}
@@ -185,7 +185,7 @@ pub fn write(call: &Call, w: &mut super::WCtx) -> Result<(), WriteError> {
 	for value in &call.args {
 		match value {
 			CallArg::Value(v) => {
-				write_value(g, &mut w.f_strings, v);
+				write_value(g, &mut w.f_called_strings, v);
 				g.u32(0);
 			}
 			CallArg::Call => {

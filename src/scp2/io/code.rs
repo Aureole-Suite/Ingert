@@ -206,7 +206,7 @@ pub fn write(code: &[Op], number: usize, w: &mut super::WCtx) -> Result<(), Writ
 			Op::Push(ref v) => {
 				f.u8(0);
 				f.u8(4);
-				write_value(f, &mut w.f_strings, v);
+				write_value(f, &mut w.f_code_strings, v);
 			}
 			Op::Pop(n) => {
 				f.u8(1);
@@ -278,15 +278,15 @@ pub fn write(code: &[Op], number: usize, w: &mut super::WCtx) -> Result<(), Writ
 			Op::CallExtern(ref name, n) => {
 				let (a, b) = name.split_once('.').context(write::Function { name })?;
 				f.u8(34);
-				write_string_value(f, &mut w.f_strings, a);
-				write_string_value(f, &mut w.f_strings, b);
+				write_string_value(f, &mut w.f_code_strings, a);
+				write_string_value(f, &mut w.f_code_strings, b);
 				f.u8(n);
 			}
 			Op::CallTail(ref name, n) => {
 				let (a, b) = name.split_once('.').unwrap_or(("", name));
 				f.u8(35);
-				write_string_value(f, &mut w.f_strings, a);
-				write_string_value(f, &mut w.f_strings, b);
+				write_string_value(f, &mut w.f_code_strings, a);
+				write_string_value(f, &mut w.f_code_strings, b);
 				f.u8(n);
 			}
 			Op::CallSystem(a, b, n) => {
