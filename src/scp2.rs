@@ -15,13 +15,13 @@ pub enum Value {
 }
 
 impl std::fmt::Debug for Value {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Int(v) => v.fmt(f),
-            Self::Float(v) => v.fmt(f),
-            Self::String(v) => v.fmt(f),
-        }
-    }
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			Self::Int(v) => v.fmt(f),
+			Self::Float(v) => v.fmt(f),
+			Self::String(v) => v.fmt(f),
+		}
+	}
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -66,14 +66,14 @@ pub struct Call {
 }
 
 impl std::fmt::Debug for Call {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut t = f.debug_tuple("Call");
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		let mut t = f.debug_tuple("Call");
 		t.field(&self.kind);
 		for arg in &self.args {
 			t.field(arg);
 		}
 		t.finish()
-    }
+	}
 }
 
 #[derive(Clone, PartialEq)]
@@ -85,14 +85,14 @@ pub enum CallArg {
 }
 
 impl std::fmt::Debug for CallArg {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Value(v) => v.fmt(f),
-            Self::Call => write!(f, "Call"),
-            Self::Var => write!(f, "Var"),
-            Self::Expr => write!(f, "Expr"),
-        }
-    }
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			Self::Value(v) => v.fmt(f),
+			Self::Call => write!(f, "Call"),
+			Self::Var => write!(f, "Var"),
+			Self::Expr => write!(f, "Expr"),
+		}
+	}
 }
 
 #[derive(Debug, Clone, PartialEq)]
