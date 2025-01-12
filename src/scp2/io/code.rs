@@ -268,7 +268,7 @@ pub fn write(code: &[Op], number: usize, w: &mut super::WCtx) -> Result<(), Writ
 				f.label32(*labels.get(&label).context(write::MissingLabel { label })?);
 			}
 			Op::Goto(label) => {
-				f.u8(16);
+				f.u8(11);
 				f.label32(*labels.get(&label).context(write::MissingLabel { label })?);
 			}
 			Op::CallLocal(ref name) => {
