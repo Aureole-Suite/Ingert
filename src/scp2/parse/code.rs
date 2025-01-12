@@ -63,7 +63,7 @@ pub fn parse(
 					&& f.check_u8(4).is_ok()
 					&& f.clone().u32().is_ok_and(|v| v >> 30 == 0)
 				{
-					break 'a Op::PushForCallLocal(label(f.u32()?))
+					break 'a Op::PrepareCallLocal(label(f.u32()?))
 				}
 				f.seek(p)?;
 				if f.check_u32(0).is_ok() {
@@ -94,7 +94,7 @@ pub fn parse(
 				Op::CallLocal(funcs.get(id).context(FunctionSnafu { id })?.clone())
 			}
 			13 => Op::Return,
-			14 => Op::If2(label(f.u32()?)),
+			14 => Op::Case(label(f.u32()?)),
 			15 => Op::If(label(f.u32()?)),
 			op@16..=30 => Op::Binop(Binop::from_repr(op).unwrap()),
 			op@31..=33 => Op::Unop(Unop::from_repr(op).unwrap()),
@@ -118,7 +118,7 @@ pub fn parse(
 				let c = f.u8()?;
 				Op::CallSystem(a, b, c)
 			}
-			37 => Op::PushForCallExtern(label(f.u32()?)),
+			37 => Op::PrepareCallExtern(label(f.u32()?)),
 			38 => Op::Line(f.u16()?),
 			39 => Op::Debug(f.u8()?),
 			op@40.. => return OpSnafu { op, pos }.fail(),
@@ -173,9 +173,9 @@ fn reorder_labels(ops: &mut Vec<Op>) {
 			Op::Label(l)
 			| Op::Goto(l)
 			| Op::If(l)
-			| Op::If2(l)
-			| Op::PushForCallLocal(l)
-			| Op::PushForCallExtern(l) => {
+			| Op::Case(l)
+			| Op::PrepareCallLocal(l)
+			| Op::PrepareCallExtern(l) => {
 				*l = labels[l];
 			}
 			_ => continue,

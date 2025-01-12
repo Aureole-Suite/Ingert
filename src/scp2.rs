@@ -138,10 +138,11 @@ pub struct StackSlot(pub u32);
 #[derive(Debug, Clone, PartialEq)]
 pub enum Op {
 	Label(Label),
+
 	Push(Value),
-	PushNull,
-	PushForCallLocal(Label),
 	Pop(u8),
+	PushNull,
+
 	GetVar(StackSlot),
 	GetRef(StackSlot),
 	PushRef(StackSlot),
@@ -151,17 +152,22 @@ pub enum Op {
 	SetGlobal(String),
 	GetTemp(u8),
 	SetTemp(u8),
-	Goto(Label),
-	CallLocal(String),
-	Return,
-	If2(Label),
-	If(Label),
+
 	Binop(Binop),
 	Unop(Unop),
+
+	If(Label),
+	Goto(Label),
+	Case(Label),
+
+	CallLocal(String),
 	CallExtern(String, u8),
 	CallTail(String, u8),
 	CallSystem(u8, u8, u8),
-	PushForCallExtern(Label),
+	PrepareCallLocal(Label),
+	PrepareCallExtern(Label),
+	Return,
+
 	Line(u16),
 	Debug(u8),
 }
