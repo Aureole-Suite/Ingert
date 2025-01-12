@@ -18,10 +18,10 @@ pub enum ScpError {
 		#[snafu(implicit)]
 		location: snafu::Location,
 	},
-	Function { number: usize, start: usize, source: function::FunctionError },
-	Global { number: usize, start: usize, source: global::GlobalError },
-	Called { name: String, number: usize, start: usize, source: called::CalledError },
-	Code { name: String, number: usize, start: usize, source: code::CodeError },
+	Function { number: usize, start: usize, source: function::ReadError },
+	Global { number: usize, start: usize, source: global::ReadError },
+	Called { name: String, number: usize, start: usize, source: called::ReadError },
+	Code { name: String, number: usize, start: usize, source: code::ReadError },
 }
 
 pub fn read(data: &[u8]) -> Result<Scp, ScpError> {

@@ -5,7 +5,7 @@ use crate::scp2::{CallArg, CallKind, Call};
 use super::value::{Value, ValueError, value};
 
 #[derive(Debug, snafu::Snafu)]
-pub enum CalledError {
+pub enum ReadError {
 	#[snafu(display("invalid read (at {location})"), context(false))]
 	Read {
 		source: gospel::read::Error,
@@ -35,7 +35,7 @@ pub enum RawCallKind {
 	Syscall,
 }
 
-pub fn read(f: &mut Reader, func_names: &[String]) -> Result<Call, CalledError> {
+pub fn read(f: &mut Reader, func_names: &[String]) -> Result<Call, ReadError> {
 	let start = f.pos();
 	let (name, kind, args) = parse(f, func_names)?;
 	if let Some(call) = make_sense(name, kind, args) {
@@ -47,7 +47,7 @@ pub fn read(f: &mut Reader, func_names: &[String]) -> Result<Call, CalledError> 
 	}
 }
 
-fn parse(f: &mut Reader, func_names: &[String]) -> Result<(Option<String>, RawCallKind, Vec<CallArg>), CalledError> {
+fn parse(f: &mut Reader, func_names: &[String]) -> Result<(Option<String>, RawCallKind, Vec<CallArg>), ReadError> {
 	let name = match f.u32()? {
 		0xFFFFFFFF => None,
 		id => {

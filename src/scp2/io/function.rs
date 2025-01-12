@@ -16,7 +16,7 @@ pub struct RawFunction {
 }
 
 #[derive(Debug, snafu::Snafu)]
-pub enum FunctionError {
+pub enum ReadError {
 	#[snafu(display("invalid read (at {location})"), context(false))]
 	Read {
 		source: gospel::read::Error,
@@ -37,7 +37,7 @@ pub enum FunctionError {
 	ArgType { number: usize, ty: u32 },
 }
 
-pub fn read(number: usize, f: &mut Reader) -> Result<RawFunction, FunctionError> {
+pub fn read(number: usize, f: &mut Reader) -> Result<RawFunction, ReadError> {
 	let code_start = f.u32()? as usize;
 	let arg_count = f.u8()? as usize;
 	let flags = f.u16()?;

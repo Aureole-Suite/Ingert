@@ -8,7 +8,7 @@ use super::super::{Op, Label, StackSlot, Binop, Unop};
 use super::value::{ValueError, value, string_value};
 
 #[derive(Debug, snafu::Snafu)]
-pub enum CodeError {
+pub enum ReadError {
 	#[snafu(display("invalid read (at {location})"), context(false))]
 	Read {
 		source: gospel::read::Error,
@@ -37,7 +37,7 @@ pub fn read(
 	func_id: usize,
 	funcs: &[String],
 	globals: &[String],
-) -> Result<Vec<Op>, CodeError> {
+) -> Result<Vec<Op>, ReadError> {
 	let extent = Cell::new(f.pos());
 	let mut labels = HashSet::new();
 	let mut label = |v: u32| -> Label {
@@ -153,7 +153,7 @@ pub fn read(
 	Ok(ops2)
 }
 
-fn stack_slot(f: &mut Reader) -> Result<StackSlot, CodeError> {
+fn stack_slot(f: &mut Reader) -> Result<StackSlot, ReadError> {
 	let value = f.i32()?;
 	if value % 4 != 0 || value >= 0 {
 		return StackSlotSnafu { value }.fail();
