@@ -155,9 +155,9 @@ pub enum Op {
 	Binop(Binop),
 	Unop(Unop),
 
-	If(Label),
+	Jnz(Label),
+	Jz(Label),
 	Goto(Label),
-	Case(Label),
 
 	CallLocal(String),
 	CallExtern(String, u8),

@@ -94,8 +94,8 @@ pub fn read(
 				Op::CallLocal(funcs.get(id).context(FunctionSnafu { id })?.clone())
 			}
 			13 => Op::Return,
-			14 => Op::Case(label(f.u32()?)),
-			15 => Op::If(label(f.u32()?)),
+			14 => Op::Jnz(label(f.u32()?)),
+			15 => Op::Jz(label(f.u32()?)),
 			op@16..=30 => Op::Binop(Binop::from_repr(op).unwrap()),
 			op@31..=33 => Op::Unop(Unop::from_repr(op).unwrap()),
 			34 => {
@@ -171,9 +171,9 @@ fn reorder_labels(ops: &mut Vec<Op>) {
 	for op in ops {
 		match op {
 			Op::Label(l)
+			| Op::Jnz(l)
+			| Op::Jz(l)
 			| Op::Goto(l)
-			| Op::If(l)
-			| Op::Case(l)
 			| Op::PrepareCallLocal(l)
 			| Op::PrepareCallExtern(l) => {
 				*l = labels[l];
