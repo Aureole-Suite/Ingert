@@ -1,8 +1,9 @@
 use gospel::read::{Le as _, Reader};
+use gospel::write::{Le as _, Label};
 use snafu::{ResultExt as _, ensure};
 use crate::scp2::{Arg, ArgType};
 
-use super::value::{string_value, value, ValueError};
+use super::value::{string_value, value, write_value, write_string_value, ValueError};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct RawFunction {
@@ -104,3 +105,38 @@ pub fn read(number: usize, f: &mut Reader) -> Result<RawFunction, ReadError> {
 	})
 }
 
+#[derive(Debug, snafu::Snafu)]
+pub enum WriteError {}
+
+pub fn write(func: &crate::scp2::Function, code: Label, w: &mut super::WCtx) -> Result<(), WriteError> {
+	let f = &mut w.f_functions;
+	f.label32(code);
+	f.u8(func.args.len() as u8);
+	f.u16(if func.is_prelude { 1 } else { 0 });
+	f.u8(func.args.iter().filter(|a| a.default.is_some()).count() as u8);
+	f.label32(w.f_defaults.here());
+	f.label32(w.f_args.here());
+	f.u32(func.called.len() as u32);
+	f.label32(w.f_called.here());
+	f.u32(!crc32fast::hash(func.name.as_bytes()));
+	write_string_value(f, &mut w.f_strings, &func.name);
+
+	let f = &mut w.f_defaults;
+	for arg in &func.args {
+		if let Some(v) = &arg.default {
+			write_value(f, &mut w.f_strings, v);
+		}
+	}
+
+	let f = &mut w.f_args;
+	for arg in &func.args {
+		let ty = match arg.ty {
+			ArgType::Number => 1,
+			ArgType::String => 2,
+			ArgType::NumberRef => 5,
+		} | if arg.default.is_some() { 8 } else { 0 };
+		f.u32(ty);
+	}
+
+	Ok(())
+}

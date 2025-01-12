@@ -29,9 +29,12 @@ fn main() {
 		};
 		// println!("{:#?}", ingert::scp::parse_scp(&data));
 
-		let mut scp = ingert::scp::parse_scp(&data).unwrap();
-		let mut scp2 = ingert::scp2::read(&data).unwrap();
-		dbg!(scp2);
+		let scp = ingert::scp::parse_scp(&data).unwrap();
+		let scp2 = ingert::scp2::read(&data).unwrap();
+		let data2 = ingert::scp2::write(&scp2).unwrap();
+		std::fs::write("a.bin", &data).unwrap();
+		std::fs::write("b.bin", &data2).unwrap();
+		// dbg!(scp2);
 		let mut scena = ingert::decompile(&data).unwrap();
 		// prelude.add(&mut scena);
 

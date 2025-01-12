@@ -1,5 +1,5 @@
-mod io;
-pub use io::read;
+pub mod io;
+pub use io::{read, write};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Scp {

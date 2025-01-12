@@ -1,4 +1,5 @@
 use gospel::read::{Le as _, Reader};
+use gospel::write::{Le as _, Writer};
 use snafu::ResultExt as _;
 pub use super::super::Value;
 
@@ -72,4 +73,19 @@ pub fn string_value(f: &mut Reader) -> Result<String, ValueError> {
 		Value::String(s) => Ok(s),
 		value => NeedStringSnafu { value }.fail(),
 	}
+}
+
+pub fn write_value(f: &mut Writer, g: &mut Writer, v: &Value) {
+	match v {
+		Value::Int(v) => f.u32(1 << 30 | (*v as u32 & 0x3FFFFFFF)),
+		Value::Float(v) => f.u32(2 << 30 | (f32::to_bits(*v) >> 2)),
+		Value::String(v) => write_string_value(f, g, v)
+	}
+}
+
+pub fn write_string_value(f: &mut Writer, g: &mut Writer, v: &str) {
+	let pos = g.here();
+	g.slice(v.as_bytes());
+	g.u8(0);
+	f.delay(move |c| Ok((3 << 30 | c.label(pos)? as u32).to_le_bytes()));
 }

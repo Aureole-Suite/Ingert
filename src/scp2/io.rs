@@ -4,14 +4,17 @@ mod called;
 mod global;
 mod code;
 
+use std::collections::HashMap;
+
 use gospel::read::{Le as _, Reader};
+use gospel::write::{Le as _, Writer, Label};
 use snafu::ResultExt as _;
 use crate::scp2::Function;
 
 use super::Scp;
 
 #[derive(Debug, snafu::Snafu)]
-pub enum ScpError {
+pub enum ReadError {
 	#[snafu(display("invalid read (at {location})"), context(false))]
 	Read {
 		source: gospel::read::Error,
@@ -24,7 +27,7 @@ pub enum ScpError {
 	Code { name: String, number: usize, start: usize, source: code::ReadError },
 }
 
-pub fn read(data: &[u8]) -> Result<Scp, ScpError> {
+pub fn read(data: &[u8]) -> Result<Scp, ReadError> {
 	let mut f = Reader::new(data);
 	f.check(b"#scp")?;
 	let func_start = f.u32()? as usize;
@@ -87,4 +90,93 @@ pub fn read(data: &[u8]) -> Result<Scp, ScpError> {
 	}
 
 	Ok(Scp { globals, functions })
+}
+
+#[derive(Debug, snafu::Snafu)]
+#[snafu(module(write), context(suffix(false)))]
+pub enum WriteError {
+	#[snafu(display("invalid write (at {location})"), context(false))]
+	Write {
+		source: gospel::write::Error,
+		#[snafu(implicit)]
+		location: snafu::Location,
+	},
+	Function { name: String, source: function::WriteError },
+	// Global { name: String, source: global::WriteError },
+	// Called { name: String, source: called::WriteError },
+	// Code { name: String, source: code::WriteError },
+}
+
+struct WCtx<'a> {
+	function_names: HashMap<&'a str, usize>,
+	global_names: HashMap<&'a str, usize>,
+	f_functions: Writer,
+	f_args: Writer,
+	f_defaults: Writer,
+	f_globals: Writer,
+	f_called: Writer,
+	f_code: Writer,
+	f_strings: Writer,
+}
+
+pub fn write(scp: &Scp) -> Result<Vec<u8>, WriteError> {
+	let mut sorted_funcs = scp.functions.iter().collect::<Vec<_>>();
+	sorted_funcs.sort_by_key(|f| f.name.as_str());
+
+	let function_names = sorted_funcs.iter().enumerate().map(|(i, f)| (f.name.as_str(), i)).collect::<HashMap<_, _>>();
+	let global_names = scp.globals.iter().enumerate().map(|(i, g)| (g.name.as_str(), i)).collect::<HashMap<_, _>>();
+
+	let mut w = WCtx {
+		function_names,
+		global_names,
+		f_functions: Writer::new(),
+		f_args: Writer::new(),
+		f_defaults: Writer::new(),
+		f_globals: Writer::new(),
+		f_called: Writer::new(),
+		f_code: Writer::new(),
+		f_strings: Writer::new(),
+	};
+
+	let func_start = w.f_functions.here();
+	let global_start = w.f_globals.here();
+
+	let func_labels = scp.functions.iter().map(|f| (f.name.as_str(), Label::new())).collect::<HashMap<_, _>>();
+
+	for func in sorted_funcs {
+		let _span = tracing::info_span!("function", name = &func.name).entered();
+		let label = func_labels[func.name.as_str()];
+		function::write(func, label, &mut w).context(write::Function { name: &func.name })?;
+		// called::write(&func.called, &mut w).context(write::Called { name: &func.name })?;
+	}
+
+	for global in &scp.globals {
+		let _span = tracing::info_span!("global", name = &global.name).entered();
+		// global::write(global, &mut w).context(write::Global { name: &global.name })?;
+	}
+
+	for func in &scp.functions {
+		let _span = tracing::info_span!("function", name = &func.name).entered();
+		let label = func_labels[func.name.as_str()];
+		w.f_code.place(label);
+		// code::write(&func.code, &mut w).context(write::Code { name: &func.name })?;
+	}
+
+	let mut f = Writer::new();
+	f.slice(b"#scp");
+	f.label32(func_start);
+	f.u32(scp.functions.len() as u32);
+	f.label32(global_start);
+	f.u32(scp.globals.len() as u32);
+	f.u32(0);
+
+	f.append(w.f_functions);
+	f.append(w.f_defaults);
+	f.append(w.f_args);
+	f.append(w.f_called);
+	f.append(w.f_globals);
+	f.append(w.f_code);
+	f.append(w.f_strings);
+
+	Ok(f.finish().unwrap())
 }
