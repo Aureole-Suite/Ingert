@@ -1,7 +1,7 @@
 use gospel::read::{Le as _, Reader};
 use gospel::write::Le as _;
 use snafu::ResultExt as _;
-use crate::scp2::{Global, GlobalType};
+use crate::scp::{Global, GlobalType};
 use super::value::{string_value, write_string_value, ValueError};
 
 #[derive(Debug, snafu::Snafu)]

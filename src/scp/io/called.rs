@@ -1,7 +1,7 @@
 use gospel::read::{Le as _, Reader};
 use gospel::write::Le as _;
 use snafu::{ensure, ResultExt as _};
-use crate::scp2::{CallArg, CallKind, Call};
+use crate::scp::{CallArg, CallKind, Call};
 
 use super::value::{value, write_string_value, write_value, Value, ValueError};
 

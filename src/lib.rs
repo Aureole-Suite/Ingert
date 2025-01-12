@@ -70,4 +70,4 @@ pub mod legacy {
 	}
 }
 
-pub mod scp2;
+pub mod scp;

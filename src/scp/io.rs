@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use gospel::read::{Le as _, Reader};
 use gospel::write::{Le as _, Writer, Label};
 use snafu::ResultExt as _;
-use crate::scp2::Function;
+use crate::scp::Function;
 
 use super::Scp;
 

@@ -1,7 +1,7 @@
 use gospel::read::{Le as _, Reader};
 use gospel::write::{Le as _, Label};
 use snafu::{ResultExt as _, ensure};
-use crate::scp2::{Arg, ArgType};
+use crate::scp::{Arg, ArgType};
 
 use super::value::{string_value, value, write_value, write_string_value, ValueError};
 
@@ -108,7 +108,7 @@ pub fn read(number: usize, f: &mut Reader) -> Result<RawFunction, ReadError> {
 #[derive(Debug, snafu::Snafu)]
 pub enum WriteError {}
 
-pub fn write(func: &crate::scp2::Function, code: Label, w: &mut super::WCtx) -> Result<(), WriteError> {
+pub fn write(func: &crate::scp::Function, code: Label, w: &mut super::WCtx) -> Result<(), WriteError> {
 	let f = &mut w.f_functions;
 	f.label32(code);
 	f.u8(func.args.len() as u8);
