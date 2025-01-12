@@ -106,3 +106,67 @@ pub enum CallKind {
 	Tailcall(String),
 	Syscall(u8, u8),
 }
+
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, strum::FromRepr)]
+pub enum Binop {
+	Add = 16,
+	Sub = 17,
+	Mul = 18,
+	Div = 19,
+	Mod = 20,
+	Eq = 21,
+	Ne = 22,
+	Gt = 23,
+	Ge = 24,
+	Lt = 25,
+	Le = 26,
+	BitAnd = 27,
+	BitOr = 28,
+	BoolAnd = 29,
+	BoolOr = 30,
+}
+
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, strum::FromRepr)]
+pub enum Unop {
+	Neg = 31,
+	BoolNot = 32,
+	BitNot = 33,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Label(pub u32);
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct StackSlot(pub u32);
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Op {
+	Label(Label),
+	Push(Value),
+	PushNull,
+	PushForCallLocal(Label),
+	Pop(u8),
+	GetVar(StackSlot),
+	GetRef(StackSlot),
+	PushRef(StackSlot),
+	SetVar(StackSlot),
+	SetRef(StackSlot),
+	GetGlobal(String),
+	SetGlobal(String),
+	GetTemp(u8),
+	SetTemp(u8),
+	Goto(Label),
+	CallLocal(String),
+	Return,
+	If2(Label),
+	If(Label),
+	Binop(Binop),
+	Unop(Unop),
+	CallExtern(String, u8),
+	CallTail(String, u8),
+	CallSystem(u8, u8, u8),
+	PushForCallExtern(Label),
+	Line(u16),
+	Debug(u8),
+}

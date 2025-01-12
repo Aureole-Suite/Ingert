@@ -2,6 +2,7 @@ mod value;
 mod function;
 mod called;
 mod global;
+mod code;
 
 use gospel::read::{Le as _, Reader};
 use snafu::ResultExt as _;
@@ -18,6 +19,7 @@ pub enum ScpError {
 	Function { number: usize, start: usize, source: function::FunctionError },
 	Global { number: usize, start: usize, source: global::GlobalError },
 	Called { name: String, number: usize, start: usize, source: called::CalledError },
+	Code { name: String, number: usize, start: usize, source: code::CodeError },
 }
 
 pub fn scp(data: &[u8]) -> Result<Scp, ScpError> {
@@ -56,17 +58,26 @@ pub fn scp(data: &[u8]) -> Result<Scp, ScpError> {
 	}
 	raw_functions.sort_by_key(|f| f.code_start);
 
+	for func in &raw_functions {
+		tracing::info!("function: {} {} {}", func.name, func.number, func.code_start);
+	}
+
 	for func in raw_functions {
+		let _span = tracing::info_span!("function", name = func.name, number = func.number).entered();
 		f.seek(func.called_start)?;
 		let mut called = Vec::with_capacity(func.called_count);
 		for number in 0..func.called_count {
 			let _span = tracing::info_span!("call", name = &func.name, number = number).entered();
 			let start = f.pos();
-			let call = called::called(&mut f, &func_names).context(CalledSnafu { start, name: &func.name, number })?;
+			let call = called::called(&mut f, &func_names)
+				.context(CalledSnafu { start, name: &func.name, number })?;
 			called.push(call);
 		}
-		dbg!(func, called);
 
+		f.seek(func.code_start)?;
+		let code = code::parse(&mut f, func.number, &func_names, &global_names)
+			.context(CodeSnafu { name: &func.name, number: func.number, start: func.code_start })?;
+		// dbg!(func, code);
 	}
 
 	todo!();
