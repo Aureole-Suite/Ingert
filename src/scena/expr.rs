@@ -121,7 +121,7 @@ pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
 				ctx.stmt(Stmt1::If(cond, l))?;
 			}
 			Op::Goto(l) => {
-				ctx.stmt(Stmt1::Label(l))?;
+				ctx.stmt(Stmt1::Goto(l))?;
 			}
 			Op::CallLocal(ref name) => {
 				make_call(&mut ctx, 1, name)?;
