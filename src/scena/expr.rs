@@ -47,7 +47,7 @@ pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
 				ctx.stmt(Stmt1::Label(l))?;
 			}
 			Op::Push(ref v) => {
-				ctx.push(Expr::Value(v.clone()));
+				ctx.push(Expr::Value(v.clone()))?;
 			}
 			Op::Pop(n) => {
 				for _ in 0..n {
@@ -68,24 +68,24 @@ pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
 				ctx.stmt(Stmt1::Return(temp0.take().context(error::NoReturn)?))?;
 			}
 			Op::PushNull => {
-				ctx.push(StackVal::Null);
+				ctx.push(StackVal::Null)?;
 				ctx.stmt(Stmt1::PushVar)?;
 			}
 			Op::GetVar(s) => {
 				let p = Place::Var(ctx.var(s)?);
-				ctx.push(Expr::Var(p));
+				ctx.push(Expr::Var(p))?;
 			}
 			Op::GetRef(s) => {
 				let p = Place::Deref(ctx.var(s)?);
-				ctx.push(Expr::Var(p));
+				ctx.push(Expr::Var(p))?;
 			}
 			Op::GetGlobal(ref name) => {
 				let p = Place::Global(name.clone());
-				ctx.push(Expr::Var(p));
+				ctx.push(Expr::Var(p))?;
 			}
 			Op::PushRef(s) => {
 				let n = ctx.var(s)?;
-				ctx.push(Expr::Ref(n));
+				ctx.push(Expr::Ref(n))?;
 			}
 			Op::SetVar(s) => {
 				let v = ctx.pop()?;
@@ -107,11 +107,11 @@ pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
 			Op::Binop(o) => {
 				let b = ctx.pop()?;
 				let a = ctx.pop()?;
-				ctx.push(Expr::Binop(o, Box::new(a), Box::new(b)));
+				ctx.push(Expr::Binop(o, Box::new(a), Box::new(b)))?;
 			}
 			Op::Unop(o) => {
 				let a = ctx.pop()?;
-				ctx.push(Expr::Unop(o, Box::new(a)));
+				ctx.push(Expr::Unop(o, Box::new(a)))?;
 			}
 			Op::Jnz(l) => todo!(),
 			Op::Jz(l) => {
@@ -159,9 +159,9 @@ pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
 
 fn prepare_call(ctx: &mut Ctx, misc: u32, label: Label) -> Result<(), DecompileError> {
 	for _ in 0..misc {
-		ctx.push(StackVal::RetMisc);
+		ctx.push(StackVal::RetMisc)?;
 	}
-	ctx.push(StackVal::RetAddr(label));
+	ctx.push(StackVal::RetAddr(label))?;
 	Ok(())
 }
 
@@ -195,7 +195,7 @@ fn make_call(ctx: &mut Ctx, misc: u32, name: &str) -> Result<usize, DecompileErr
 fn push_call(ctx: &mut Ctx, call: Expr) -> Result<(), DecompileError> {
 	if let Some(Op::GetTemp(0)) = ctx.peek() {
 		ctx.next();
-		ctx.push(call);
+		ctx.push(call)?;
 	} else {
 		ctx.stmt(Stmt1::Expr(call))?;
 	}

@@ -76,8 +76,9 @@ impl<'a> Ctx<'a> {
 		Ok(index)
 	}
 
-	pub fn push(&mut self, val: impl Into<StackVal>) {
+	pub fn push(&mut self, val: impl Into<StackVal>) -> Result<(), DecompileError> {
 		self.stack.push(val.into());
+		Ok(())
 	}
 
 	pub fn pop_any(&mut self) -> Result<StackVal, DecompileError> {
