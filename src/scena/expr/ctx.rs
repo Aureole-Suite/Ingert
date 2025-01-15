@@ -47,6 +47,7 @@ impl<'a> Ctx<'a> {
 			if let Some(Op::Line(n)) = op {
 				self.lines.push(*n);
 			} else {
+				tracing::trace!("op: {} {op:?}", self.stack.len());
 				break op
 			}
 		}
@@ -93,6 +94,7 @@ impl<'a> Ctx<'a> {
 	}
 
 	pub fn stmt(&mut self, stmt: Stmt1) -> Result<(), DecompileError> {
+		tracing::trace!("stmt: {} {stmt:?}", self.stack.len());
 		self.check_empty()?;
 		match &stmt {
 			Stmt1::Label(l) | Stmt1::Goto(l) | Stmt1::If(_, l) => self.label(*l)?,
