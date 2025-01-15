@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use snafu::OptionExt as _;
 
 use crate::scp::{Op, StackSlot, Label};
@@ -20,6 +20,7 @@ pub struct Ctx<'a> {
 	lines: Vec<u16>,
 	stack: Vec<StackVal>,
 	output: Vec<Stmt1>,
+	labels: HashSet<Label>,
 	jumps: HashMap<Label, usize>,
 }
 
@@ -32,6 +33,10 @@ impl<'a> Ctx<'a> {
 			stack: vec![StackVal::Null; nargs],
 			output: Vec::new(),
 			jumps: HashMap::new(),
+			labels: code.iter().filter_map(|op| match op {
+				Op::Jnz(l) | Op::Jz(l) | Op::Goto(l) => Some(*l),
+				_ => None,
+			}).collect::<HashSet<_>>(),
 		}
 	}
 
@@ -88,6 +93,16 @@ impl<'a> Ctx<'a> {
 
 	pub fn stmt(&mut self, stmt: Stmt1) -> Result<(), DecompileError> {
 		self.check_empty()?;
+		match &stmt {
+			Stmt1::Label(l) | Stmt1::Goto(l) | Stmt1::If(_, l) => self.label(*l)?,
+			Stmt1::Switch(_, cs, l) => {
+				for (_, l) in cs {
+					self.label(*l)?;
+				}
+				self.label(*l)?;
+			}
+			_ => {}
+		}
 		self.output.push(stmt);
 		Ok(())
 	}
@@ -102,13 +117,18 @@ impl<'a> Ctx<'a> {
 		Ok(())
 	}
 
-	pub fn label(&mut self, label: Label) -> Result<(), DecompileError> {
+	fn label(&mut self, label: Label) -> Result<(), DecompileError> {
+		assert!(self.has_label(label));
 		self.check_empty()?;
 		let expected = *self.jumps.entry(label).or_insert(self.stack.len());
 		if expected != self.stack.len() {
 			return error::InconsistentLabel { label, expected, actual: self.stack.len() }.fail();
 		}
 		Ok(())
+	}
+
+	pub fn has_label(&self, label: Label) -> bool {
+		self.labels.contains(&label)
 	}
 }
 

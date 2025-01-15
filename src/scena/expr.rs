@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 mod ctx;
 
 use crate::scp::{Label, Op};
@@ -13,6 +11,7 @@ enum Stmt1 {
 	Set(Place, Expr),
 	Return(Option<Expr>),
 	If(Expr, Label),
+	Goto(Label),
 	Switch(Expr, Vec<(i32, Label)>, Label),
 	PushVar(u32),
 	Debug(Vec<Expr>),
@@ -36,11 +35,6 @@ pub enum DecompileError {
 }
 
 pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
-	let labels = code.iter().filter_map(|op| match op {
-		Op::Jnz(l) | Op::Jz(l) | Op::Goto(l) => Some(*l),
-		_ => None,
-	}).collect::<HashSet<_>>();
-
 	println!();
 
 	let mut ctx = Ctx::new(code, nargs);
@@ -49,7 +43,6 @@ pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
 		match *op {
 			Op::Label(l) => {
 				ctx.stmt(Stmt1::Label(l))?;
-				ctx.label(l)?;
 			}
 			Op::Push(ref v) => {
 				ctx.push(Expr::Value(v.clone()));
@@ -114,17 +107,15 @@ pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
 			Op::Jz(l) => {
 				let cond = ctx.pop_expr()?;
 				ctx.stmt(Stmt1::If(cond, l))?;
-				ctx.label(l)?;
 			}
 			Op::Goto(l) => {
 				ctx.stmt(Stmt1::Label(l))?;
-				ctx.label(l)?;
 			}
 			Op::CallLocal(ref name) => {
-				make_call(&mut ctx, 1, name, &labels)?;
+				make_call(&mut ctx, 1, name)?;
 			}
 			Op::CallExtern(ref name, n) => {
-				let nargs = make_call(&mut ctx, 4, name, &labels)?;
+				let nargs = make_call(&mut ctx, 4, name)?;
 				if nargs != n as usize {
 					panic!("{} != {}", nargs, n);
 				}
@@ -173,7 +164,7 @@ fn prepare_call(ctx: &mut Ctx, misc: u32, label: Label) -> Result<(), DecompileE
 	Ok(())
 }
 
-fn make_call(ctx: &mut Ctx, misc: u32, name: &str, labels: &HashSet<Label>) -> Result<usize, DecompileError> {
+fn make_call(ctx: &mut Ctx, misc: u32, name: &str) -> Result<usize, DecompileError> {
 	let Some(Op::Label(label)) = ctx.next() else {
 		panic!();
 	};
@@ -193,9 +184,8 @@ fn make_call(ctx: &mut Ctx, misc: u32, name: &str, labels: &HashSet<Label>) -> R
 	}
 	let nargs = args.len();
 	push_call(ctx, Expr::Call(CallKind::Normal(name.to_owned()), args))?;
-	if labels.contains(label) {
+	if ctx.has_label(*label) {
 		ctx.stmt(Stmt1::Label(*label))?;
-		ctx.label(*label)?;
 	}
 	Ok(nargs)
 }
