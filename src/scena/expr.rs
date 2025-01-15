@@ -150,8 +150,15 @@ pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
 			Op::PrepareCallExtern(l) => {
 				prepare_call(&mut ctx, 4, l)?;
 			}
-			Op::Line(n) => {},
-			Op::Debug(n) => todo!(),
+			Op::Line(_) => unreachable!("handled by next()"),
+			Op::Debug(n) => {
+				let mut args = Vec::new();
+				for _ in 0..n {
+					args.push(ctx.pop()?);
+				}
+				args.reverse();
+				ctx.stmt(Stmt1::Debug(args))?;
+			}
 		}
 	}
 	let out = ctx.finish()?;
