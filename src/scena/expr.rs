@@ -121,73 +121,12 @@ pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
 				ctx.label(l)?;
 			}
 			Op::CallLocal(ref name) => {
-				let Some(Op::Label(label)) = ctx.next() else {
-					panic!();
-				};
-				let npop = 1;
-				let mut args = Vec::new();
-				loop {
-					match ctx.pop()? {
-						StackVal::Expr(v) => args.push(v),
-						StackVal::RetAddr(l) if l == *label => break,
-						_ => panic!(),
-					}
-				}
-				for _ in 0..npop {
-					match ctx.pop()? {
-						StackVal::RetMisc => {}
-						_ => panic!(),
-					}
-				}
-
-				let call = Expr::Call(CallKind::Normal(name.clone()), args);
-
-				if let Some(Op::GetTemp(0)) = ctx.peek() {
-					ctx.next();
-					ctx.push(call);
-				} else {
-					ctx.stmt(Stmt1::Expr(call))?;
-					if labels.contains(label) {
-						ctx.stmt(Stmt1::Label(*label))?;
-						ctx.label(*label)?;
-					}
-				}
+				make_call(&mut ctx, 1, name, &labels)?;
 			}
 			Op::CallExtern(ref name, n) => {
-				let Some(Op::Label(label)) = ctx.next() else {
-					panic!();
-				};
-				let npop = 4;
-				let mut args = Vec::new();
-				loop {
-					match ctx.pop()? {
-						StackVal::Expr(v) => args.push(v),
-						StackVal::RetAddr(l) if l == *label => break,
-						_ => panic!(),
-					}
-				}
-				for _ in 0..npop {
-					match ctx.pop()? {
-						StackVal::RetMisc => {}
-						_ => panic!(),
-					}
-				}
-
-				if args.len() != n as usize {
-					panic!("{:?} != {}", args, n);
-				}
-
-				let call = Expr::Call(CallKind::Normal(name.clone()), args);
-
-				if let Some(Op::GetTemp(0)) = ctx.peek() {
-					ctx.next();
-					ctx.push(call);
-				} else {
-					ctx.stmt(Stmt1::Expr(call))?;
-					if labels.contains(label) {
-						ctx.stmt(Stmt1::Label(*label))?;
-						ctx.label(*label)?;
-					}
+				let nargs = make_call(&mut ctx, 4, name, &labels)?;
+				if nargs != n as usize {
+					panic!("{} != {}", nargs, n);
 				}
 			}
 			Op::CallTail(ref name, n) => todo!(),
@@ -199,25 +138,13 @@ pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
 				if n != 0 && ctx.next() != Some(&Op::Pop(n)) {
 					panic!();
 				}
-
-				let call = Expr::Call(CallKind::Syscall(a, b), args);
-				if let Some(Op::GetTemp(0)) = ctx.peek() {
-					ctx.next();
-					ctx.push(call);
-				} else {
-					ctx.stmt(Stmt1::Expr(call))?;
-				}
+				push_call(&mut ctx, Expr::Call(CallKind::Syscall(a, b), args))?;
 			}
 			Op::PrepareCallLocal(l) => {
-				ctx.push(StackVal::RetMisc);
-				ctx.push(StackVal::RetAddr(l));
+				prepare_call(&mut ctx, 1, l)?;
 			}
 			Op::PrepareCallExtern(l) => {
-				ctx.push(StackVal::RetMisc);
-				ctx.push(StackVal::RetMisc);
-				ctx.push(StackVal::RetMisc);
-				ctx.push(StackVal::RetMisc);
-				ctx.push(StackVal::RetAddr(l));
+				prepare_call(&mut ctx, 4, l)?;
 			}
 			Op::Return => {
 				let Some(temp0) = temp0.take() else {
@@ -238,3 +165,47 @@ pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
 	Ok(())
 }
 
+fn prepare_call(ctx: &mut Ctx, misc: u32, label: Label) -> Result<(), DecompileError> {
+	for _ in 0..misc {
+		ctx.push(StackVal::RetMisc);
+	}
+	ctx.push(StackVal::RetAddr(label));
+	Ok(())
+}
+
+fn make_call(ctx: &mut Ctx, misc: u32, name: &str, labels: &HashSet<Label>) -> Result<usize, DecompileError> {
+	let Some(Op::Label(label)) = ctx.next() else {
+		panic!();
+	};
+	let mut args = Vec::new();
+	loop {
+		match ctx.pop()? {
+			StackVal::Expr(v) => args.push(v),
+			StackVal::RetAddr(l) if l == *label => break,
+			v => panic!("{v:?}"),
+		}
+	}
+	for _ in 0..misc {
+		match ctx.pop()? {
+			StackVal::RetMisc => {}
+			v => panic!("{v:?}"),
+		}
+	}
+	let nargs = args.len();
+	push_call(ctx, Expr::Call(CallKind::Normal(name.to_owned()), args))?;
+	if labels.contains(label) {
+		ctx.stmt(Stmt1::Label(*label))?;
+		ctx.label(*label)?;
+	}
+	Ok(nargs)
+}
+
+fn push_call(ctx: &mut Ctx, call: Expr) -> Result<(), DecompileError> {
+	if let Some(Op::GetTemp(0)) = ctx.peek() {
+		ctx.next();
+		ctx.push(call);
+	} else {
+		ctx.stmt(Stmt1::Expr(call))?;
+	}
+	Ok(())
+}
