@@ -51,7 +51,7 @@ pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
 			}
 			Op::Pop(n) => {
 				for _ in 0..n {
-					match ctx.pop()? {
+					match ctx.pop_any()? {
 						StackVal::Null => {}
 						_ => panic!(),
 					}
@@ -62,7 +62,7 @@ pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
 				temp0 = Some(None);
 			}
 			Op::SetTemp(0) => {
-				temp0 = Some(Some(ctx.pop_expr()?));
+				temp0 = Some(Some(ctx.pop()?));
 			}
 			Op::Return => {
 				ctx.stmt(Stmt1::Return(temp0.take().context(error::NoReturn)?))?;
@@ -88,34 +88,34 @@ pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
 				ctx.push(Expr::Ref(n));
 			}
 			Op::SetVar(s) => {
-				let v = ctx.pop_expr()?;
+				let v = ctx.pop()?;
 				let p = Place::Var(ctx.var(s)?);
 				ctx.stmt(Stmt1::Set(p, v))?;
 			}
 			Op::SetRef(s) => {
-				let v = ctx.pop_expr()?;
+				let v = ctx.pop()?;
 				let p = Place::Deref(ctx.var(s)?);
 				ctx.stmt(Stmt1::Set(p, v))?;
 			}
 			Op::SetGlobal(ref name) => {
-				let v = ctx.pop_expr()?;
+				let v = ctx.pop()?;
 				let p = Place::Global(name.clone());
 				ctx.stmt(Stmt1::Set(p, v))?;
 			}
 			Op::GetTemp(n) => todo!(),
 			Op::SetTemp(n) => todo!(),
 			Op::Binop(o) => {
-				let b = ctx.pop_expr()?;
-				let a = ctx.pop_expr()?;
+				let b = ctx.pop()?;
+				let a = ctx.pop()?;
 				ctx.push(Expr::Binop(o, Box::new(a), Box::new(b)));
 			}
 			Op::Unop(o) => {
-				let a = ctx.pop_expr()?;
+				let a = ctx.pop()?;
 				ctx.push(Expr::Unop(o, Box::new(a)));
 			}
 			Op::Jnz(l) => todo!(),
 			Op::Jz(l) => {
-				let cond = ctx.pop_expr()?;
+				let cond = ctx.pop()?;
 				ctx.stmt(Stmt1::If(cond, l))?;
 			}
 			Op::Goto(l) => {
@@ -134,7 +134,7 @@ pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
 			Op::CallSystem(a, b, n) => {
 				let mut args = Vec::new();
 				for _ in 0..n {
-					args.push(ctx.pop_expr()?);
+					args.push(ctx.pop()?);
 				}
 				args.reverse();
 				if n != 0 && ctx.next() != Some(&Op::Pop(n)) {
@@ -171,7 +171,7 @@ fn make_call(ctx: &mut Ctx, misc: u32, name: &str) -> Result<usize, DecompileErr
 	};
 	let mut args = Vec::new();
 	loop {
-		match ctx.pop()? {
+		match ctx.pop_any()? {
 			StackVal::Expr(v) => args.push(v),
 			StackVal::RetAddr(l) if l == *label => break,
 			v => panic!("{v:?}"),
@@ -179,7 +179,7 @@ fn make_call(ctx: &mut Ctx, misc: u32, name: &str) -> Result<usize, DecompileErr
 	}
 	args.reverse();
 	for _ in 0..misc {
-		match ctx.pop()? {
+		match ctx.pop_any()? {
 			StackVal::RetMisc => {}
 			v => panic!("{v:?}"),
 		}

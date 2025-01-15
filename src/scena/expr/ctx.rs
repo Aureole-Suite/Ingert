@@ -80,12 +80,12 @@ impl<'a> Ctx<'a> {
 		self.stack.push(val.into());
 	}
 
-	pub fn pop(&mut self) -> Result<StackVal, DecompileError> {
+	pub fn pop_any(&mut self) -> Result<StackVal, DecompileError> {
 		self.stack.pop().context(error::EmptyStack)
 	}
 
-	pub fn pop_expr(&mut self) -> Result<Expr, DecompileError> {
-		match self.pop()? {
+	pub fn pop(&mut self) -> Result<Expr, DecompileError> {
+		match self.pop_any()? {
 			StackVal::Expr(e) => Ok(e),
 			val => error::BadPop { val: Some(val) }.fail(),
 		}
