@@ -13,6 +13,12 @@ pub enum StackVal {
 	Expr(Expr),
 }
 
+enum State {
+	Normal,
+	Temp0(Option<Expr>),
+	Ghost,
+}
+
 pub struct Ctx<'a> {
 	code: &'a [Op],
 	pos: usize,
@@ -22,6 +28,7 @@ pub struct Ctx<'a> {
 	output: Vec<Stmt1>,
 	labels: HashSet<Label>,
 	jumps: HashMap<Label, usize>,
+	state: State,
 }
 
 impl<'a> Ctx<'a> {
@@ -37,6 +44,7 @@ impl<'a> Ctx<'a> {
 				Op::Jnz(l) | Op::Jz(l) | Op::Goto(l) => Some(*l),
 				_ => None,
 			}).collect::<HashSet<_>>(),
+			state: State::Normal,
 		}
 	}
 
@@ -78,6 +86,7 @@ impl<'a> Ctx<'a> {
 	}
 
 	pub fn push(&mut self, val: impl Into<StackVal>) -> Result<(), DecompileError> {
+		self.check_state()?;
 		self.stack.push(val.into());
 		Ok(())
 	}
@@ -96,6 +105,7 @@ impl<'a> Ctx<'a> {
 	pub fn stmt(&mut self, stmt: Stmt1) -> Result<(), DecompileError> {
 		tracing::trace!("stmt: {} {stmt:?}", self.stack.len());
 		self.check_empty()?;
+		self.check_state()?;
 		match &stmt {
 			Stmt1::Label(l) | Stmt1::Goto(l) | Stmt1::If(_, l) => self.label(*l)?,
 			Stmt1::Switch(_, cs, l) => {
@@ -104,14 +114,38 @@ impl<'a> Ctx<'a> {
 				}
 				self.label(*l)?;
 			}
+			Stmt1::Return(_) => {
+				self.state = State::Ghost;
+			}
 			_ => {}
 		}
 		self.output.push(stmt);
 		Ok(())
 	}
 
+	pub fn set_temp0(&mut self, expr: Option<Expr>) -> Result<(), DecompileError> {
+		self.check_empty()?;
+		self.check_state()?;
+		self.state = State::Temp0(expr);
+		Ok(())
+	}
+
+	pub fn temp0(&mut self) -> Result<Option<Expr>, DecompileError> {
+		match std::mem::replace(&mut self.state, State::Normal) {
+			State::Temp0(expr) => Ok(expr),
+			_ => error::Temp0Unset.fail(),
+		}
+	}
+
 	pub fn finish(self) -> Result<Vec<Stmt1>, DecompileError> {
 		Ok(self.output)
+	}
+
+	fn check_state(&self) -> Result<(), DecompileError> {
+		match &self.state {
+			State::Temp0(temp0) => error::Temp0Set { temp0: temp0.clone() }.fail(),
+			_ => Ok(())
+		}
 	}
 
 	fn check_empty(&self) -> Result<(), DecompileError> {
@@ -124,6 +158,10 @@ impl<'a> Ctx<'a> {
 		assert!(self.has_label(label));
 		self.check_empty()?;
 		let expected = *self.jumps.entry(label).or_insert(self.stack.len());
+		if matches!(self.state, State::Ghost) {
+			self.state = State::Normal;
+			self.stack.resize_with(expected, || StackVal::Null);
+		}
 		if expected != self.stack.len() {
 			return error::InconsistentLabel { label, expected, actual: self.stack.len() }.fail();
 		}

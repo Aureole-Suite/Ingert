@@ -33,14 +33,14 @@ pub enum DecompileError {
 	NotVar { index: u32 },
 	NonemptyStack,
 	InconsistentLabel { label: Label, expected: usize, actual: usize },
-	NoReturn,
+	Temp0Set { temp0: Option<Expr> },
+	Temp0Unset,
 }
 
 pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
 	println!();
 
 	let mut ctx = Ctx::new(code, nargs);
-	let mut temp0 = None;
 	while let Some(op) = ctx.next() {
 		match *op {
 			Op::Label(l) => {
@@ -59,13 +59,15 @@ pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
 			}
 			Op::PushNull if ctx.peek() == Some(&Op::SetTemp(0)) => {
 				ctx.next();
-				temp0 = Some(None);
+				ctx.set_temp0(None)?;
 			}
 			Op::SetTemp(0) => {
-				temp0 = Some(Some(ctx.pop()?));
+				let v = ctx.pop()?;
+				ctx.set_temp0(Some(v))?;
 			}
 			Op::Return => {
-				ctx.stmt(Stmt1::Return(temp0.take().context(error::NoReturn)?))?;
+				let v = ctx.temp0()?;
+				ctx.stmt(Stmt1::Return(v))?;
 			}
 			Op::PushNull => {
 				ctx.push(StackVal::Null)?;
