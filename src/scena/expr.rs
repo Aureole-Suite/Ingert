@@ -3,6 +3,7 @@ mod ctx;
 use crate::scp::{Label, Op};
 use super::{Expr, Place, CallKind};
 use ctx::{Ctx, StackVal};
+use snafu::OptionExt as _;
 
 #[derive(Debug, Clone, PartialEq)]
 enum Stmt1 {
@@ -13,7 +14,7 @@ enum Stmt1 {
 	If(Expr, Label),
 	Goto(Label),
 	Switch(Expr, Vec<(i32, Label)>, Label),
-	PushVar(u32),
+	PushVar,
 	Debug(Vec<Expr>),
 }
 
@@ -32,6 +33,7 @@ pub enum DecompileError {
 	NotVar { index: u32 },
 	NonemptyStack,
 	InconsistentLabel { label: Label, expected: usize, actual: usize },
+	NoReturn,
 }
 
 pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
@@ -55,8 +57,19 @@ pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
 					}
 				}
 			}
+			Op::PushNull if ctx.peek() == Some(&Op::SetTemp(0)) => {
+				ctx.next();
+				temp0 = Some(None);
+			}
+			Op::SetTemp(0) => {
+				temp0 = Some(Some(ctx.pop_expr()?));
+			}
+			Op::Return => {
+				ctx.stmt(Stmt1::Return(temp0.take().context(error::NoReturn)?))?;
+			}
 			Op::PushNull => {
 				ctx.push(StackVal::Null);
+				ctx.stmt(Stmt1::PushVar)?;
 			}
 			Op::GetVar(s) => {
 				let p = Place::Var(ctx.var(s)?);
@@ -88,9 +101,6 @@ pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
 				let v = ctx.pop_expr()?;
 				let p = Place::Global(name.clone());
 				ctx.stmt(Stmt1::Set(p, v))?;
-			}
-			Op::SetTemp(0) => {
-				temp0 = Some(ctx.pop()?);
 			}
 			Op::GetTemp(n) => todo!(),
 			Op::SetTemp(n) => todo!(),
@@ -137,16 +147,6 @@ pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
 			}
 			Op::PrepareCallExtern(l) => {
 				prepare_call(&mut ctx, 4, l)?;
-			}
-			Op::Return => {
-				let Some(temp0) = temp0.take() else {
-					panic!();
-				};
-				match temp0 {
-					StackVal::Expr(e) => ctx.stmt(Stmt1::Return(Some(e)))?,
-					StackVal::Null => ctx.stmt(Stmt1::Return(None))?,
-					_ => panic!(),
-				}
 			}
 			Op::Line(n) => {},
 			Op::Debug(n) => todo!(),
