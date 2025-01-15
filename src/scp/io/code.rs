@@ -73,7 +73,7 @@ pub fn read(
 				f.seek(p)?;
 				Op::Push(value(f).context(ValueSnafu)?)
 			}
-			1 => Op::Pop(f.u8()?),
+			1 => Op::Pop(pop_count(f)?),
 			2 => Op::GetVar(stack_slot(f)?),
 			3 => Op::GetRef(stack_slot(f)?),
 			4 => Op::PushRef(stack_slot(f)?),
@@ -160,6 +160,14 @@ fn stack_slot(f: &mut Reader) -> Result<StackSlot, ReadError> {
 		return StackSlotSnafu { value }.fail();
 	}
 	Ok(StackSlot((-value / 4) as u32))
+}
+
+fn pop_count(f: &mut Reader) -> Result<u8, ReadError> {
+	let value = f.u8()?;
+	if value % 4 != 0 {
+		return StackSlotSnafu { value: value as i32 }.fail();
+	}
+	Ok(value / 4)
 }
 
 fn reorder_labels(ops: &mut Vec<Op>) {
