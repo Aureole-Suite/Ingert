@@ -1,8 +1,8 @@
+use std::collections::HashMap;
 use snafu::OptionExt as _;
 
-use crate::scp::StackSlot;
-
-use super::{DecompileError, error, Op, Label, Expr, Stmt1};
+use crate::scp::{Op, StackSlot, Label};
+use super::{DecompileError, error, Expr, Stmt1};
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub enum StackVal {
@@ -20,6 +20,7 @@ pub struct Ctx<'a> {
 	lines: Vec<u16>,
 	stack: Vec<StackVal>,
 	output: Vec<Stmt1>,
+	jumps: HashMap<Label, usize>,
 }
 
 impl<'a> Ctx<'a> {
@@ -30,6 +31,7 @@ impl<'a> Ctx<'a> {
 			lines: Vec::new(),
 			stack: vec![StackVal::Null; nargs],
 			output: Vec::new(),
+			jumps: HashMap::new(),
 		}
 	}
 
@@ -85,7 +87,7 @@ impl<'a> Ctx<'a> {
 	}
 
 	pub fn stmt(&mut self, stmt: Stmt1) -> Result<(), DecompileError> {
-		snafu::ensure!(self.is_empty(), error::NonemptyStack);
+		self.check_empty()?;
 		self.output.push(stmt);
 		Ok(())
 	}
@@ -94,8 +96,19 @@ impl<'a> Ctx<'a> {
 		Ok(self.output)
 	}
 
-	fn is_empty(&self) -> bool {
-		self.stack.iter().all(|v| *v == StackVal::Null)
+	fn check_empty(&self) -> Result<(), DecompileError> {
+		let empty = self.stack.iter().all(|v| *v == StackVal::Null);
+		snafu::ensure!(empty, error::NonemptyStack);
+		Ok(())
+	}
+
+	pub fn label(&mut self, label: Label) -> Result<(), DecompileError> {
+		self.check_empty()?;
+		let expected = *self.jumps.entry(label).or_insert(self.stack.len());
+		if expected != self.stack.len() {
+			return error::InconsistentLabel { label, expected, actual: self.stack.len() }.fail();
+		}
+		Ok(())
 	}
 }
 

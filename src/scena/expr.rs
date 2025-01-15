@@ -1,9 +1,8 @@
-use std::collections::{HashMap, HashSet};
-use snafu::OptionExt as _;
+use std::collections::HashSet;
 
 mod ctx;
 
-use crate::scp::{Label, Op, Scp, StackSlot};
+use crate::scp::{Label, Op};
 use super::{Expr, Place, CallKind};
 use ctx::{Ctx, StackVal};
 
@@ -33,6 +32,7 @@ pub enum DecompileError {
 	EmptyStack,
 	NotVar { index: u32 },
 	NonemptyStack,
+	InconsistentLabel { label: Label, expected: usize, actual: usize },
 }
 
 pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
@@ -49,6 +49,7 @@ pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
 		match *op {
 			Op::Label(l) => {
 				ctx.stmt(Stmt1::Label(l))?;
+				ctx.label(l)?;
 			}
 			Op::Push(ref v) => {
 				ctx.push(Expr::Value(v.clone()));
@@ -113,9 +114,11 @@ pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
 			Op::Jz(l) => {
 				let cond = ctx.pop_expr()?;
 				ctx.stmt(Stmt1::If(cond, l))?;
+				ctx.label(l)?;
 			}
 			Op::Goto(l) => {
 				ctx.stmt(Stmt1::Label(l))?;
+				ctx.label(l)?;
 			}
 			Op::CallLocal(ref name) => {
 				let Some(Op::Label(label)) = ctx.next() else {
@@ -146,6 +149,7 @@ pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
 					ctx.stmt(Stmt1::Expr(call))?;
 					if labels.contains(label) {
 						ctx.stmt(Stmt1::Label(*label))?;
+						ctx.label(*label)?;
 					}
 				}
 			}
@@ -182,6 +186,7 @@ pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
 					ctx.stmt(Stmt1::Expr(call))?;
 					if labels.contains(label) {
 						ctx.stmt(Stmt1::Label(*label))?;
+						ctx.label(*label)?;
 					}
 				}
 			}
