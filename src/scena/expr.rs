@@ -32,6 +32,7 @@ pub enum DecompileError {
 	StackBounds { slot: u32, len: u32 },
 	EmptyStack,
 	NotVar { index: u32 },
+	NonemptyStack,
 }
 
 pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
@@ -47,7 +48,7 @@ pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
 	while let Some(op) = ctx.next() {
 		match *op {
 			Op::Label(l) => {
-				ctx.stmt(Stmt1::Label(l));
+				ctx.stmt(Stmt1::Label(l))?;
 			}
 			Op::Push(ref v) => {
 				ctx.push(Expr::Value(v.clone()));
@@ -82,17 +83,17 @@ pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
 			Op::SetVar(s) => {
 				let v = ctx.pop_expr()?;
 				let p = Place::Var(ctx.var(s)?);
-				ctx.stmt(Stmt1::Set(p, v));
+				ctx.stmt(Stmt1::Set(p, v))?;
 			}
 			Op::SetRef(s) => {
 				let v = ctx.pop_expr()?;
 				let p = Place::Deref(ctx.var(s)?);
-				ctx.stmt(Stmt1::Set(p, v));
+				ctx.stmt(Stmt1::Set(p, v))?;
 			}
 			Op::SetGlobal(ref name) => {
 				let v = ctx.pop_expr()?;
 				let p = Place::Global(name.clone());
-				ctx.stmt(Stmt1::Set(p, v));
+				ctx.stmt(Stmt1::Set(p, v))?;
 			}
 			Op::SetTemp(0) => {
 				temp0 = Some(ctx.pop()?);
@@ -111,10 +112,10 @@ pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
 			Op::Jnz(l) => todo!(),
 			Op::Jz(l) => {
 				let cond = ctx.pop_expr()?;
-				ctx.stmt(Stmt1::If(cond, l));
+				ctx.stmt(Stmt1::If(cond, l))?;
 			}
 			Op::Goto(l) => {
-				ctx.stmt(Stmt1::Label(l));
+				ctx.stmt(Stmt1::Label(l))?;
 			}
 			Op::CallLocal(ref name) => {
 				let Some(Op::Label(label)) = ctx.next() else {
@@ -142,9 +143,9 @@ pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
 					ctx.next();
 					ctx.push(call);
 				} else {
-					ctx.stmt(Stmt1::Expr(call));
+					ctx.stmt(Stmt1::Expr(call))?;
 					if labels.contains(label) {
-						ctx.stmt(Stmt1::Label(*label));
+						ctx.stmt(Stmt1::Label(*label))?;
 					}
 				}
 			}
@@ -178,9 +179,9 @@ pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
 					ctx.next();
 					ctx.push(call);
 				} else {
-					ctx.stmt(Stmt1::Expr(call));
+					ctx.stmt(Stmt1::Expr(call))?;
 					if labels.contains(label) {
-						ctx.stmt(Stmt1::Label(*label));
+						ctx.stmt(Stmt1::Label(*label))?;
 					}
 				}
 			}
@@ -199,7 +200,7 @@ pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
 					ctx.next();
 					ctx.push(call);
 				} else {
-					ctx.stmt(Stmt1::Expr(call));
+					ctx.stmt(Stmt1::Expr(call))?;
 				}
 			}
 			Op::PrepareCallLocal(l) => {
@@ -218,8 +219,8 @@ pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
 					panic!();
 				};
 				match temp0 {
-					StackVal::Expr(e) => ctx.stmt(Stmt1::Return(Some(e))),
-					StackVal::Null => ctx.stmt(Stmt1::Return(None)),
+					StackVal::Expr(e) => ctx.stmt(Stmt1::Return(Some(e)))?,
+					StackVal::Null => ctx.stmt(Stmt1::Return(None))?,
 					_ => panic!(),
 				}
 			}

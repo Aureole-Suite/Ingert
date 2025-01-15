@@ -84,12 +84,18 @@ impl<'a> Ctx<'a> {
 		}
 	}
 
-	pub fn stmt(&mut self, stmt: Stmt1) {
+	pub fn stmt(&mut self, stmt: Stmt1) -> Result<(), DecompileError> {
+		snafu::ensure!(self.is_empty(), error::NonemptyStack);
 		self.output.push(stmt);
+		Ok(())
 	}
 
 	pub fn finish(self) -> Vec<Stmt1> {
 		self.output
+	}
+
+	fn is_empty(&self) -> bool {
+		self.stack.iter().all(|v| *v == StackVal::Null)
 	}
 }
 
