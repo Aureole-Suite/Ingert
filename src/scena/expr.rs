@@ -39,55 +39,27 @@ pub enum DecompileError {
 	NotVar { index: u32 },
 }
 
-#[derive(Debug, Clone)]
-struct Stack {
-	stack: Vec<StackVal>,
-}
-
-impl Stack {
-	fn var(&self, s: StackSlot) -> Result<u32, DecompileError> {
-		let len = self.stack.len() as u32;
-		let Some(index) = len.checked_sub(s.0).filter(|v| *v < len) else {
-			return StackBoundsSnafu { slot: s.0, len }.fail();
-		};
-		if self.stack[index as usize] != StackVal::Null {
-			return NotVarSnafu { index }.fail();
-		}
-		Ok(index)
-	}
-
-	fn push(&mut self, val: impl Into<StackVal>) {
-		self.stack.push(val.into());
-	}
-
-	fn pop(&mut self) -> Result<StackVal, DecompileError> {
-		self.stack.pop().context(EmptyStackSnafu)
-	}
-
-	fn pop_expr(&mut self) -> Result<Expr, DecompileError> {
-		match self.pop()? {
-			StackVal::Expr(e) => Ok(e),
-			val => BadPopSnafu { val: Some(val) }.fail(),
-		}
-	}
-}
-
-struct Input<'a> {
+pub struct Ctx<'a> {
 	code: &'a [Op],
 	pos: usize,
+
 	lines: Vec<u16>,
+	stack: Vec<StackVal>,
+	output: Vec<Stmt1>,
 }
 
-impl<'a> Input<'a> {
-	fn new(code: &'a [Op]) -> Self {
+impl<'a> Ctx<'a> {
+	pub fn new(code: &'a [Op], nargs: usize) -> Self {
 		Self {
 			code,
 			pos: 0,
 			lines: Vec::new(),
+			stack: vec![StackVal::Null; nargs],
+			output: Vec::new(),
 		}
 	}
 
-	fn next(&mut self) -> Option<&'a Op> {
+	pub fn next(&mut self) -> Option<&'a Op> {
 		loop {
 			let op = self.code.get(self.pos);
 			self.pos += 1;
@@ -99,7 +71,7 @@ impl<'a> Input<'a> {
 		}
 	}
 
-	fn peek(&self) -> Option<&'a Op> {
+	pub fn peek(&self) -> Option<&'a Op> {
 		let mut pos = self.pos;
 		loop {
 			let op = self.code.get(pos);
@@ -111,14 +83,43 @@ impl<'a> Input<'a> {
 			}
 		}
 	}
+
+	pub fn var(&self, s: StackSlot) -> Result<u32, DecompileError> {
+		let len = self.stack.len() as u32;
+		let Some(index) = len.checked_sub(s.0).filter(|v| *v < len) else {
+			return StackBoundsSnafu { slot: s.0, len }.fail();
+		};
+		if self.stack[index as usize] != StackVal::Null {
+			return NotVarSnafu { index }.fail();
+		}
+		Ok(index)
+	}
+
+	pub fn push(&mut self, val: impl Into<StackVal>) {
+		self.stack.push(val.into());
+	}
+
+	pub fn pop(&mut self) -> Result<StackVal, DecompileError> {
+		self.stack.pop().context(EmptyStackSnafu)
+	}
+
+	pub fn pop_expr(&mut self) -> Result<Expr, DecompileError> {
+		match self.pop()? {
+			StackVal::Expr(e) => Ok(e),
+			val => BadPopSnafu { val: Some(val) }.fail(),
+		}
+	}
+
+	pub fn stmt(&mut self, stmt: Stmt1) {
+		self.output.push(stmt);
+	}
+
+	pub fn finish(self) -> Vec<Stmt1> {
+		self.output
+	}
 }
 
 pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
-	let mut out = Vec::new();
-	let mut stack = Stack {
-		stack: vec![StackVal::Null; nargs],
-	};
-
 	let labels = code.iter().filter_map(|op| match op {
 		Op::Jnz(l) | Op::Jz(l) | Op::Goto(l) => Some(*l),
 		_ => None,
@@ -126,99 +127,99 @@ pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
 
 	println!();
 
-	let mut code = Input::new(code);
+	let mut ctx = Ctx::new(code, nargs);
 	let mut temp0 = None;
-	while let Some(op) = code.next() {
+	while let Some(op) = ctx.next() {
 		{
-			let r = &code.code[code.pos..];
+			let r = &ctx.code[ctx.pos..];
 			println!("{op:?} {:?}", r.get(..5).unwrap_or(r));
 		}
 		match *op {
 			Op::Label(l) => {
-				out.push(Stmt1::Label(l));
+				ctx.stmt(Stmt1::Label(l));
 			}
 			Op::Push(ref v) => {
-				stack.push(Expr::Value(v.clone()));
+				ctx.push(Expr::Value(v.clone()));
 			}
 			Op::Pop(n) => {
 				for _ in 0..n {
-					match stack.pop()? {
+					match ctx.pop()? {
 						StackVal::Null => {}
 						_ => panic!(),
 					}
 				}
 			}
 			Op::PushNull => {
-				stack.push(StackVal::Null);
+				ctx.push(StackVal::Null);
 			}
 			Op::GetVar(s) => {
-				let p = Place::Var(stack.var(s)?);
-				stack.push(Expr::Var(p));
+				let p = Place::Var(ctx.var(s)?);
+				ctx.push(Expr::Var(p));
 			}
 			Op::GetRef(s) => {
-				let p = Place::Deref(stack.var(s)?);
-				stack.push(Expr::Var(p));
+				let p = Place::Deref(ctx.var(s)?);
+				ctx.push(Expr::Var(p));
 			}
 			Op::GetGlobal(ref name) => {
 				let p = Place::Global(name.clone());
-				stack.push(Expr::Var(p));
+				ctx.push(Expr::Var(p));
 			}
 			Op::PushRef(s) => {
-				let n = stack.var(s)?;
-				stack.push(Expr::Ref(n));
+				let n = ctx.var(s)?;
+				ctx.push(Expr::Ref(n));
 			}
 			Op::SetVar(s) => {
-				let v = stack.pop_expr()?;
-				let p = Place::Var(stack.var(s)?);
-				out.push(Stmt1::Set(p, v));
+				let v = ctx.pop_expr()?;
+				let p = Place::Var(ctx.var(s)?);
+				ctx.stmt(Stmt1::Set(p, v));
 			}
 			Op::SetRef(s) => {
-				let v = stack.pop_expr()?;
-				let p = Place::Deref(stack.var(s)?);
-				out.push(Stmt1::Set(p, v));
+				let v = ctx.pop_expr()?;
+				let p = Place::Deref(ctx.var(s)?);
+				ctx.stmt(Stmt1::Set(p, v));
 			}
 			Op::SetGlobal(ref name) => {
-				let v = stack.pop_expr()?;
+				let v = ctx.pop_expr()?;
 				let p = Place::Global(name.clone());
-				out.push(Stmt1::Set(p, v));
+				ctx.stmt(Stmt1::Set(p, v));
 			}
 			Op::SetTemp(0) => {
-				temp0 = Some(stack.pop()?);
+				temp0 = Some(ctx.pop()?);
 			}
 			Op::GetTemp(n) => todo!(),
 			Op::SetTemp(n) => todo!(),
 			Op::Binop(o) => {
-				let b = stack.pop_expr()?;
-				let a = stack.pop_expr()?;
-				stack.push(Expr::Binop(o, Box::new(a), Box::new(b)));
+				let b = ctx.pop_expr()?;
+				let a = ctx.pop_expr()?;
+				ctx.push(Expr::Binop(o, Box::new(a), Box::new(b)));
 			}
 			Op::Unop(o) => {
-				let a = stack.pop_expr()?;
-				stack.push(Expr::Unop(o, Box::new(a)));
+				let a = ctx.pop_expr()?;
+				ctx.push(Expr::Unop(o, Box::new(a)));
 			}
 			Op::Jnz(l) => todo!(),
 			Op::Jz(l) => {
-				let cond = stack.pop_expr()?;
-				out.push(Stmt1::If(cond, l));
+				let cond = ctx.pop_expr()?;
+				ctx.stmt(Stmt1::If(cond, l));
 			}
 			Op::Goto(l) => {
-				out.push(Stmt1::Label(l));
+				ctx.stmt(Stmt1::Label(l));
 			}
 			Op::CallLocal(ref name) => {
-				let Some(Op::Label(label)) = code.next() else {
+				let Some(Op::Label(label)) = ctx.next() else {
 					panic!();
 				};
 				let npop = 1;
 				let mut args = Vec::new();
 				loop {
-					match stack.pop()? {
+					match ctx.pop()? {
 						StackVal::Expr(v) => args.push(v),
 						StackVal::RetAddr(l) if l == *label => break,
 						_ => panic!(),
 					}
 				}
 				for _ in 0..npop {
-					match stack.pop()? {
+					match ctx.pop()? {
 						StackVal::RetMisc => {}
 						_ => panic!(),
 					}
@@ -226,31 +227,31 @@ pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
 
 				let call = Expr::Call(CallKind::Normal(name.clone()), args);
 
-				if let Some(Op::GetTemp(0)) = code.peek() {
-					code.next();
-					stack.push(call);
+				if let Some(Op::GetTemp(0)) = ctx.peek() {
+					ctx.next();
+					ctx.push(call);
 				} else {
-					out.push(Stmt1::Expr(call));
+					ctx.stmt(Stmt1::Expr(call));
 					if labels.contains(label) {
-						out.push(Stmt1::Label(*label));
+						ctx.stmt(Stmt1::Label(*label));
 					}
 				}
 			}
 			Op::CallExtern(ref name, n) => {
-				let Some(Op::Label(label)) = code.next() else {
+				let Some(Op::Label(label)) = ctx.next() else {
 					panic!();
 				};
 				let npop = 4;
 				let mut args = Vec::new();
 				loop {
-					match stack.pop()? {
+					match ctx.pop()? {
 						StackVal::Expr(v) => args.push(v),
 						StackVal::RetAddr(l) if l == *label => break,
 						_ => panic!(),
 					}
 				}
 				for _ in 0..npop {
-					match stack.pop()? {
+					match ctx.pop()? {
 						StackVal::RetMisc => {}
 						_ => panic!(),
 					}
@@ -262,13 +263,13 @@ pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
 
 				let call = Expr::Call(CallKind::Normal(name.clone()), args);
 
-				if let Some(Op::GetTemp(0)) = code.peek() {
-					code.next();
-					stack.push(call);
+				if let Some(Op::GetTemp(0)) = ctx.peek() {
+					ctx.next();
+					ctx.push(call);
 				} else {
-					out.push(Stmt1::Expr(call));
+					ctx.stmt(Stmt1::Expr(call));
 					if labels.contains(label) {
-						out.push(Stmt1::Label(*label));
+						ctx.stmt(Stmt1::Label(*label));
 					}
 				}
 			}
@@ -276,38 +277,38 @@ pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
 			Op::CallSystem(a, b, n) => {
 				let mut args = Vec::new();
 				for _ in 0..n {
-					args.push(stack.pop_expr()?);
+					args.push(ctx.pop_expr()?);
 				}
-				if n != 0 && code.next() != Some(&Op::Pop(n)) {
+				if n != 0 && ctx.next() != Some(&Op::Pop(n)) {
 					panic!();
 				}
 
 				let call = Expr::Call(CallKind::Syscall(a, b), args);
-				if let Some(Op::GetTemp(0)) = code.peek() {
-					code.next();
-					stack.push(call);
+				if let Some(Op::GetTemp(0)) = ctx.peek() {
+					ctx.next();
+					ctx.push(call);
 				} else {
-					out.push(Stmt1::Expr(call));
+					ctx.stmt(Stmt1::Expr(call));
 				}
 			}
 			Op::PrepareCallLocal(l) => {
-				stack.push(StackVal::RetMisc);
-				stack.push(StackVal::RetAddr(l));
+				ctx.push(StackVal::RetMisc);
+				ctx.push(StackVal::RetAddr(l));
 			}
 			Op::PrepareCallExtern(l) => {
-				stack.push(StackVal::RetMisc);
-				stack.push(StackVal::RetMisc);
-				stack.push(StackVal::RetMisc);
-				stack.push(StackVal::RetMisc);
-				stack.push(StackVal::RetAddr(l));
+				ctx.push(StackVal::RetMisc);
+				ctx.push(StackVal::RetMisc);
+				ctx.push(StackVal::RetMisc);
+				ctx.push(StackVal::RetMisc);
+				ctx.push(StackVal::RetAddr(l));
 			}
 			Op::Return => {
 				let Some(temp0) = temp0.take() else {
 					panic!();
 				};
 				match temp0 {
-					StackVal::Expr(e) => out.push(Stmt1::Return(Some(e))),
-					StackVal::Null => out.push(Stmt1::Return(None)),
+					StackVal::Expr(e) => ctx.stmt(Stmt1::Return(Some(e))),
+					StackVal::Null => ctx.stmt(Stmt1::Return(None)),
 					_ => panic!(),
 				}
 			}
@@ -315,7 +316,8 @@ pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
 			Op::Debug(n) => todo!(),
 		}
 	}
-	dbg!(out);
+	let out = ctx.finish();
+	dbg!(&out);
 	Ok(())
 }
 
