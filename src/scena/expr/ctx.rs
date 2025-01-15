@@ -90,8 +90,8 @@ impl<'a> Ctx<'a> {
 		Ok(())
 	}
 
-	pub fn finish(self) -> Vec<Stmt1> {
-		self.output
+	pub fn finish(self) -> Result<Vec<Stmt1>, DecompileError> {
+		Ok(self.output)
 	}
 
 	fn is_empty(&self) -> bool {

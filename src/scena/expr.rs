@@ -228,7 +228,7 @@ pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
 			Op::Debug(n) => todo!(),
 		}
 	}
-	let out = ctx.finish();
+	let out = ctx.finish()?;
 	dbg!(&out);
 	Ok(())
 }
