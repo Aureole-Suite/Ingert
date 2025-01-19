@@ -57,7 +57,7 @@ pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
 					}
 				}
 			}
-			Op::PushNull if ctx.peek() == Some(&Op::SetTemp(0)) => {
+			Op::PushNull if matches!(ctx.peek(), [Op::SetTemp(0), ..]) => {
 				ctx.next();
 				ctx.set_temp0(None)?;
 			}
@@ -202,7 +202,7 @@ fn make_call(ctx: &mut Ctx, misc: u32, name: &str) -> Result<usize, DecompileErr
 }
 
 fn push_call(ctx: &mut Ctx, call: Expr) -> Result<(), DecompileError> {
-	if let Some(Op::GetTemp(0)) = ctx.peek() {
+	if matches!(ctx.peek(), [Op::GetTemp(0), ..]) {
 		ctx.next();
 		ctx.push(call)?;
 	} else {

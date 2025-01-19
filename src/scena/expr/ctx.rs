@@ -61,17 +61,12 @@ impl<'a> Ctx<'a> {
 		}
 	}
 
-	pub fn peek(&self) -> Option<&'a Op> {
+	pub fn peek(&self) -> &'a [Op] {
 		let mut pos = self.pos;
-		loop {
-			let op = self.code.get(pos);
+		while let Some(Op::Line(_)) = self.code.get(pos) {
 			pos += 1;
-			if let Some(Op::Line(_)) = op {
-				continue;
-			} else {
-				break op
-			}
 		}
+		&self.code[pos..]
 	}
 
 	pub fn var(&self, s: StackSlot) -> Result<u32, DecompileError> {
