@@ -1,6 +1,6 @@
 mod ctx;
 
-use crate::scp::{Label, Op};
+use crate::scp::{Binop, Value, Label, Op};
 use super::{Expr, Place, CallKind};
 use ctx::{Ctx, StackVal};
 use snafu::OptionExt as _;
@@ -35,6 +35,7 @@ pub enum DecompileError {
 	InconsistentLabel { label: Label, expected: usize, actual: usize },
 	Temp0Set { temp0: Option<Expr> },
 	Temp0Unset,
+	BadSwitch,
 }
 
 pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
@@ -56,6 +57,28 @@ pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
 						_ => panic!(),
 					}
 				}
+			}
+			Op::SetTemp(0) if matches!(ctx.peek(), [Op::GetTemp(0) | Op::Goto(_), ..]) => {
+				let v = ctx.pop()?;
+				let mut cases = Vec::new();
+				let default = loop {
+					match ctx.next().context(error::BadSwitch)? {
+						Op::GetTemp(0) => {
+							if let [
+								Some(Op::Push(Value::Int(n))),
+								Some(Op::Binop(Binop::Eq)),
+								Some(Op::Jnz(l)),
+							] = std::array::from_fn(|_| ctx.next()) {
+								cases.push((*n, *l));
+							} else {
+								return error::BadSwitch.fail();
+							}
+						}
+						Op::Goto(l) => break *l,
+						_ => return error::BadSwitch.fail(),
+					}
+				};
+				ctx.stmt(Stmt1::Switch(v, cases, default))?;
 			}
 			Op::PushNull if matches!(ctx.peek(), [Op::SetTemp(0), ..]) => {
 				ctx.next();
