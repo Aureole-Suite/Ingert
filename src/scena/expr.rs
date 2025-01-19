@@ -161,7 +161,6 @@ pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
 				for _ in 0..n {
 					args.push(ctx.pop()?);
 				}
-				args.reverse();
 				if n != 0 && ctx.next() != Some(&Op::Pop(n)) {
 					panic!();
 				}
@@ -209,7 +208,6 @@ fn make_call(ctx: &mut Ctx, misc: u32, name: &str) -> Result<usize, DecompileErr
 			v => panic!("{v:?}"),
 		}
 	}
-	args.reverse();
 	for _ in 0..misc {
 		match ctx.pop_any()? {
 			StackVal::RetMisc => {}
