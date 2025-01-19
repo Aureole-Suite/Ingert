@@ -157,13 +157,19 @@ impl<'a> Ctx<'a> {
 	fn label(&mut self, label: Label) -> Result<(), DecompileError> {
 		assert!(self.has_label(label));
 		self.check_empty()?;
-		let expected = *self.jumps.entry(label).or_insert(self.stack.len());
 		if matches!(self.state, State::Ghost) {
-			self.state = State::Normal;
-			self.stack.resize_with(expected, || StackVal::Null);
-		}
-		if expected != self.stack.len() {
-			return error::InconsistentLabel { label, expected, actual: self.stack.len() }.fail();
+			if let Some(&stack) = self.jumps.get(&label) {
+				self.state = State::Normal;
+				self.stack.resize_with(stack, || StackVal::Null);
+				if let Some(Stmt1::Goto(l)) = self.output.last() {
+					self.label(*l)?;
+				}
+			}
+		} else {
+			let expected = *self.jumps.entry(label).or_insert(self.stack.len());
+			if expected != self.stack.len() {
+				return error::InconsistentLabel { label, expected, actual: self.stack.len() }.fail();
+			}
 		}
 		Ok(())
 	}
