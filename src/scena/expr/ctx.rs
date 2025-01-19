@@ -4,9 +4,8 @@ use snafu::OptionExt as _;
 use crate::scp::{Op, StackSlot, Label};
 use super::{DecompileError, error, Expr, Stmt1};
 
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum StackVal {
-	#[default]
 	Null,
 	RetAddr(Label),
 	RetMisc,
