@@ -116,7 +116,7 @@ impl<'a> Ctx<'a> {
 		tracing::trace!("stmt: {stmt:?}");
 		self.check_empty()?;
 		self.check_state()?;
-		if !self.lines.is_empty() {
+		if !self.lines.is_empty() && !matches!(stmt, Stmt1::Label(_)) {
 			tracing::warn!("lines: {:?}", self.lines);
 			self.lines.clear();
 		}
