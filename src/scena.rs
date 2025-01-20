@@ -1,6 +1,3 @@
-
-use snafu::OptionExt as _;
-
 mod expr;
 
 use crate::scp::{Op, Scp};

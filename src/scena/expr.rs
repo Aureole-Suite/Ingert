@@ -41,7 +41,7 @@ pub enum DecompileError {
 pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
 	println!();
 
-	let mut ctx = Ctx::new(code, nargs);
+	let mut ctx = Ctx::new(code);
 	while let Some(op) = ctx.next() {
 		match *op {
 			Op::Label(l) => {
@@ -50,13 +50,8 @@ pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
 			Op::Push(ref v) => {
 				ctx.push(Expr::Value(v.clone()))?;
 			}
-			Op::Pop(n) => {
-				for _ in 0..n {
-					match ctx.pop_any()? {
-						StackVal::Null => {}
-						_ => panic!(),
-					}
-				}
+			Op::Pop(_) => {
+				// eh, don't care.
 			}
 			Op::SetTemp(0) if matches!(ctx.peek(), [Op::GetTemp(0) | Op::Goto(_), ..]) => {
 				let v = ctx.pop()?;
@@ -93,7 +88,6 @@ pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
 				ctx.stmt(Stmt1::Return(v))?;
 			}
 			Op::PushNull => {
-				ctx.push(StackVal::Null)?;
 				ctx.stmt(Stmt1::PushVar)?;
 			}
 			Op::GetVar(s) => {

@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use snafu::OptionExt as _;
 
 use crate::scp::{Op, StackSlot, Label};
@@ -6,16 +6,9 @@ use super::{DecompileError, error, Expr, Stmt1};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum StackVal {
-	Null,
 	RetAddr(Label),
 	RetMisc,
 	Expr(Expr),
-}
-
-enum State {
-	Normal,
-	Temp0(Option<Expr>),
-	Ghost,
 }
 
 pub struct Ctx<'a> {
@@ -26,24 +19,22 @@ pub struct Ctx<'a> {
 	stack: Vec<StackVal>,
 	output: Vec<Stmt1>,
 	labels: HashSet<Label>,
-	jumps: HashMap<Label, usize>,
-	state: State,
+	temp0: Option<Option<Expr>>,
 }
 
 impl<'a> Ctx<'a> {
-	pub fn new(code: &'a [Op], nargs: usize) -> Self {
+	pub fn new(code: &'a [Op]) -> Self {
 		Self {
 			code,
 			pos: 0,
 			lines: Vec::new(),
-			stack: vec![StackVal::Null; nargs],
+			stack: Vec::new(),
 			output: Vec::new(),
-			jumps: HashMap::new(),
 			labels: code.iter().filter_map(|op| match op {
 				Op::Jnz(l) | Op::Jz(l) | Op::Goto(l) => Some(*l),
 				_ => None,
 			}).collect::<HashSet<_>>(),
-			state: State::Normal,
+			temp0: None,
 		}
 	}
 
@@ -70,13 +61,10 @@ impl<'a> Ctx<'a> {
 
 	pub fn var(&self, s: StackSlot) -> Result<u32, DecompileError> {
 		let len = self.stack.len() as u32;
-		let Some(index) = len.checked_sub(s.0).filter(|v| *v < len) else {
+		if s.0 <= len {
 			return error::StackBounds { slot: s.0, len }.fail();
 		};
-		if self.stack[index as usize] != StackVal::Null {
-			return error::NotVar { index }.fail();
-		}
-		Ok(index)
+		Ok(s.0 - len)
 	}
 
 	pub fn push(&mut self, val: impl Into<StackVal>) -> Result<(), DecompileError> {
@@ -100,19 +88,6 @@ impl<'a> Ctx<'a> {
 		tracing::trace!("stmt: {} {stmt:?}", self.stack.len());
 		self.check_empty()?;
 		self.check_state()?;
-		match &stmt {
-			Stmt1::Label(l) | Stmt1::Goto(l) | Stmt1::If(_, l) => self.label(*l)?,
-			Stmt1::Switch(_, cs, l) => {
-				for (_, l) in cs {
-					self.label(*l)?;
-				}
-				self.label(*l)?;
-			}
-			Stmt1::Return(_) => {
-				self.state = State::Ghost;
-			}
-			_ => {}
-		}
 		self.output.push(stmt);
 		Ok(())
 	}
@@ -120,51 +95,27 @@ impl<'a> Ctx<'a> {
 	pub fn set_temp0(&mut self, expr: Option<Expr>) -> Result<(), DecompileError> {
 		self.check_empty()?;
 		self.check_state()?;
-		self.state = State::Temp0(expr);
+		self.temp0 = Some(expr);
 		Ok(())
 	}
 
 	pub fn temp0(&mut self) -> Result<Option<Expr>, DecompileError> {
-		match std::mem::replace(&mut self.state, State::Normal) {
-			State::Temp0(expr) => Ok(expr),
-			_ => error::Temp0Unset.fail(),
-		}
+		self.temp0.take().context(error::Temp0Unset)
 	}
 
 	pub fn finish(self) -> Result<Vec<Stmt1>, DecompileError> {
 		Ok(self.output)
 	}
 
-	fn check_state(&self) -> Result<(), DecompileError> {
-		match &self.state {
-			State::Temp0(temp0) => error::Temp0Set { temp0: temp0.clone() }.fail(),
-			_ => Ok(())
+	fn check_state(&mut self) -> Result<(), DecompileError> {
+		if let Some(temp0) = self.temp0.take() {
+			return error::Temp0Set { temp0: temp0.clone() }.fail()
 		}
-	}
-
-	fn check_empty(&self) -> Result<(), DecompileError> {
-		let empty = self.stack.iter().all(|v| *v == StackVal::Null);
-		snafu::ensure!(empty, error::NonemptyStack);
 		Ok(())
 	}
 
-	fn label(&mut self, label: Label) -> Result<(), DecompileError> {
-		assert!(self.has_label(label));
-		self.check_empty()?;
-		if matches!(self.state, State::Ghost) {
-			if let Some(&stack) = self.jumps.get(&label) {
-				self.state = State::Normal;
-				self.stack.resize_with(stack, || StackVal::Null);
-				if let Some(Stmt1::Goto(l)) = self.output.last() {
-					self.label(*l)?;
-				}
-			}
-		} else {
-			let expected = *self.jumps.entry(label).or_insert(self.stack.len());
-			if expected != self.stack.len() {
-				return error::InconsistentLabel { label, expected, actual: self.stack.len() }.fail();
-			}
-		}
+	fn check_empty(&self) -> Result<(), DecompileError> {
+		snafu::ensure!(self.stack.is_empty(), error::NonemptyStack);
 		Ok(())
 	}
 
