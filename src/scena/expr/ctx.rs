@@ -33,20 +33,21 @@ impl<'a> Ctx<'a> {
 			labels: code.iter().filter_map(|op| match op {
 				Op::Jnz(l) | Op::Jz(l) | Op::Goto(l) => Some(*l),
 				_ => None,
-			}).collect::<HashSet<_>>(),
+			}).collect(),
 			temp0: None,
 		}
 	}
 
 	pub fn next(&mut self) -> Option<&'a Op> {
 		loop {
-			let op = self.code.get(self.pos);
+			let op = self.code.get(self.pos)?;
 			self.pos += 1;
-			if let Some(Op::Line(n)) = op {
+			if let Op::Line(n) = op {
+				tracing::trace!("line: {n}");
 				self.lines.push(*n);
 			} else {
-				tracing::trace!("op: {} {op:?}", self.stack.len());
-				break op
+				tracing::trace!("op: {op:?}");
+				return Some(op)
 			}
 		}
 	}
@@ -85,9 +86,13 @@ impl<'a> Ctx<'a> {
 	}
 
 	pub fn stmt(&mut self, stmt: Stmt1) -> Result<(), DecompileError> {
-		tracing::trace!("stmt: {} {stmt:?}", self.stack.len());
+		tracing::trace!("stmt: {stmt:?}");
 		self.check_empty()?;
 		self.check_state()?;
+		if !self.lines.is_empty() {
+			tracing::warn!("lines: {:?}", self.lines);
+			self.lines.clear();
+		}
 		self.output.push(stmt);
 		Ok(())
 	}
