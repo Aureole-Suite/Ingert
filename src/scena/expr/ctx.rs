@@ -15,7 +15,7 @@ pub struct Ctx<'a> {
 	code: &'a [Op],
 	pos: usize,
 
-	lines: Vec<u16>,
+	lines: Vec<Option<u16>>,
 	stack: Vec<StackVal>,
 	output: Vec<Stmt1>,
 	labels: HashSet<Label>,
@@ -44,7 +44,7 @@ impl<'a> Ctx<'a> {
 			self.pos += 1;
 			if let Op::Line(n) = op {
 				tracing::trace!("line: {n}");
-				self.lines.push(*n);
+				self.lines.push(Some(*n));
 			} else {
 				tracing::trace!("op: {op:?}");
 				return Some(op)
@@ -83,6 +83,33 @@ impl<'a> Ctx<'a> {
 			StackVal::Expr(e) => Ok(e),
 			val => error::BadPop { val: Some(val) }.fail(),
 		}
+	}
+
+	pub fn pop_line(&mut self) -> Option<u16> {
+		if let Some(Some(_)) = self.lines.last() && self.lines.len() > 1 {
+			let line = self.lines.pop()??;
+			Some(line)
+		} else {
+			None
+		}
+	}
+
+	pub fn pop_stmt_line(&mut self) -> Option<u16> {
+		if let Some(Some(_)) = self.lines.last() && self.lines.len() <= 1{
+			let line = self.lines.pop()??;
+			tracing::trace!("pop stmt line: {line}");
+			Some(line)
+		} else {
+			None
+		}
+	}
+
+	pub fn delimit_line(&mut self) {
+		self.lines.push(None);
+	}
+
+	pub fn undelimit_line(&mut self) {
+		while let Some(Some(line)) = self.lines.pop() {}
 	}
 
 	pub fn stmt(&mut self, stmt: Stmt1) -> Result<(), DecompileError> {

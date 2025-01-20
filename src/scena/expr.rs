@@ -48,7 +48,8 @@ pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
 				ctx.stmt(Stmt1::Label(l))?;
 			}
 			Op::Push(ref v) => {
-				ctx.push(Expr::Value(v.clone()))?;
+				let line = ctx.pop_line();
+				ctx.push(Expr::Value(line, v.clone()))?;
 			}
 			Op::Pop(_) => {
 				// eh, don't care.
@@ -91,20 +92,24 @@ pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
 				ctx.stmt(Stmt1::PushVar)?;
 			}
 			Op::GetVar(s) => {
+				let line = ctx.pop_line();
 				let p = Place::Var(ctx.var(s)?);
-				ctx.push(Expr::Var(p))?;
+				ctx.push(Expr::Var(line, p))?;
 			}
 			Op::GetRef(s) => {
+				let line = ctx.pop_line();
 				let p = Place::Deref(ctx.var(s)?);
-				ctx.push(Expr::Var(p))?;
+				ctx.push(Expr::Var(line, p))?;
 			}
 			Op::GetGlobal(ref name) => {
+				let line = ctx.pop_line();
 				let p = Place::Global(name.clone());
-				ctx.push(Expr::Var(p))?;
+				ctx.push(Expr::Var(line, p))?;
 			}
 			Op::PushRef(s) => {
+				let line = ctx.pop_line();
 				let n = ctx.var(s)?;
-				ctx.push(Expr::Ref(n))?;
+				ctx.push(Expr::Ref(line, n))?;
 			}
 			Op::SetVar(s) => {
 				let v = ctx.pop()?;
@@ -124,13 +129,15 @@ pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
 			Op::GetTemp(n) => todo!(),
 			Op::SetTemp(n) => todo!(),
 			Op::Binop(o) => {
+				let line = ctx.pop_line();
 				let b = ctx.pop()?;
 				let a = ctx.pop()?;
-				ctx.push(Expr::Binop(o, Box::new(a), Box::new(b)))?;
+				ctx.push(Expr::Binop(line, o, Box::new(a), Box::new(b)))?;
 			}
 			Op::Unop(o) => {
+				let line = ctx.pop_line();
 				let a = ctx.pop()?;
-				ctx.push(Expr::Unop(o, Box::new(a)))?;
+				ctx.push(Expr::Unop(line, o, Box::new(a)))?;
 			}
 			Op::Jnz(l) => todo!(),
 			Op::Jz(l) => {
@@ -151,6 +158,7 @@ pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
 			}
 			Op::CallTail(ref name, n) => todo!(),
 			Op::CallSystem(a, b, n) => {
+				let line = ctx.pop_line();
 				let mut args = Vec::new();
 				for _ in 0..n {
 					args.push(ctx.pop()?);
@@ -158,7 +166,7 @@ pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
 				if n != 0 && ctx.next() != Some(&Op::Pop(n)) {
 					panic!();
 				}
-				push_call(&mut ctx, Expr::Call(CallKind::Syscall(a, b), args))?;
+				push_call(&mut ctx, Expr::Call(line, CallKind::Syscall(a, b), args))?;
 			}
 			Op::PrepareCallLocal(l) => {
 				prepare_call(&mut ctx, 1, l)?;
@@ -183,6 +191,7 @@ pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
 }
 
 fn prepare_call(ctx: &mut Ctx, misc: u32, label: Label) -> Result<(), DecompileError> {
+	ctx.delimit_line();
 	for _ in 0..misc {
 		ctx.push(StackVal::RetMisc)?;
 	}
@@ -194,6 +203,8 @@ fn make_call(ctx: &mut Ctx, misc: u32, name: &str) -> Result<usize, DecompileErr
 	let Some(Op::Label(label)) = ctx.next() else {
 		panic!();
 	};
+	ctx.undelimit_line();
+	let line = ctx.pop_line();
 	let mut args = Vec::new();
 	loop {
 		match ctx.pop_any()? {
@@ -209,7 +220,7 @@ fn make_call(ctx: &mut Ctx, misc: u32, name: &str) -> Result<usize, DecompileErr
 		}
 	}
 	let nargs = args.len();
-	push_call(ctx, Expr::Call(CallKind::Normal(name.to_owned()), args))?;
+	push_call(ctx, Expr::Call(line, CallKind::Normal(name.to_owned()), args))?;
 	if ctx.has_label(*label) {
 		ctx.stmt(Stmt1::Label(*label))?;
 	}

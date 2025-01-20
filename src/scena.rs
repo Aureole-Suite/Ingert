@@ -62,12 +62,12 @@ pub struct Function {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
-	Value(Value),
-	Var(Place),
-	Ref(u32),
-	Call(CallKind, Vec<Expr>),
-	Unop(Unop, Box<Expr>),
-	Binop(Binop, Box<Expr>, Box<Expr>),
+	Value(Option<u16>, Value),
+	Var(Option<u16>, Place),
+	Ref(Option<u16>, u32),
+	Call(Option<u16>, CallKind, Vec<Expr>),
+	Unop(Option<u16>, Unop, Box<Expr>),
+	Binop(Option<u16>, Binop, Box<Expr>, Box<Expr>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
