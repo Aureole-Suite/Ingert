@@ -27,20 +27,27 @@ impl From<Expr> for StackVal {
 #[derive(Debug, snafu::Snafu)]
 #[snafu(module(error), context(suffix(false)))]
 pub enum DecompileError {
-	BadPop { val: Option<StackVal> },
-	StackBounds { slot: u32, len: u32 },
-	EmptyStack,
-	NotVar { index: u32 },
+	#[snafu(display("attempted to pop from empty stack"))]
+	PopEmpty,
+	#[snafu(display("attempted to pop a return address"))]
+	PopRetAddr,
+	#[snafu(display("attempted to read from stack (slot: {slot}, len: {len})"))]
+	ReadStack { slot: u32, len: u32 },
+	#[snafu(display("stack not empty when finished statement"))]
 	NonemptyStack,
-	InconsistentLabel { label: Label, expected: usize, actual: usize },
+	#[snafu(display("return value set unexpectedly"))]
 	Temp0Set { temp0: Option<Expr> },
+	#[snafu(display("return value not set"))]
 	Temp0Unset,
+	#[snafu(display("could not parse function call"))]
+	BadCall,
+	#[snafu(display("could not parse switch statement"))]
 	BadSwitch,
+	#[snafu(display("unexpected op"))]
+	UnexpectedOp,
 }
 
 pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
-	println!();
-
 	let mut ctx = Ctx::new(code);
 	while let Some(op) = ctx.next() {
 		match *op {
@@ -132,8 +139,6 @@ pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
 				let p = Place::Global(name.clone());
 				ctx.stmt(Stmt1::Set(line, p, v))?;
 			}
-			Op::GetTemp(n) => todo!(),
-			Op::SetTemp(n) => todo!(),
 			Op::Binop(o) => {
 				let line = ctx.pop_line();
 				let b = ctx.pop()?;
@@ -145,7 +150,6 @@ pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
 				let a = ctx.pop()?;
 				ctx.push(Expr::Unop(line, o, Box::new(a)))?;
 			}
-			Op::Jnz(l) => todo!(),
 			Op::Jz(l) => {
 				let line = ctx.pop_stmt_line();
 				let cond = ctx.pop()?;
@@ -160,17 +164,16 @@ pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
 			Op::CallExtern(ref name, n) => {
 				let nargs = make_call(&mut ctx, 4, name)?;
 				if nargs != n as usize {
-					panic!("{} != {}", nargs, n);
+					return error::BadCall.fail();
 				}
 			}
-			Op::CallTail(ref name, n) => todo!(),
 			Op::CallSystem(a, b, n) => {
 				let mut args = Vec::new();
 				for _ in 0..n {
 					args.push(ctx.pop()?);
 				}
 				if n != 0 && ctx.next() != Some(&Op::Pop(n)) {
-					panic!();
+					return error::BadCall.fail();
 				}
 				push_call(&mut ctx, CallKind::Syscall(a, b), args)?;
 			}
@@ -190,6 +193,8 @@ pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
 				args.reverse();
 				ctx.stmt(Stmt1::Debug(line, args))?;
 			}
+			Op::CallTail(_, _) => return error::UnexpectedOp.fail(),
+			Op::Jnz(_) | Op::GetTemp(_) | Op::SetTemp(_) => return error::UnexpectedOp.fail(),
 		}
 	}
 	let out = ctx.finish()?;
@@ -208,7 +213,7 @@ fn prepare_call(ctx: &mut Ctx, misc: u32, label: Label) -> Result<(), DecompileE
 
 fn make_call(ctx: &mut Ctx, misc: u32, name: &str) -> Result<usize, DecompileError> {
 	let Some(Op::Label(label)) = ctx.next() else {
-		panic!();
+		return error::BadCall.fail();
 	};
 	ctx.undelimit_line();
 	let mut args = Vec::new();
@@ -216,13 +221,13 @@ fn make_call(ctx: &mut Ctx, misc: u32, name: &str) -> Result<usize, DecompileErr
 		match ctx.pop_any()? {
 			StackVal::Expr(v) => args.push(v),
 			StackVal::RetAddr(l) if l == *label => break,
-			v => panic!("{v:?}"),
+			_ => return error::BadCall.fail(),
 		}
 	}
 	for _ in 0..misc {
 		match ctx.pop_any()? {
 			StackVal::RetMisc => {}
-			v => panic!("{v:?}"),
+			_ => return error::BadCall.fail(),
 		}
 	}
 	let nargs = args.len();

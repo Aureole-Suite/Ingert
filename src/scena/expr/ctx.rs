@@ -63,7 +63,7 @@ impl<'a> Ctx<'a> {
 	pub fn var(&self, s: StackSlot) -> Result<u32, DecompileError> {
 		let len = self.stack.len() as u32;
 		if s.0 <= len {
-			return error::StackBounds { slot: s.0, len }.fail();
+			return error::ReadStack { slot: s.0, len }.fail();
 		};
 		Ok(s.0 - len)
 	}
@@ -75,13 +75,13 @@ impl<'a> Ctx<'a> {
 	}
 
 	pub fn pop_any(&mut self) -> Result<StackVal, DecompileError> {
-		self.stack.pop().context(error::EmptyStack)
+		self.stack.pop().context(error::PopEmpty)
 	}
 
 	pub fn pop(&mut self) -> Result<Expr, DecompileError> {
 		match self.pop_any()? {
 			StackVal::Expr(e) => Ok(e),
-			val => error::BadPop { val: Some(val) }.fail(),
+			_ => error::PopRetAddr.fail(),
 		}
 	}
 
@@ -109,7 +109,7 @@ impl<'a> Ctx<'a> {
 	}
 
 	pub fn undelimit_line(&mut self) {
-		while let Some(Some(line)) = self.lines.pop() {}
+		while let Some(Some(_)) = self.lines.pop() {}
 	}
 
 	pub fn stmt(&mut self, stmt: Stmt1) -> Result<(), DecompileError> {
