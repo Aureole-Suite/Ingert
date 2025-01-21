@@ -6,7 +6,7 @@ use ctx::{Ctx, StackVal};
 use snafu::OptionExt as _;
 
 #[derive(Debug, Clone, PartialEq)]
-enum Stmt1 {
+pub enum Stmt1 {
 	Label(Label),
 	Expr(Expr),
 	Set(Option<u16>, Place, Expr),
@@ -47,7 +47,7 @@ pub enum DecompileError {
 	UnexpectedOp,
 }
 
-pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
+pub fn decompile1(code: &[Op]) -> Result<(Vec<Stmt1>, Vec<u16>), DecompileError> {
 	let mut ctx = Ctx::new(code);
 	while let Some(op) = ctx.next() {
 		match *op {
@@ -197,9 +197,7 @@ pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
 			Op::Jnz(_) | Op::GetTemp(_) | Op::SetTemp(_) => return error::UnexpectedOp.fail(),
 		}
 	}
-	let out = ctx.finish()?;
-	dbg!(&out);
-	Ok(())
+	ctx.finish()
 }
 
 fn prepare_call(ctx: &mut Ctx, misc: u32, label: Label) -> Result<(), DecompileError> {

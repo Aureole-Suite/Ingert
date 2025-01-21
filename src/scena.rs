@@ -18,7 +18,7 @@ pub fn decompile(scp: &Scp) -> Scena {
 				line: Some(*n),
 			}));
 		}
-		tracing::info!("{:#?}", expr::build_exprs(f.args.len(), code));
+		tracing::info!("{:#?}", expr::decompile1(code));
 		items.push(Item::Function(Function {
 			name: f.name.clone(),
 			args: f.args.clone(),

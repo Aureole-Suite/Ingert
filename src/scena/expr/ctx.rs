@@ -135,8 +135,9 @@ impl<'a> Ctx<'a> {
 		self.temp0.take().context(error::Temp0Unset)
 	}
 
-	pub fn finish(self) -> Result<Vec<Stmt1>, DecompileError> {
-		Ok(self.output)
+	pub fn finish(self) -> Result<(Vec<Stmt1>, Vec<u16>), DecompileError> {
+		let lines = self.lines.into_iter().take_while(|l| l.is_some()).flatten().collect();
+		Ok((self.output, lines))
 	}
 
 	fn check_state(&mut self) -> Result<(), DecompileError> {
