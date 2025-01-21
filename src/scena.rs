@@ -1,6 +1,6 @@
 mod expr;
 
-use crate::scp::{Op, Scp};
+use crate::scp::Scp;
 pub use crate::scp::{Arg, Binop, CallKind, GlobalType, Unop, Value};
 
 pub fn decompile(scp: &Scp) -> Scena {
@@ -8,17 +8,14 @@ pub fn decompile(scp: &Scp) -> Scena {
 	let mut items = Vec::new();
 	for f in scp.functions.iter().rev() {
 		let _span = tracing::info_span!("decompile", name = f.name).entered();
-		dbg!(f);
-		let mut code = f.code.as_slice();
-		while let Some(Op::Line(n)) = code.last() && let Some(g) = globals.next() {
-			code = &code[..code.len() - 1];
+		let (stmts, global_lines) = expr::decompile1(f.code.as_slice()).unwrap();
+		for (n, g) in global_lines.iter().rev().zip(globals.by_ref()) {
 			items.push(Item::Global(Global {
 				name: g.name.clone(),
 				ty: g.ty,
 				line: Some(*n),
 			}));
 		}
-		tracing::info!("{:#?}", expr::decompile1(code));
 		items.push(Item::Function(Function {
 			name: f.name.clone(),
 			args: f.args.clone(),
