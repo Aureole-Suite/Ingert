@@ -73,7 +73,7 @@ pub enum Body {
 	Tree(()),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub enum Expr {
 	Value(Option<u16>, Value),
 	Var(Option<u16>, Place),
@@ -90,7 +90,7 @@ pub enum Place {
 	Global(String),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub enum FlatStmt {
 	Label(Label),
 	Expr(Expr),
@@ -103,3 +103,38 @@ pub enum FlatStmt {
 	Debug(Option<u16>, Vec<Expr>),
 }
 
+fn line<'a, 'b>(f: &'a mut std::fmt::Formatter<'b>, l: &Option<u16>) -> Result<&'a mut std::fmt::Formatter<'b>, std::fmt::Error> {
+	if let Some(l) = l {
+		write!(f, "{l}@")?;
+	}
+	Ok(f)
+}
+
+impl std::fmt::Debug for Expr {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			Self::Value(l, v) => line(f, l)?.debug_tuple("Value").field(v).finish(),
+			Self::Var(l, v) => line(f, l)?.debug_tuple("Var").field(v).finish(),
+			Self::Ref(l, v) => line(f, l)?.debug_tuple("Ref").field(v).finish(),
+			Self::Call(l, c, args) => line(f, l)?.debug_tuple("Call").field(c).field(args).finish(),
+			Self::Unop(l, op, a) => line(f, l)?.debug_tuple("Unop").field(op).field(a).finish(),
+			Self::Binop(l, op, a, b) => line(f, l)?.debug_tuple("Binop").field(op).field(a).field(b).finish(),
+		}
+	}
+}
+
+impl std::fmt::Debug for FlatStmt {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			Self::Label(label) => f.debug_tuple("Label").field(label).finish(),
+			Self::Expr(e) => f.debug_tuple("Expr").field(e).finish(),
+			Self::Set(l, v, e) => line(f, l)?.debug_tuple("Set").field(v).field(e).finish(),
+			Self::Return(l, e) => line(f, l)?.debug_tuple("Return").field(e).finish(),
+			Self::If(l, e, label) => line(f, l)?.debug_tuple("If").field(e).field(label).finish(),
+			Self::Goto(label) => f.debug_tuple("Goto").field(label).finish(),
+			Self::Switch(l, e, cases, default) => line(f, l)?.debug_tuple("Switch").field(e).field(cases).field(default).finish(),
+			Self::PushVar(l) => line(f, l)?.debug_tuple("PushVar").finish(),
+			Self::Debug(l, args) => line(f, l)?.debug_tuple("Debug").field(args).finish(),
+		}
+	}
+}
