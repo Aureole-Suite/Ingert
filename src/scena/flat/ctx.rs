@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use snafu::OptionExt as _;
 
 use crate::scp::{Op, StackSlot, Label};
-use super::{DecompileError, error, Expr, Stmt1};
+use super::{DecompileError, error, Expr, FlatStmt};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum StackVal {
@@ -17,7 +17,7 @@ pub struct Ctx<'a> {
 
 	lines: Vec<Option<u16>>,
 	stack: Vec<StackVal>,
-	output: Vec<Stmt1>,
+	output: Vec<FlatStmt>,
 	labels: HashSet<Label>,
 	temp0: Option<Option<Expr>>,
 }
@@ -112,11 +112,11 @@ impl<'a> Ctx<'a> {
 		while let Some(Some(_)) = self.lines.pop() {}
 	}
 
-	pub fn stmt(&mut self, stmt: Stmt1) -> Result<(), DecompileError> {
+	pub fn stmt(&mut self, stmt: FlatStmt) -> Result<(), DecompileError> {
 		tracing::trace!("stmt: {stmt:?}");
 		self.check_empty()?;
 		self.check_state()?;
-		if !self.lines.is_empty() && !matches!(stmt, Stmt1::Label(_)) {
+		if !self.lines.is_empty() && !matches!(stmt, FlatStmt::Label(_)) {
 			tracing::warn!("lines: {:?}", self.lines);
 			self.lines.clear();
 		}
@@ -135,7 +135,10 @@ impl<'a> Ctx<'a> {
 		self.temp0.take().context(error::Temp0Unset)
 	}
 
-	pub fn finish(self) -> Result<Vec<Stmt1>, DecompileError> {
+	pub fn finish(mut self) -> Result<Vec<FlatStmt>, DecompileError> {
+		self.check_empty()?;
+		self.check_state()?;
+		snafu::ensure!(self.lines.is_empty(), error::NonemptyStack);
 		Ok(self.output)
 	}
 

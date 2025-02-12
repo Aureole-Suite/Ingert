@@ -1,4 +1,4 @@
-mod expr;
+mod flat;
 
 use crate::scp::{Op, Scp};
 pub use crate::scp::{Arg, Binop, CallKind, GlobalType, Unop, Value};
@@ -18,7 +18,7 @@ pub fn decompile(scp: &Scp) -> Scena {
 				line: Some(*n),
 			}));
 		}
-		tracing::info!("{:#?}", expr::build_exprs(f.args.len(), code));
+		tracing::info!("{:#?}", flat::decompile(code));
 		items.push(Item::Function(Function {
 			name: f.name.clone(),
 			args: f.args.clone(),

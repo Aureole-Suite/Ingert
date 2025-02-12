@@ -6,7 +6,7 @@ use ctx::{Ctx, StackVal};
 use snafu::OptionExt as _;
 
 #[derive(Debug, Clone, PartialEq)]
-enum Stmt1 {
+pub enum FlatStmt {
 	Label(Label),
 	Expr(Expr),
 	Set(Option<u16>, Place, Expr),
@@ -47,19 +47,19 @@ pub enum DecompileError {
 	UnexpectedOp,
 }
 
-pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
+pub fn decompile(code: &[Op]) -> Result<Vec<FlatStmt>, DecompileError> {
 	let mut ctx = Ctx::new(code);
 	while let Some(op) = ctx.next() {
 		match *op {
 			Op::Label(l) => {
-				ctx.stmt(Stmt1::Label(l))?;
+				ctx.stmt(FlatStmt::Label(l))?;
 			}
 			Op::Push(ref v) => {
 				let line = ctx.pop_line();
 				ctx.push(Expr::Value(line, v.clone()))?;
 			}
 			Op::Pop(_) => {
-				// eh, don't care.
+				// Eh, don't care. If it's wrong, we'll find out when roundtrip fails.
 			}
 			Op::SetTemp(0) if matches!(ctx.peek(), [Op::GetTemp(0) | Op::Goto(_), ..]) => {
 				let line = ctx.pop_stmt_line();
@@ -82,7 +82,7 @@ pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
 						_ => return error::BadSwitch.fail(),
 					}
 				};
-				ctx.stmt(Stmt1::Switch(line, v, cases, default))?;
+				ctx.stmt(FlatStmt::Switch(line, v, cases, default))?;
 			}
 			Op::PushNull if matches!(ctx.peek(), [Op::SetTemp(0), ..]) => {
 				ctx.next();
@@ -95,11 +95,11 @@ pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
 			Op::Return => {
 				let line = ctx.pop_stmt_line();
 				let v = ctx.temp0()?;
-				ctx.stmt(Stmt1::Return(line, v))?;
+				ctx.stmt(FlatStmt::Return(line, v))?;
 			}
 			Op::PushNull => {
 				let line = ctx.pop_stmt_line();
-				ctx.stmt(Stmt1::PushVar(line))?;
+				ctx.stmt(FlatStmt::PushVar(line))?;
 			}
 			Op::GetVar(s) => {
 				let line = ctx.pop_line();
@@ -125,19 +125,19 @@ pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
 				let line = ctx.pop_stmt_line();
 				let v = ctx.pop()?;
 				let p = Place::Var(ctx.var(s)?);
-				ctx.stmt(Stmt1::Set(line, p, v))?;
+				ctx.stmt(FlatStmt::Set(line, p, v))?;
 			}
 			Op::SetRef(s) => {
 				let line = ctx.pop_stmt_line();
 				let v = ctx.pop()?;
 				let p = Place::Deref(ctx.var(s)?);
-				ctx.stmt(Stmt1::Set(line, p, v))?;
+				ctx.stmt(FlatStmt::Set(line, p, v))?;
 			}
 			Op::SetGlobal(ref name) => {
 				let line = ctx.pop_stmt_line();
 				let v = ctx.pop()?;
 				let p = Place::Global(name.clone());
-				ctx.stmt(Stmt1::Set(line, p, v))?;
+				ctx.stmt(FlatStmt::Set(line, p, v))?;
 			}
 			Op::Binop(o) => {
 				let line = ctx.pop_line();
@@ -153,10 +153,10 @@ pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
 			Op::Jz(l) => {
 				let line = ctx.pop_stmt_line();
 				let cond = ctx.pop()?;
-				ctx.stmt(Stmt1::If(line, cond, l))?;
+				ctx.stmt(FlatStmt::If(line, cond, l))?;
 			}
 			Op::Goto(l) => {
-				ctx.stmt(Stmt1::Goto(l))?;
+				ctx.stmt(FlatStmt::Goto(l))?;
 			}
 			Op::CallLocal(ref name) => {
 				make_call(&mut ctx, 1, name)?;
@@ -191,15 +191,13 @@ pub fn build_exprs(nargs: usize, code: &[Op]) -> Result<(), DecompileError> {
 					args.push(ctx.pop()?);
 				}
 				args.reverse();
-				ctx.stmt(Stmt1::Debug(line, args))?;
+				ctx.stmt(FlatStmt::Debug(line, args))?;
 			}
 			Op::CallTail(_, _) => return error::UnexpectedOp.fail(),
 			Op::Jnz(_) | Op::GetTemp(_) | Op::SetTemp(_) => return error::UnexpectedOp.fail(),
 		}
 	}
-	let out = ctx.finish()?;
-	dbg!(&out);
-	Ok(())
+	ctx.finish()
 }
 
 fn prepare_call(ctx: &mut Ctx, misc: u32, label: Label) -> Result<(), DecompileError> {
@@ -233,7 +231,7 @@ fn make_call(ctx: &mut Ctx, misc: u32, name: &str) -> Result<usize, DecompileErr
 	let nargs = args.len();
 	push_call(ctx, CallKind::Normal(name.to_owned()), args)?;
 	if ctx.has_label(*label) {
-		ctx.stmt(Stmt1::Label(*label))?;
+		ctx.stmt(FlatStmt::Label(*label))?;
 	}
 	Ok(nargs)
 }
@@ -245,7 +243,7 @@ fn push_call(ctx: &mut Ctx, kind: CallKind, args: Vec<Expr>) -> Result<(), Decom
 		ctx.push(Expr::Call(line, kind, args))?;
 	} else {
 		let line = ctx.pop_stmt_line();
-		ctx.stmt(Stmt1::Expr(Expr::Call(line, kind, args)))?;
+		ctx.stmt(FlatStmt::Expr(Expr::Call(line, kind, args)))?;
 	}
 	Ok(())
 }
