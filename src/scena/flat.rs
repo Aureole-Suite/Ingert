@@ -1,22 +1,9 @@
 mod ctx;
 
 use crate::scp::{Binop, Value, Label, Op};
-use super::{Expr, Place, CallKind};
+use super::{Expr, Place, CallKind, FlatStmt};
 use ctx::{Ctx, StackVal};
 use snafu::OptionExt as _;
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum FlatStmt {
-	Label(Label),
-	Expr(Expr),
-	Set(Option<u16>, Place, Expr),
-	Return(Option<u16>, Option<Expr>),
-	If(Option<u16>, Expr, Label),
-	Goto(Label),
-	Switch(Option<u16>, Expr, Vec<(i32, Label)>, Label),
-	PushVar(Option<u16>),
-	Debug(Option<u16>, Vec<Expr>),
-}
 
 impl From<Expr> for StackVal {
 	fn from(e: Expr) -> Self {

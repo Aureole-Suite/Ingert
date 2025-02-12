@@ -1,8 +1,7 @@
 mod flat;
 
 use crate::scp::{Op, Scp};
-pub use crate::scp::{Arg, Binop, CallKind, GlobalType, Unop, Value};
-pub use flat::FlatStmt;
+pub use crate::scp::{Arg, Binop, CallKind, GlobalType, Unop, Value, Label};
 
 pub fn decompile(scp: &Scp) -> Scena {
 	let mut globals = scp.globals.iter().rev();
@@ -90,3 +89,17 @@ pub enum Place {
 	Deref(u32),
 	Global(String),
 }
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum FlatStmt {
+	Label(Label),
+	Expr(Expr),
+	Set(Option<u16>, Place, Expr),
+	Return(Option<u16>, Option<Expr>),
+	If(Option<u16>, Expr, Label),
+	Goto(Label),
+	Switch(Option<u16>, Expr, Vec<(i32, Label)>, Label),
+	PushVar(Option<u16>),
+	Debug(Option<u16>, Vec<Expr>),
+}
+
