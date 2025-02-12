@@ -1,4 +1,4 @@
-lalrpop_util::lalrpop_mod!(grammar);
+lalrpop_util::lalrpop_mod!(grammar, "/legacy/grammar.rs");
 
 pub mod lower;
 
