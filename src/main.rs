@@ -1,6 +1,7 @@
 #![feature(let_chains)]
 use clap::Parser;
 use std::path::{Path, PathBuf};
+use tracing_subscriber::prelude::*;
 
 #[derive(clap::Parser)]
 struct Args {
@@ -8,9 +9,9 @@ struct Args {
 }
 
 fn main() {
-	tracing_subscriber::fmt::fmt()
-		.with_max_level(tracing::Level::TRACE)
-		.with_writer(std::io::stderr)
+	tracing_subscriber::registry()
+		.with(tracing_subscriber::fmt::layer())
+		.with(tracing_subscriber::EnvFilter::from_default_env())
 		.init();
 	unsafe { compact_debug::enable(true) };
 	let args = Args::parse();

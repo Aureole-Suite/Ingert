@@ -8,7 +8,7 @@ pub fn decompile(scp: &Scp) -> Scena {
 	let mut globals = scp.globals.iter().rev();
 	let mut items = Vec::new();
 	for f in scp.functions.iter().rev() {
-		let _span = tracing::info_span!("decompile", name = f.name).entered();
+		let _span = tracing::info_span!("function", name = f.name).entered();
 		let mut code = f.code.as_slice();
 		while let Some(Op::Line(n)) = code.last() && let Some(g) = globals.next() {
 			code = &code[..code.len() - 1];
