@@ -105,20 +105,38 @@ pub enum FlatStmt {
 
 fn line<'a, 'b>(f: &'a mut std::fmt::Formatter<'b>, l: &Option<u16>) -> Result<&'a mut std::fmt::Formatter<'b>, std::fmt::Error> {
 	if let Some(l) = l {
-		write!(f, "{l}@")?;
+		write!(f, "{l}:")?;
 	}
 	Ok(f)
+}
+
+fn write_args(f: &mut std::fmt::Formatter<'_>, name: &str, args: &[Expr]) -> std::fmt::Result {
+	let mut t = f.debug_tuple(name);
+	for arg in args {
+		t.field(arg);
+	}
+	t.finish()
 }
 
 impl std::fmt::Debug for Expr {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
-			Self::Value(l, v) => line(f, l)?.debug_tuple("Value").field(v).finish(),
+			Self::Value(l, v) => {
+				line(f, l)?;
+				v.fmt(f)
+			}
 			Self::Var(l, v) => line(f, l)?.debug_tuple("Var").field(v).finish(),
 			Self::Ref(l, v) => line(f, l)?.debug_tuple("Ref").field(v).finish(),
-			Self::Call(l, c, args) => line(f, l)?.debug_tuple("Call").field(c).field(args).finish(),
-			Self::Unop(l, op, a) => line(f, l)?.debug_tuple("Unop").field(op).field(a).finish(),
-			Self::Binop(l, op, a, b) => line(f, l)?.debug_tuple("Binop").field(op).field(a).field(b).finish(),
+			Self::Call(l, c, args) => {
+				line(f, l)?;
+				match c {
+					CallKind::Normal(n) => write_args(f, &format!("Call[{n}]"), args),
+					CallKind::Tailcall(n) => write_args(f, &format!("Tailcall[{n}]"), args),
+					CallKind::Syscall(a, b) => write_args(f, &format!("Syscall[{a},{b}]"), args),
+				}
+			},
+			Self::Unop(l, op, a) => line(f, l)?.debug_tuple(&format!("{op:?}")).field(a).finish(),
+			Self::Binop(l, op, a, b) => line(f, l)?.debug_tuple(&format!("{op:?}")).field(a).field(b).finish(),
 		}
 	}
 }
@@ -134,7 +152,10 @@ impl std::fmt::Debug for FlatStmt {
 			Self::Goto(label) => f.debug_tuple("Goto").field(label).finish(),
 			Self::Switch(l, e, cases, default) => line(f, l)?.debug_tuple("Switch").field(e).field(cases).field(default).finish(),
 			Self::PushVar(l) => line(f, l)?.debug_tuple("PushVar").finish(),
-			Self::Debug(l, args) => line(f, l)?.debug_tuple("Debug").field(args).finish(),
+			Self::Debug(l, args) => {
+				line(f, l)?;
+				write_args(f, "Debug", args)
+			}
 		}
 	}
 }
