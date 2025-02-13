@@ -30,6 +30,8 @@ pub enum ReadError {
 	Global { id: usize },
 	#[snafu(display("invalid function id {id}"))]
 	Function { id: usize },
+	#[snafu(display("invalid labels"))]
+	Labels { source: crate::labels::LabelError },
 }
 
 pub fn read(
@@ -150,7 +152,7 @@ pub fn read(
 		return MissingLabelSnafu { labels }.fail();
 	}
 
-	reorder_labels(&mut ops2);
+	crate::labels::normalize(&mut ops2, 0).context(LabelsSnafu)?;
 	Ok(ops2)
 }
 
@@ -168,28 +170,6 @@ fn pop_count(f: &mut Reader) -> Result<u8, ReadError> {
 		return StackSlotSnafu { value: value as i32 }.fail();
 	}
 	Ok(value / 4)
-}
-
-fn reorder_labels(ops: &mut Vec<Op>) {
-	let mut labels = HashMap::new();
-	for op in ops.iter() {
-		if let Op::Label(l) = op {
-			labels.insert(*l, Label(labels.len() as u32));
-		}
-	}
-	for op in ops {
-		match op {
-			Op::Label(l)
-			| Op::Jnz(l)
-			| Op::Jz(l)
-			| Op::Goto(l)
-			| Op::PrepareCallLocal(l)
-			| Op::PrepareCallExtern(l) => {
-				*l = labels[l];
-			}
-			_ => continue,
-		}
-	}
 }
 
 #[derive(Debug, snafu::Snafu)]

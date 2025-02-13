@@ -1,6 +1,8 @@
 pub mod io;
 pub use io::{read, write};
 
+pub use crate::labels::Label;
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Scp {
 	pub globals: Vec<Global>,
@@ -130,8 +132,6 @@ pub enum Unop {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Label(pub u32);
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct StackSlot(pub u32);
 
 #[derive(Debug, Clone, PartialEq)]
@@ -169,4 +169,21 @@ pub enum Op {
 
 	Line(u16),
 	Debug(u8),
+}
+
+impl crate::labels::Labels for Op {
+    fn defined(&mut self) -> Option<&mut Label> {
+		match self {
+			Self::Label(label) => Some(label),
+			_ => None,
+		}
+    }
+
+    fn referenced(&mut self, mut f: impl FnMut(&mut Label)) {
+		match self {
+			Self::Jnz(label) | Self::Jz(label) | Self::Goto(label) => f(label),
+			Self::PrepareCallLocal(label) | Self::PrepareCallExtern(label) => f(label),
+			_ => (),
+		}
+    }
 }

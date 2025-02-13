@@ -72,3 +72,4 @@ pub mod legacy {
 
 pub mod scp;
 pub mod scena;
+pub mod labels;
