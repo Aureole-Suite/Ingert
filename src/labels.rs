@@ -40,9 +40,6 @@ pub fn normalize<T: Labels + std::fmt::Debug>(ops: &mut Vec<T>, mut number: u32)
 		}
 	}
 
-	println!("{:?}", labels);
-	println!("{:?}", ops);
-
 	let mut referenced = HashSet::new();
 	for op in ops.iter_mut() {
 		let mut missing = None;
