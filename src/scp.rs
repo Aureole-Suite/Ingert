@@ -98,8 +98,8 @@ impl std::fmt::Debug for CallArg {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum CallKind {
-	Normal(String),
-	Tailcall(String),
+	Normal(String, String),
+	Tailcall(String, String),
 	Syscall(u8, u8),
 }
 
@@ -160,8 +160,8 @@ pub enum Op {
 	Goto(Label),
 
 	CallLocal(String),
-	CallExtern(String, u8),
-	CallTail(String, u8),
+	CallExtern(String, String, u8),
+	CallTail(String, String, u8),
 	CallSystem(u8, u8, u8),
 	PrepareCallLocal(Label),
 	PrepareCallExtern(Label),

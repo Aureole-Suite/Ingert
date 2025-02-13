@@ -105,15 +105,13 @@ pub fn read(
 				let a = string_value(f).context(FuncNameSnafu)?;
 				let b = string_value(f).context(FuncNameSnafu)?;
 				let c = f.u8()?;
-				let name = format!("{a}.{b}");
-				Op::CallExtern(name, c)
+				Op::CallExtern(a, b, c)
 			}
 			35 => {
 				let a = string_value(f).context(FuncNameSnafu)?;
 				let b = string_value(f).context(FuncNameSnafu)?;
 				let c = f.u8()?;
-				let name = if a.is_empty() { b } else { format!("{a}.{b}") };
-				Op::CallTail(name, c)
+				Op::CallTail(a, b, c)
 			}
 			36 => {
 				let a = f.u8()?;
@@ -263,15 +261,13 @@ pub fn write(code: &[Op], number: usize, w: &mut super::WCtx) -> Result<(), Writ
 				f.u8(12);
 				f.u16(*w.function_names.get(&name).context(write::Function { name })? as u16);
 			}
-			Op::CallExtern(ref name, n) => {
-				let (a, b) = name.split_once('.').context(write::Function { name })?;
+			Op::CallExtern(ref a, ref b, n) => {
 				f.u8(34);
 				write_string_value(f, &mut w.f_code_strings, a);
 				write_string_value(f, &mut w.f_code_strings, b);
 				f.u8(n);
 			}
-			Op::CallTail(ref name, n) => {
-				let (a, b) = name.split_once('.').unwrap_or(("", name));
+			Op::CallTail(ref a, ref b, n) => {
 				f.u8(35);
 				write_string_value(f, &mut w.f_code_strings, a);
 				write_string_value(f, &mut w.f_code_strings, b);

@@ -102,13 +102,13 @@ fn make_sense(name: Option<String>, kind: RawCallKind, args: Vec<CallArg>) -> Op
 		RawCallKind::Local => {
 			let name = name?;
 			if name.contains('.') { return None; }
-			CallKind::Normal(name)
+			CallKind::Normal("".to_owned(), name)
 		}
 		RawCallKind::Extern => {
 			if name.is_some() { return None; }
 			let Some(CallArg::Value(Value::String(name2))) = args.next() else { return None; };
-			if !name2.contains('.') { return None; }
-			CallKind::Normal(name2)
+			let (a, b) = name2.split_once('.')?;
+			CallKind::Normal(a.to_owned(), b.to_owned())
 		}
 		RawCallKind::Tailcall => {
 			let Some(CallArg::Value(Value::String(name2))) = args.next() else { return None; };
@@ -117,7 +117,8 @@ fn make_sense(name: Option<String>, kind: RawCallKind, args: Vec<CallArg>) -> Op
 			} else if !name2.contains('.') {
 				tracing::warn!("tail call to missing function {name2}");
 			}
-			CallKind::Tailcall(name2)
+			let (a, b) = name2.split_once('.').unwrap_or(("", &name2));
+			CallKind::Tailcall(a.to_owned(), b.to_owned())
 		}
 		RawCallKind::Syscall => {
 			if name.is_some() { return None; }
@@ -142,33 +143,38 @@ pub fn write(call: &Call, w: &mut super::WCtx) -> Result<(), WriteError> {
 	let nargs = call.args.len() as u16;
 	let arg_start = g.here();
 	match &call.kind {
-		CallKind::Normal(name) if !name.contains('.') => {
-			let Some(id) = w.function_names.get(name).copied() else {
-				return write::MissingFunction { name }.fail();
+		CallKind::Normal(a, b) if a.is_empty() => {
+			let Some(id) = w.function_names.get(b).copied() else {
+				return write::MissingFunction { name: b }.fail();
 			};
 			f.u32(id as u32);
 			f.u16(0);
 			f.u16(nargs);
 		}
-		CallKind::Normal(name) => {
+		CallKind::Normal(a, b) => {
 			f.u32(0xFFFFFFFF);
 			f.u16(1);
 			f.u16(1 + nargs);
-			write_string_value(g, &mut w.f_called_strings, name);
+			write_string_value(g, &mut w.f_called_strings, &format!("{a}.{b}"));
 			g.u32(0);
 		}
-		CallKind::Tailcall(name) => {
-			if name.contains('.') {
-				f.u32(0xFFFFFFFF);
-			} else if let Some(id) = w.function_names.get(name).copied() {
+		CallKind::Tailcall(a, b) if a.is_empty() => {
+			if let Some(id) = w.function_names.get(b).copied() {
 				f.u32(id as u32);
 			} else {
-				tracing::warn!("tail call to missing function {name}");
+				tracing::warn!("tail call to missing function {b}");
 				f.u32(0xFFFFFFFF);
 			}
 			f.u16(2);
 			f.u16(1 + nargs);
-			write_string_value(g, &mut w.f_called_strings, name);
+			write_string_value(g, &mut w.f_called_strings, b);
+			g.u32(0);
+		}
+		CallKind::Tailcall(a, b) => {
+			f.u32(0xFFFFFFFF);
+			f.u16(2);
+			f.u16(1 + nargs);
+			write_string_value(g, &mut w.f_called_strings, &format!("{a}.{b}"));
 			g.u32(0);
 		}
 		CallKind::Syscall(a, b) => {

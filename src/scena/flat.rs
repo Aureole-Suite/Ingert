@@ -148,10 +148,10 @@ pub fn decompile(code: &[Op]) -> Result<Vec<FlatStmt>, DecompileError> {
 				ctx.stmt(FlatStmt::Goto(l))?;
 			}
 			Op::CallLocal(ref name) => {
-				make_call(&mut ctx, 1, name)?;
+				make_call(&mut ctx, 1, "", name)?;
 			}
-			Op::CallExtern(ref name, n) => {
-				let nargs = make_call(&mut ctx, 4, name)?;
+			Op::CallExtern(ref a, ref b, n) => {
+				let nargs = make_call(&mut ctx, 4, a, b)?;
 				if nargs != n as usize {
 					return error::BadCall.fail();
 				}
@@ -182,7 +182,7 @@ pub fn decompile(code: &[Op]) -> Result<Vec<FlatStmt>, DecompileError> {
 				args.reverse();
 				ctx.stmt(FlatStmt::Debug(line, args))?;
 			}
-			Op::CallTail(_, _) => return error::UnexpectedOp.fail(),
+			Op::CallTail(_, _, _) => return error::UnexpectedOp.fail(),
 			Op::Jnz(_) | Op::GetTemp(_) | Op::SetTemp(_) => return error::UnexpectedOp.fail(),
 		}
 	}
@@ -200,7 +200,7 @@ fn prepare_call(ctx: &mut Ctx, misc: u32, label: Label) -> Result<(), DecompileE
 	Ok(())
 }
 
-fn make_call(ctx: &mut Ctx, misc: u32, name: &str) -> Result<usize, DecompileError> {
+fn make_call(ctx: &mut Ctx, misc: u32, namea: &str, name: &str) -> Result<usize, DecompileError> {
 	let Some(Op::Label(label)) = ctx.next() else {
 		return error::BadCall.fail();
 	};
@@ -220,7 +220,7 @@ fn make_call(ctx: &mut Ctx, misc: u32, name: &str) -> Result<usize, DecompileErr
 		}
 	}
 	let nargs = args.len();
-	push_call(ctx, CallKind::Normal(name.to_owned()), args)?;
+	push_call(ctx, CallKind::Normal(namea.to_owned(), name.to_owned()), args)?;
 	if ctx.has_label(*label) {
 		ctx.stmt(FlatStmt::Label(*label))?;
 	}

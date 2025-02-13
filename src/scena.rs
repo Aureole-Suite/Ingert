@@ -130,8 +130,20 @@ impl std::fmt::Debug for Expr {
 			Self::Call(l, c, args) => {
 				line(f, l)?;
 				match c {
-					CallKind::Normal(n) => write_args(f, &format!("Call[{n}]"), args),
-					CallKind::Tailcall(n) => write_args(f, &format!("Tailcall[{n}]"), args),
+					CallKind::Normal(a, b) => {
+						if a.is_empty() {
+							write_args(f, &format!("Call[{b}]"), args)
+						} else {
+							write_args(f, &format!("Call[{a}.{b}]"), args)
+						}
+					},
+					CallKind::Tailcall(a, b) => {
+						if a.is_empty() {
+							write_args(f, &format!("Tailcall[{b}]"), args)
+						} else {
+							write_args(f, &format!("Tailcall[{a}.{b}]"), args)
+						}
+					},
 					CallKind::Syscall(a, b) => write_args(f, &format!("Syscall[{a},{b}]"), args),
 				}
 			},
