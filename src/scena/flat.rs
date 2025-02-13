@@ -3,7 +3,7 @@ mod ctx;
 use crate::scp::{Binop, Value, Label, Op};
 use super::{Expr, Place, CallKind, FlatStmt};
 use ctx::{Ctx, StackVal};
-use snafu::OptionExt as _;
+use snafu::{OptionExt as _, ResultExt as _};
 
 impl From<Expr> for StackVal {
 	fn from(e: Expr) -> Self {
@@ -32,6 +32,8 @@ pub enum DecompileError {
 	BadSwitch,
 	#[snafu(display("unexpected op"))]
 	UnexpectedOp,
+	#[snafu(display("invalid labels"))]
+	Labels { source: crate::labels::LabelError },
 }
 
 pub fn decompile(code: &[Op]) -> Result<Vec<FlatStmt>, DecompileError> {
@@ -184,7 +186,9 @@ pub fn decompile(code: &[Op]) -> Result<Vec<FlatStmt>, DecompileError> {
 			Op::Jnz(_) | Op::GetTemp(_) | Op::SetTemp(_) => return error::UnexpectedOp.fail(),
 		}
 	}
-	ctx.finish()
+	let mut out = ctx.finish()?;
+	crate::labels::normalize(&mut out, 0).context(error::Labels)?;
+	Ok(out)
 }
 
 fn prepare_call(ctx: &mut Ctx, misc: u32, label: Label) -> Result<(), DecompileError> {

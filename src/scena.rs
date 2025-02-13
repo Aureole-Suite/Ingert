@@ -159,3 +159,26 @@ impl std::fmt::Debug for FlatStmt {
 		}
 	}
 }
+
+impl crate::labels::Labels for FlatStmt {
+	fn defined(&mut self) -> Option<&mut Label> {
+		match self {
+			Self::Label(l) => Some(l),
+			_ => None,
+		}
+	}
+
+	fn referenced(&mut self, mut f: impl FnMut(&mut Label)) {
+		match self {
+			Self::If(_, _, l) => f(l),
+			Self::Goto(l) => f(l),
+			Self::Switch(_, _, cases, default) => {
+				for (_, l) in cases {
+					f(l);
+				}
+				f(default);
+			}
+			_ => {},
+		}
+	}
+}
