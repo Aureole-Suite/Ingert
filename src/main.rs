@@ -10,7 +10,7 @@ struct Args {
 
 fn main() {
 	tracing_subscriber::registry()
-		.with(tracing_subscriber::fmt::layer())
+		.with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
 		.with(tracing_subscriber::EnvFilter::from_default_env())
 		.init();
 	unsafe { compact_debug::enable(true) };
@@ -34,7 +34,7 @@ fn main() {
 		let scp2 = ingert::scp::read(&data).unwrap();
 		let data2 = ingert::scp::write(&scp2).unwrap();
 		let scena = ingert::scena::decompile(&scp2);
-		dbg!(scena);
+		println!("{:#?}", scena);
 		// std::fs::write("a.bin", &data).unwrap();
 		// std::fs::write("b.bin", &data2).unwrap();
 		let mut scena = ingert::legacy::decompile(&data).unwrap();
