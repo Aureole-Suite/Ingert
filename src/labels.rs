@@ -4,8 +4,9 @@ use std::collections::{HashMap, HashSet};
 pub struct Label(pub u32);
 
 pub trait Labels {
-	fn defined(&mut self) -> Option<&mut Label>;
-	fn referenced(&mut self, f: impl FnMut(&mut Label));
+	fn defined(&self) -> Option<&Label>;
+	fn defined_mut(&mut self) -> Option<&mut Label>;
+	fn referenced_mut(&mut self, f: impl FnMut(&mut Label));
 }
 
 #[derive(Debug, snafu::Snafu)]
@@ -16,12 +17,11 @@ pub enum LabelError {
 	Missing { label: Label },
 }
 
-pub fn normalize<T: Labels + std::fmt::Debug>(ops: &mut Vec<T>, mut number: u32) -> Result<u32, LabelError> {
+pub fn normalize<T: Labels>(ops: &mut Vec<T>, mut number: u32) -> Result<u32, LabelError> {
 	// Maps labels to their normalized numbers
 	let mut labels = HashMap::new();
 	// Set of consecutive labels; subsequent labels are erased
 	let mut conflated = HashSet::new();
-
 
 	let mut prev = false;
 	for op in ops.iter_mut() {
@@ -43,7 +43,7 @@ pub fn normalize<T: Labels + std::fmt::Debug>(ops: &mut Vec<T>, mut number: u32)
 	let mut referenced = HashSet::new();
 	for op in ops.iter_mut() {
 		let mut missing = None;
-		op.referenced(|l| {
+		op.referenced_mut(|l| {
 			referenced.insert(*l);
 			if let Some(n) = labels.get(l) {
 				*l = *n;
@@ -59,7 +59,11 @@ pub fn normalize<T: Labels + std::fmt::Debug>(ops: &mut Vec<T>, mut number: u32)
 		referenced.remove(&c);
 	}
 
-	ops.retain_mut(|op| op.defined().is_none_or(|l| referenced.contains(&std::mem::replace(l, labels[l]))));
+	ops.retain_mut(|op| op.defined_mut().is_none_or(|l| referenced.contains(&std::mem::replace(l, labels[l]))));
 
 	Ok(number)
+}
+
+pub fn max_label<T: Labels>(ops: &[T]) -> u32 {
+	ops.iter().filter_map(|op| op.defined()).map(|Label(n)| n).max().map_or(0, |n| *n + 1)
 }
