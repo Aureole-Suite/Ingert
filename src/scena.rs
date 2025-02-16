@@ -180,6 +180,22 @@ impl crate::labels::Labels for FlatStmt {
 		}
 	}
 
+	fn referenced(&self, mut f: impl FnMut(&Label)) {
+		match self {
+			Self::If(_, _, l) => f(l),
+			Self::Goto(l) => f(l),
+			Self::Switch(_, _, cases, default) => {
+				for (_, l) in cases {
+					f(l);
+				}
+				f(default);
+			}
+			_ => {},
+		}
+	}
+}
+
+impl crate::labels::LabelsMut for FlatStmt {
 	fn defined_mut(&mut self) -> Option<&mut Label> {
 		match self {
 			Self::Label(l) => Some(l),

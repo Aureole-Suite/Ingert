@@ -179,6 +179,16 @@ impl crate::labels::Labels for Op {
 		}
 	}
 
+	fn referenced(&self, mut f: impl FnMut(&Label)) {
+		match self {
+			Self::Jnz(label) | Self::Jz(label) | Self::Goto(label) => f(label),
+			Self::PrepareCallLocal(label) | Self::PrepareCallExtern(label) => f(label),
+			_ => (),
+		}
+	}
+}
+
+impl crate::labels::LabelsMut for Op {
 	fn defined_mut(&mut self) -> Option<&mut Label> {
 		match self {
 			Self::Label(label) => Some(label),
