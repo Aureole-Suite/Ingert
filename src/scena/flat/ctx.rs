@@ -18,7 +18,6 @@ pub struct Ctx<'a> {
 	lines: Vec<Option<u16>>,
 	stack: Vec<StackVal>,
 	output: Vec<FlatStmt>,
-	temp0: Option<Option<Expr>>,
 }
 
 impl<'a> Ctx<'a> {
@@ -29,7 +28,6 @@ impl<'a> Ctx<'a> {
 			lines: Vec::new(),
 			stack: Vec::new(),
 			output: Vec::new(),
-			temp0: None,
 		}
 	}
 
@@ -64,7 +62,6 @@ impl<'a> Ctx<'a> {
 	}
 
 	pub fn push(&mut self, val: impl Into<StackVal>) -> Result<(), DecompileError> {
-		self.check_state()?;
 		self.stack.push(val.into());
 		Ok(())
 	}
@@ -110,7 +107,6 @@ impl<'a> Ctx<'a> {
 	pub fn stmt(&mut self, stmt: FlatStmt) -> Result<(), DecompileError> {
 		tracing::trace!("stmt: {stmt:?}");
 		self.check_empty()?;
-		self.check_state()?;
 		if !self.lines.is_empty() && !matches!(stmt, FlatStmt::Label(_)) {
 			tracing::warn!("lines: {:?}", self.lines);
 			self.lines.clear();
@@ -119,29 +115,10 @@ impl<'a> Ctx<'a> {
 		Ok(())
 	}
 
-	pub fn set_temp0(&mut self, expr: Option<Expr>) -> Result<(), DecompileError> {
+	pub fn finish(self) -> Result<Vec<FlatStmt>, DecompileError> {
 		self.check_empty()?;
-		self.check_state()?;
-		self.temp0 = Some(expr);
-		Ok(())
-	}
-
-	pub fn temp0(&mut self) -> Result<Option<Expr>, DecompileError> {
-		self.temp0.take().context(error::Temp0Unset)
-	}
-
-	pub fn finish(mut self) -> Result<Vec<FlatStmt>, DecompileError> {
-		self.check_empty()?;
-		self.check_state()?;
 		snafu::ensure!(self.lines.is_empty(), error::NonemptyStack);
 		Ok(self.output)
-	}
-
-	fn check_state(&mut self) -> Result<(), DecompileError> {
-		if let Some(temp0) = self.temp0.take() {
-			return error::Temp0Set { temp0: temp0.clone() }.fail()
-		}
-		Ok(())
 	}
 
 	fn check_empty(&self) -> Result<(), DecompileError> {

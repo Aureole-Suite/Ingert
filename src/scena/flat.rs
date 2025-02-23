@@ -22,10 +22,6 @@ pub enum DecompileError {
 	ReadStack { slot: u32, len: u32 },
 	#[snafu(display("stack not empty when finished statement"))]
 	NonemptyStack,
-	#[snafu(display("return value set unexpectedly"))]
-	Temp0Set { temp0: Option<Expr> },
-	#[snafu(display("return value not set"))]
-	Temp0Unset,
 	#[snafu(display("could not parse function call"))]
 	BadCall,
 	#[snafu(display("could not parse switch statement"))]
@@ -46,9 +42,6 @@ pub fn decompile(code: &[Op]) -> Result<Vec<FlatStmt>, DecompileError> {
 			Op::Push(ref v) => {
 				let line = ctx.pop_line();
 				ctx.push(Expr::Value(line, v.clone()))?;
-			}
-			Op::Pop(_) => {
-				// Eh, don't care. If it's wrong, we'll find out when roundtrip fails.
 			}
 			Op::SetTemp(0) if matches!(ctx.peek(), [Op::GetTemp(0) | Op::Goto(_), ..]) => {
 				let line = ctx.pop_stmt_line();
@@ -72,23 +65,6 @@ pub fn decompile(code: &[Op]) -> Result<Vec<FlatStmt>, DecompileError> {
 					}
 				};
 				ctx.stmt(FlatStmt::Switch(line, v, cases, default))?;
-			}
-			Op::PushNull if matches!(ctx.peek(), [Op::SetTemp(0), ..]) => {
-				ctx.next();
-				ctx.set_temp0(None)?;
-			}
-			Op::SetTemp(0) => {
-				let v = ctx.pop()?;
-				ctx.set_temp0(Some(v))?;
-			}
-			Op::Return => {
-				let line = ctx.pop_stmt_line();
-				let v = ctx.temp0()?;
-				ctx.stmt(FlatStmt::Return(line, v))?;
-			}
-			Op::PushNull => {
-				let line = ctx.pop_stmt_line();
-				ctx.stmt(FlatStmt::PushVar(line))?;
 			}
 			Op::GetVar(s) => {
 				let line = ctx.pop_line();
@@ -147,6 +123,36 @@ pub fn decompile(code: &[Op]) -> Result<Vec<FlatStmt>, DecompileError> {
 			Op::Goto(l) => {
 				ctx.stmt(FlatStmt::Goto(l))?;
 			}
+			Op::Pop(pop) if let [Op::Goto(l), ..] = ctx.peek() => {
+				ctx.next();
+				ctx.stmt(FlatStmt::Goto(*l))?;
+				for _ in 0..pop {
+					ctx.stmt(FlatStmt::PopVar)?;
+				}
+			}
+
+			Op::PushNull if matches!(ctx.peek(), [Op::SetTemp(0), ..]) => {
+				ctx.next();
+				handle_return(&mut ctx, None)?;
+			}
+			Op::SetTemp(0) => {
+				let v = ctx.pop()?;
+				handle_return(&mut ctx, Some(v))?;
+			}
+			Op::Return => {
+				return error::UnexpectedOp.fail();
+			}
+
+			Op::PushNull => {
+				let line = ctx.pop_stmt_line();
+				ctx.stmt(FlatStmt::PushVar(line))?;
+			}
+			Op::Pop(n) => {
+				for _ in 0..n {
+					ctx.stmt(FlatStmt::PopVar)?;
+				}
+			}
+
 			Op::CallLocal(ref name) => {
 				make_call(&mut ctx, 1, "", name)?;
 			}
@@ -189,6 +195,26 @@ pub fn decompile(code: &[Op]) -> Result<Vec<FlatStmt>, DecompileError> {
 	let mut out = ctx.finish()?;
 	crate::labels::normalize(&mut out, 0).context(error::Labels)?;
 	Ok(out)
+}
+
+fn handle_return(ctx: &mut Ctx, val: Option<Expr>) -> Result<(), DecompileError> {
+	let pop = if let [Op::Pop(n), ..] = ctx.peek() {
+		ctx.next();
+		*n as usize
+	} else {
+		0
+	};
+	if let [Op::Return, ..] = ctx.peek() {
+		let line = ctx.pop_stmt_line();
+		ctx.next();
+		ctx.stmt(FlatStmt::Return(line, val))?;
+		for _ in 0..pop {
+			ctx.stmt(FlatStmt::PopVar)?;
+		}
+		Ok(())
+	} else {
+		error::UnexpectedOp.fail()
+	}
 }
 
 fn prepare_call(ctx: &mut Ctx, misc: u32, label: Label) -> Result<(), DecompileError> {

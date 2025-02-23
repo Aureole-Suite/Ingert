@@ -1,4 +1,4 @@
-#![feature(let_chains, is_sorted)]
+#![feature(let_chains, if_let_guard)]
 
 pub mod legacy {
 	use snafu::ResultExt as _;
