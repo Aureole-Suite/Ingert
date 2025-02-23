@@ -123,13 +123,6 @@ pub fn decompile(code: &[Op]) -> Result<Vec<FlatStmt>, DecompileError> {
 			Op::Goto(l) => {
 				ctx.stmt(FlatStmt::Goto(l))?;
 			}
-			Op::Pop(pop) if let [Op::Goto(l), ..] = ctx.peek() => {
-				ctx.next();
-				ctx.stmt(FlatStmt::Goto(*l))?;
-				for _ in 0..pop {
-					ctx.stmt(FlatStmt::PopVar)?;
-				}
-			}
 
 			Op::PushNull if matches!(ctx.peek(), [Op::SetTemp(0), ..]) => {
 				ctx.next();
