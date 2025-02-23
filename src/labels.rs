@@ -43,12 +43,11 @@ pub fn normalize<T: LabelsMut>(ops: &mut Vec<T>, mut number: u32) -> Result<u32,
 			}
 			if prev {
 				referenced.remove(&label);
-			} else {
-				number += 1;
 			}
 			prev = true;
-		} else {
+		} else if prev {
 			prev = false;
+			number += 1;
 		}
 	}
 
