@@ -8,33 +8,41 @@ pub trait Labels {
 	fn referenced(&self, f: impl FnMut(&Label));
 }
 
-pub trait LabelsMut {
+pub trait LabelsMut: Labels {
 	fn defined_mut(&mut self) -> Option<&mut Label>;
 	fn referenced_mut(&mut self, f: impl FnMut(&mut Label));
 }
 
 #[derive(Debug, snafu::Snafu)]
 pub enum LabelError {
-	#[snafu(display("duplicate label: {label:?}"))]
-	Duplicate { label: Label },
-	#[snafu(display("missing label: {label:?}"))]
-	Missing { label: Label },
+	#[snafu(display("duplicate labels: {labels:?}"))]
+	Duplicate { labels: Vec<Label> },
+	#[snafu(display("missing labels: {labels:?}"))]
+	Missing { labels: Vec<Label> },
 }
 
 pub fn normalize<T: LabelsMut>(ops: &mut Vec<T>, mut number: u32) -> Result<u32, LabelError> {
-	// Maps labels to their normalized numbers
-	let mut labels = HashMap::new();
-	// Set of consecutive labels; subsequent labels are erased
-	let mut conflated = HashSet::new();
+	let mut referenced = HashSet::new();
+	for op in ops.iter() {
+		op.referenced(|l| {
+			referenced.insert(*l);
+		});
+	}
 
+	let mut duplicate = HashSet::new();
+
+	let mut labels = HashMap::new();
 	let mut prev = false;
-	for op in ops.iter_mut() {
-		if let Some(l) = op.defined_mut() {
-			if labels.insert(*l, Label(number)).is_some() {
-				return Err(LabelError::Duplicate { label: *l });
+	for op in ops.iter() {
+		if let Some(&label) = op.defined() {
+			if !referenced.contains(&label) {
+				continue;
+			}
+			if labels.insert(label, Label(number)).is_some() {
+				duplicate.insert(label);
 			}
 			if prev {
-				conflated.insert(*l);
+				referenced.remove(&label);
 			} else {
 				number += 1;
 			}
@@ -44,26 +52,28 @@ pub fn normalize<T: LabelsMut>(ops: &mut Vec<T>, mut number: u32) -> Result<u32,
 		}
 	}
 
-	let mut referenced = HashSet::new();
-	for op in ops.iter_mut() {
-		let mut missing = None;
-		op.referenced_mut(|l| {
-			referenced.insert(*l);
-			if let Some(n) = labels.get(l) {
-				*l = *n;
-			} else {
-				missing.get_or_insert(*l);
-			}
-		});
-		if let Some(l) = missing {
-			return Err(LabelError::Missing { label: l });
-		}
-	}
-	for c in conflated {
-		referenced.remove(&c);
+	if !duplicate.is_empty() {
+		let mut duplicates = duplicate.into_iter().collect::<Vec<_>>();
+		duplicates.sort();
+		return Err(LabelError::Duplicate { labels: duplicates });
 	}
 
-	ops.retain_mut(|op| op.defined_mut().is_none_or(|l| referenced.contains(&std::mem::replace(l, labels[l]))));
+	let mut missing = referenced.iter().filter(|l| !labels.contains_key(l)).copied().collect::<Vec<_>>();
+	missing.sort();
+	if !missing.is_empty() {
+		return Err(LabelError::Missing { labels: missing });
+	}
+
+	ops.retain_mut(|op| op.defined().is_none_or(|l| referenced.contains(l)));
+
+	for op in ops.iter_mut() {
+		if let Some(l) = op.defined_mut() {
+			*l = labels[l];
+		}
+		op.referenced_mut(|l| {
+			*l = labels[l];
+		});
+	}
 
 	Ok(number)
 }
