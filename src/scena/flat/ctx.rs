@@ -18,7 +18,6 @@ pub struct Ctx<'a> {
 	lines: Vec<Option<u16>>,
 	stack: Vec<StackVal>,
 	output: Vec<FlatStmt>,
-	labels: HashSet<Label>,
 	temp0: Option<Option<Expr>>,
 }
 
@@ -30,10 +29,6 @@ impl<'a> Ctx<'a> {
 			lines: Vec::new(),
 			stack: Vec::new(),
 			output: Vec::new(),
-			labels: code.iter().filter_map(|op| match op {
-				Op::Jnz(l) | Op::Jz(l) | Op::Goto(l) => Some(*l),
-				_ => None,
-			}).collect(),
 			temp0: None,
 		}
 	}
@@ -152,10 +147,6 @@ impl<'a> Ctx<'a> {
 	fn check_empty(&self) -> Result<(), DecompileError> {
 		snafu::ensure!(self.stack.is_empty(), error::NonemptyStack);
 		Ok(())
-	}
-
-	pub fn has_label(&self, label: Label) -> bool {
-		self.labels.contains(&label)
 	}
 }
 

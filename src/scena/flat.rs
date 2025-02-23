@@ -201,18 +201,15 @@ fn prepare_call(ctx: &mut Ctx, misc: u32, label: Label) -> Result<(), DecompileE
 }
 
 fn make_call(ctx: &mut Ctx, misc: u32, namea: &str, name: &str) -> Result<usize, DecompileError> {
-	let Some(Op::Label(label)) = ctx.next() else {
-		return error::BadCall.fail();
-	};
 	ctx.undelimit_line();
 	let mut args = Vec::new();
-	loop {
+	let label = loop {
 		match ctx.pop_any()? {
 			StackVal::Expr(v) => args.push(v),
-			StackVal::RetAddr(l) if l == *label => break,
+			StackVal::RetAddr(l) => break l,
 			_ => return error::BadCall.fail(),
 		}
-	}
+	};
 	for _ in 0..misc {
 		match ctx.pop_any()? {
 			StackVal::RetMisc => {}
@@ -220,10 +217,14 @@ fn make_call(ctx: &mut Ctx, misc: u32, namea: &str, name: &str) -> Result<usize,
 		}
 	}
 	let nargs = args.len();
-	push_call(ctx, CallKind::Normal(namea.to_owned(), name.to_owned()), args)?;
-	if ctx.has_label(*label) {
-		ctx.stmt(FlatStmt::Label(*label))?;
+	match ctx.peek() {
+		[Op::Label(l), Op::GetTemp(0), ..] if *l == label => {
+			ctx.next();
+		}
+		[Op::Label(l), ..] if *l == label => {}
+		_ => return error::BadCall.fail()
 	}
+	push_call(ctx, CallKind::Normal(namea.to_owned(), name.to_owned()), args)?;
 	Ok(nargs)
 }
 
