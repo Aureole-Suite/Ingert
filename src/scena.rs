@@ -97,6 +97,7 @@ pub enum FlatStmt {
 	Set(Option<u16>, Place, Expr),
 	Return(Option<u16>, Option<Expr>),
 	If(Option<u16>, Expr, Label),
+	While(Option<u16>, Expr, Label),
 	Goto(Label),
 	Switch(Option<u16>, Expr, Vec<(i32, Label)>, Label),
 	PushVar(Option<u16>),
@@ -162,6 +163,7 @@ impl std::fmt::Debug for FlatStmt {
 			Self::Set(l, v, e) => line(f, l)?.debug_tuple("Set").field(v).field(e).finish(),
 			Self::Return(l, e) => line(f, l)?.debug_tuple("Return").field(e).finish(),
 			Self::If(l, e, label) => line(f, l)?.debug_tuple("If").field(e).field(label).finish(),
+			Self::While(l, e, label) => line(f, l)?.debug_tuple("While").field(e).field(label).finish(),
 			Self::Goto(label) => f.debug_tuple("Goto").field(label).finish(),
 			Self::Switch(l, e, cases, default) => line(f, l)?.debug_tuple("Switch").field(e).field(cases).field(default).finish(),
 			Self::PushVar(l) => line(f, l)?.debug_tuple("PushVar").finish(),
@@ -185,6 +187,7 @@ impl crate::labels::Labels for FlatStmt {
 	fn referenced(&self, mut f: impl FnMut(&Label)) {
 		match self {
 			Self::If(_, _, l) => f(l),
+			Self::While(_, _, l) => f(l),
 			Self::Goto(l) => f(l),
 			Self::Switch(_, _, cases, default) => {
 				for (_, l) in cases {
@@ -208,6 +211,7 @@ impl crate::labels::LabelsMut for FlatStmt {
 	fn referenced_mut(&mut self, mut f: impl FnMut(&mut Label)) {
 		match self {
 			Self::If(_, _, l) => f(l),
+			Self::While(_, _, l) => f(l),
 			Self::Goto(l) => f(l),
 			Self::Switch(_, _, cases, default) => {
 				for (_, l) in cases {

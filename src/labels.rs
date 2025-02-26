@@ -89,7 +89,7 @@ pub fn backrefs<T: Labels>(ops: &[T]) -> HashSet<Label> {
 			seen.insert(*l);
 		}
 		op.referenced(|l| {
-			if !seen.insert(*l) {
+			if seen.contains(l) {
 				backrefs.insert(*l);
 			}
 		});

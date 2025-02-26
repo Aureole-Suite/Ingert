@@ -1,4 +1,3 @@
-use std::collections::HashSet;
 use snafu::OptionExt as _;
 
 use crate::scp::{Op, StackSlot, Label};
@@ -15,6 +14,7 @@ pub struct Ctx<'a> {
 	code: &'a [Op],
 	pos: usize,
 
+	label: Option<Label>,
 	lines: Vec<Option<u16>>,
 	stack: Vec<StackVal>,
 	output: Vec<FlatStmt>,
@@ -25,6 +25,7 @@ impl<'a> Ctx<'a> {
 		Self {
 			code,
 			pos: 0,
+			label: None,
 			lines: Vec::new(),
 			stack: Vec::new(),
 			output: Vec::new(),
@@ -77,6 +78,17 @@ impl<'a> Ctx<'a> {
 		}
 	}
 
+	pub fn label(&mut self, label: Label) -> Result<(), DecompileError> {
+		self.check_empty()?;
+		self.label = Some(label);
+		self.output.push(FlatStmt::Label(label));
+		Ok(())
+	}
+
+	pub fn get_label(&self) -> Option<Label> {
+		self.label
+	}
+
 	pub fn pop_line(&mut self) -> Option<u16> {
 		if let Some(Some(_)) = self.lines.last() && self.lines.len() > 1 {
 			let line = self.lines.pop()??;
@@ -107,10 +119,12 @@ impl<'a> Ctx<'a> {
 	pub fn stmt(&mut self, stmt: FlatStmt) -> Result<(), DecompileError> {
 		tracing::trace!("stmt: {stmt:?}");
 		self.check_empty()?;
-		if !self.lines.is_empty() && !matches!(stmt, FlatStmt::Label(_)) {
+		if !self.lines.is_empty() {
 			tracing::warn!("lines: {:?}", self.lines);
 			self.lines.clear();
 		}
+
+		self.label = None;
 		self.output.push(stmt);
 		Ok(())
 	}
