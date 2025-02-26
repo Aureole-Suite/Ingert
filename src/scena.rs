@@ -73,14 +73,16 @@ pub enum Body {
 	Tree(()),
 }
 
+pub type Line = Option<u16>;
+
 #[derive(Clone, PartialEq)]
 pub enum Expr {
-	Value(Option<u16>, Value),
-	Var(Option<u16>, Place),
-	Ref(Option<u16>, u32),
-	Call(Option<u16>, CallKind, Vec<Expr>),
-	Unop(Option<u16>, Unop, Box<Expr>),
-	Binop(Option<u16>, Binop, Box<Expr>, Box<Expr>),
+	Value(Line, Value),
+	Var(Line, Place),
+	Ref(Line, u32),
+	Call(Line, CallKind, Vec<Expr>),
+	Unop(Line, Unop, Box<Expr>),
+	Binop(Line, Binop, Box<Expr>, Box<Expr>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -94,15 +96,15 @@ pub enum Place {
 pub enum FlatStmt {
 	Label(Label),
 	Expr(Expr),
-	Set(Option<u16>, Place, Expr),
-	Return(Option<u16>, Option<Expr>),
-	If(Option<u16>, Expr, Label),
-	While(Option<u16>, Expr, Label),
+	Set(Line, Place, Expr),
+	Return(Line, Option<Expr>),
+	If(Line, Expr, Label),
+	While(Line, Expr, Label),
 	Goto(Label),
-	Switch(Option<u16>, Expr, Vec<(i32, Label)>, Label),
-	PushVar(Option<u16>),
+	Switch(Line, Expr, Vec<(i32, Label)>, Label),
+	PushVar(Line),
 	PopVar,
-	Debug(Option<u16>, Vec<Expr>),
+	Debug(Line, Vec<Expr>),
 }
 
 mod fmt;
@@ -151,6 +153,64 @@ impl crate::labels::LabelsMut for FlatStmt {
 				f(default);
 			}
 			_ => {},
+		}
+	}
+}
+
+impl Expr {
+	pub fn line(&self) -> Option<Line> {
+		match self {
+			Self::Value(l, _) => Some(*l),
+			Self::Var(l, _) => Some(*l),
+			Self::Ref(l, _) => Some(*l),
+			Self::Call(l, _, _) => Some(*l),
+			Self::Unop(l, _, _) => Some(*l),
+			Self::Binop(l, _, _, _) => Some(*l),
+		}
+	}
+
+	pub fn line_mut(&mut self) -> Option<&mut Line> {
+		match self {
+			Self::Value(l, _) => Some(l),
+			Self::Var(l, _) => Some(l),
+			Self::Ref(l, _) => Some(l),
+			Self::Call(l, _, _) => Some(l),
+			Self::Unop(l, _, _) => Some(l),
+			Self::Binop(l, _, _, _) => Some(l),
+		}
+	}
+}
+
+impl FlatStmt {
+	pub fn line(&self) -> Option<Line> {
+		match self {
+			Self::Label(_) => None,
+			Self::Expr(_) => None, // Not sure about this one
+			Self::Set(l, _, _) => Some(*l),
+			Self::Return(l, _) => Some(*l),
+			Self::If(l, _, _) => Some(*l),
+			Self::While(l, _, _) => Some(*l),
+			Self::Goto(_) => None,
+			Self::Switch(l, _, _, _) => Some(*l),
+			Self::PushVar(l) => Some(*l),
+			Self::PopVar => None,
+			Self::Debug(l, _) => Some(*l),
+		}
+	}
+
+	pub fn line_mut(&mut self) -> Option<&mut Line> {
+		match self {
+			Self::Label(_) => None,
+			Self::Expr(_) => None, // Not sure about this one
+			Self::Set(l, _, _) => Some(l),
+			Self::Return(l, _) => Some(l),
+			Self::If(l, _, _) => Some(l),
+			Self::While(l, _, _) => Some(l),
+			Self::Goto(_) => None,
+			Self::Switch(l, _, _, _) => Some(l),
+			Self::PushVar(l) => Some(l),
+			Self::PopVar => None,
+			Self::Debug(l, _) => Some(l),
 		}
 	}
 }
