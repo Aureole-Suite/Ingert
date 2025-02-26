@@ -105,76 +105,7 @@ pub enum FlatStmt {
 	Debug(Option<u16>, Vec<Expr>),
 }
 
-fn line<'a, 'b>(f: &'a mut std::fmt::Formatter<'b>, l: &Option<u16>) -> Result<&'a mut std::fmt::Formatter<'b>, std::fmt::Error> {
-	if let Some(l) = l {
-		write!(f, "{l}:")?;
-	}
-	Ok(f)
-}
-
-fn write_args(f: &mut std::fmt::Formatter<'_>, name: &str, args: &[Expr]) -> std::fmt::Result {
-	let mut t = f.debug_tuple(name);
-	for arg in args {
-		t.field(arg);
-	}
-	t.finish()
-}
-
-impl std::fmt::Debug for Expr {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		match self {
-			Self::Value(l, v) => {
-				line(f, l)?;
-				v.fmt(f)
-			}
-			Self::Var(l, v) => line(f, l)?.debug_tuple("Var").field(v).finish(),
-			Self::Ref(l, v) => line(f, l)?.debug_tuple("Ref").field(v).finish(),
-			Self::Call(l, c, args) => {
-				line(f, l)?;
-				match c {
-					CallKind::Normal(a, b) => {
-						if a.is_empty() {
-							write_args(f, &format!("Call[{b}]"), args)
-						} else {
-							write_args(f, &format!("Call[{a}.{b}]"), args)
-						}
-					},
-					CallKind::Tailcall(a, b) => {
-						if a.is_empty() {
-							write_args(f, &format!("Tailcall[{b}]"), args)
-						} else {
-							write_args(f, &format!("Tailcall[{a}.{b}]"), args)
-						}
-					},
-					CallKind::Syscall(a, b) => write_args(f, &format!("Syscall[{a},{b}]"), args),
-				}
-			},
-			Self::Unop(l, op, a) => line(f, l)?.debug_tuple(&format!("{op:?}")).field(a).finish(),
-			Self::Binop(l, op, a, b) => line(f, l)?.debug_tuple(&format!("{op:?}")).field(a).field(b).finish(),
-		}
-	}
-}
-
-impl std::fmt::Debug for FlatStmt {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		match self {
-			Self::Label(label) => f.debug_tuple("Label").field(label).finish(),
-			Self::Expr(e) => f.debug_tuple("Expr").field(e).finish(),
-			Self::Set(l, v, e) => line(f, l)?.debug_tuple("Set").field(v).field(e).finish(),
-			Self::Return(l, e) => line(f, l)?.debug_tuple("Return").field(e).finish(),
-			Self::If(l, e, label) => line(f, l)?.debug_tuple("If").field(e).field(label).finish(),
-			Self::While(l, e, label) => line(f, l)?.debug_tuple("While").field(e).field(label).finish(),
-			Self::Goto(label) => f.debug_tuple("Goto").field(label).finish(),
-			Self::Switch(l, e, cases, default) => line(f, l)?.debug_tuple("Switch").field(e).field(cases).field(default).finish(),
-			Self::PushVar(l) => line(f, l)?.debug_tuple("PushVar").finish(),
-			Self::PopVar => f.debug_tuple("PopVar").finish(),
-			Self::Debug(l, args) => {
-				line(f, l)?;
-				write_args(f, "Debug", args)
-			}
-		}
-	}
-}
+mod fmt;
 
 impl crate::labels::Labels for FlatStmt {
 	fn defined(&self) -> Option<&Label> {
