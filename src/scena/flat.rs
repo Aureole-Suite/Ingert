@@ -40,6 +40,9 @@ pub fn decompile(code: &[Op]) -> Result<Vec<FlatStmt>, DecompileError> {
 			Op::Label(l) => {
 				ctx.label(l)?;
 			}
+			Op::Line(l) => {
+				ctx.line(l)?;
+			}
 			Op::Push(ref v) => {
 				let line = ctx.pop_line();
 				ctx.push(Expr::Value(line, v.clone()))?;
@@ -176,7 +179,6 @@ pub fn decompile(code: &[Op]) -> Result<Vec<FlatStmt>, DecompileError> {
 			Op::PrepareCallExtern(l) => {
 				prepare_call(&mut ctx, 4, l)?;
 			}
-			Op::Line(_) => unreachable!("handled by next()"),
 			Op::Debug(n) => {
 				let line = ctx.pop_stmt_line();
 				let mut args = Vec::new();

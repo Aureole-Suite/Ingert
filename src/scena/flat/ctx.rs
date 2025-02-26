@@ -33,17 +33,9 @@ impl<'a> Ctx<'a> {
 	}
 
 	pub fn next(&mut self) -> Option<&'a Op> {
-		loop {
-			let op = self.code.get(self.pos)?;
-			self.pos += 1;
-			if let Op::Line(n) = op {
-				tracing::trace!("line: {n}");
-				self.lines.push(Some(*n));
-			} else {
-				tracing::trace!("op: {op:?}");
-				return Some(op)
-			}
-		}
+		let op = self.code.get(self.pos)?;
+		self.pos += 1;
+		Some(op)
 	}
 
 	pub fn peek(&self) -> &'a [Op] {
@@ -87,6 +79,11 @@ impl<'a> Ctx<'a> {
 
 	pub fn get_label(&self) -> Option<Label> {
 		self.label
+	}
+
+	pub fn line(&mut self, line: u16) -> Result<(), DecompileError> {
+		self.lines.push(Some(line));
+		Ok(())
 	}
 
 	pub fn pop_line(&mut self) -> Option<u16> {
