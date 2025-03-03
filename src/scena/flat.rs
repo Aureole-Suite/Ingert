@@ -319,11 +319,11 @@ pub fn compile(stmts: &[FlatStmt]) -> Result<Vec<Op>, CompileError> {
 				ctx.out.push(Op::Label(*l));
 			}
 			FlatStmt::Expr(expr) => {
-				compile_expr(&mut ctx, expr);
+				compile_expr(&mut ctx, expr, 0);
 			},
 			FlatStmt::Set(l, place, expr) => {
 				ctx.line(*l);
-				compile_expr(&mut ctx, expr);
+				compile_expr(&mut ctx, expr, 0);
 				match place {
 					Place::Var(n) => ctx.out.push(Op::SetVar(crate::scp::StackSlot(*n))),
 					Place::Deref(n) => ctx.out.push(Op::SetRef(crate::scp::StackSlot(*n))),
@@ -333,7 +333,7 @@ pub fn compile(stmts: &[FlatStmt]) -> Result<Vec<Op>, CompileError> {
 			FlatStmt::Return(l, expr) => {
 				ctx.line(*l);
 				if let Some(expr) = expr {
-					compile_expr(&mut ctx, expr);
+					compile_expr(&mut ctx, expr, 0);
 				} else {
 					ctx.out.push(Op::PushNull);
 				}
@@ -346,7 +346,7 @@ pub fn compile(stmts: &[FlatStmt]) -> Result<Vec<Op>, CompileError> {
 			}
 			FlatStmt::If(l, expr, label) => {
 				ctx.line(*l);
-				compile_expr(&mut ctx, expr);
+				compile_expr(&mut ctx, expr, 0);
 				ctx.out.push(Op::Jz(*label));
 			}
 			FlatStmt::While(l, expr, label) => {
@@ -355,7 +355,7 @@ pub fn compile(stmts: &[FlatStmt]) -> Result<Vec<Op>, CompileError> {
 				};
 				ctx.line(*l);
 				ctx.out.push(Op::Label(prelabel));
-				compile_expr(&mut ctx, expr);
+				compile_expr(&mut ctx, expr, 0);
 				ctx.out.push(Op::Jz(*label));
 			}
 			FlatStmt::Goto(label) => {
@@ -363,7 +363,7 @@ pub fn compile(stmts: &[FlatStmt]) -> Result<Vec<Op>, CompileError> {
 			}
 			FlatStmt::Switch(l, expr, items, label) => {
 				ctx.line(*l);
-				compile_expr(&mut ctx, expr);
+				compile_expr(&mut ctx, expr, 0);
 				ctx.out.push(Op::SetTemp(0));
 				for (n, l) in items {
 					ctx.out.push(Op::GetTemp(0));
@@ -384,8 +384,8 @@ pub fn compile(stmts: &[FlatStmt]) -> Result<Vec<Op>, CompileError> {
 			}
 			FlatStmt::Debug(l, exprs) => {
 				ctx.line(*l);
-				for expr in exprs {
-					compile_expr(&mut ctx, expr);
+				for (expr, i) in exprs.iter().rev().zip(0..) {
+					compile_expr(&mut ctx, expr, i);
 				}
 				ctx.out.push(Op::Debug(exprs.len() as u8));
 			}
@@ -395,7 +395,7 @@ pub fn compile(stmts: &[FlatStmt]) -> Result<Vec<Op>, CompileError> {
 	Ok(ctx.out)
 }
 
-fn compile_expr(ctx: &mut OutCtx, expr: &Expr) {
+fn compile_expr(ctx: &mut OutCtx, expr: &Expr, depth: u32) {
 	match expr {
 		Expr::Value(l, value) => {
 			ctx.line(*l);
@@ -404,8 +404,8 @@ fn compile_expr(ctx: &mut OutCtx, expr: &Expr) {
 		Expr::Var(l, place) => {
 			ctx.line(*l);
 			match place {
-				Place::Var(n) => ctx.out.push(Op::GetVar(crate::scp::StackSlot(*n))),
-				Place::Deref(n) => ctx.out.push(Op::GetRef(crate::scp::StackSlot(*n))),
+				Place::Var(n) => ctx.out.push(Op::GetVar(crate::scp::StackSlot(*n + depth))),
+				Place::Deref(n) => ctx.out.push(Op::GetRef(crate::scp::StackSlot(*n + depth))),
 				Place::Global(n) => ctx.out.push(Op::GetGlobal(n.clone())),
 			}
 		}
@@ -419,8 +419,8 @@ fn compile_expr(ctx: &mut OutCtx, expr: &Expr) {
 				CallKind::Normal(a, b) => {
 					let l = ctx.label();
 					ctx.out.push(Op::PrepareCallLocal(l));
-					for expr in exprs.iter().rev() {
-						compile_expr(ctx, expr);
+					for (expr, i) in exprs.iter().rev().zip(2..) {
+						compile_expr(ctx, expr, depth + i);
 					}
 					ctx.out.push(Op::CallLocal(b.clone()));
 					ctx.out.push(Op::Label(l));
@@ -431,13 +431,13 @@ fn compile_expr(ctx: &mut OutCtx, expr: &Expr) {
 		}
 		Expr::Unop(l, unop, expr) => {
 			ctx.line(*l);
-			compile_expr(ctx, expr);
+			compile_expr(ctx, expr, depth);
 			ctx.out.push(Op::Unop(*unop));
 		}
 		Expr::Binop(l, binop, a, b) => {
 			ctx.line(*l);
-			compile_expr(ctx, a);
-			compile_expr(ctx, b);
+			compile_expr(ctx, a, depth);
+			compile_expr(ctx, b, depth + 1);
 			ctx.out.push(Op::Binop(*binop));
 		}
 	}
