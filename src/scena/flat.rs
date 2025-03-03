@@ -26,6 +26,8 @@ pub enum DecompileError {
 	BadCall,
 	#[snafu(display("could not parse switch statement"))]
 	BadSwitch,
+	#[snafu(display("could not parse tailcall statement"))]
+	BadTailcall,
 	#[snafu(display("unexpected op"))]
 	UnexpectedOp,
 	#[snafu(display("could not normalize labels"), context(false))]
@@ -130,6 +132,38 @@ pub fn decompile(code: &[Op]) -> Result<Vec<FlatStmt>, DecompileError> {
 			}
 			Op::Goto(l) => {
 				ctx.stmt(FlatStmt::Goto(l))?;
+			}
+
+			Op::Pop(n) if let [Op::CallTail(a, b, 0), ..] = ctx.peek() => {
+				ctx.next();
+				let line = ctx.pop_stmt_line();
+				ctx.stmt(FlatStmt::Tailcall(line, a.clone(), b.clone(), vec![], n as usize))?;
+			}
+			Op::SetTemp(1) => {
+				let line = ctx.pop_stmt_line();
+				let mut args = vec![ctx.pop()?];
+				let pop = loop {
+					match ctx.next().context(error::BadTailcall)? {
+						Op::SetTemp(n) if *n == args.len() as u8 + 1 => {
+							args.push(ctx.pop()?);
+						}
+						Op::Pop(n) => break *n,
+						_ => return error::BadTailcall.fail(),
+					}
+				};
+				for i in (1..=args.len()).rev() {
+					let a = ctx.next();
+					if a != Some(&Op::GetTemp(i as u8)) {
+						return error::BadTailcall.fail();
+					}
+				}
+				let Some(Op::CallTail(a, b, n)) = ctx.next() else {
+					return error::BadTailcall.fail();
+				};
+				if *n != args.len() as u8 {
+					return error::BadTailcall.fail();
+				}
+				ctx.stmt(FlatStmt::Tailcall(line, a.clone(), b.clone(), args, pop as usize))?;
 			}
 
 			Op::PushNull if matches!(ctx.peek(), [Op::SetTemp(0), ..]) => {
@@ -380,6 +414,23 @@ pub fn compile(stmts: &[FlatStmt]) -> Result<Vec<Op>, CompileError> {
 					compile_expr(&mut ctx, expr, i);
 				}
 				ctx.out.push(Op::Debug(exprs.len() as u8));
+			}
+			FlatStmt::Tailcall(l, a, b, exprs, pop) => {
+				ctx.line(*l);
+				for (expr, i) in exprs.iter().rev().zip(0..) {
+					compile_expr(&mut ctx, expr, i);
+				}
+				let n = exprs.len() as u8;
+				for i in 1..=n {
+					ctx.out.push(Op::SetTemp(i));
+				}
+				for _ in 0..*pop {
+					ctx.pop();
+				}
+				for i in (1..=n).rev() {
+					ctx.out.push(Op::GetTemp(i));
+				}
+				ctx.out.push(Op::CallTail(a.clone(), b.clone(), n));
 			}
 		}
 	}

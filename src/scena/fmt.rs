@@ -49,7 +49,7 @@ impl Debug for FlatStmt {
 			Self::Label(label) => f.debug_tuple("Label").field(label).finish(),
 			Self::Expr(e) => f.debug_tuple("Expr").field(e).finish(),
 			Self::Set(l, v, e) => line(f, l)?.debug_tuple("Set").field(v).field(e).finish(),
-			Self::Return(l, e, pop) => line(f, l)?.debug_tuple("Return").field(e).field(pop).finish(),
+			Self::Return(l, e, pop) => line(f, l)?.debug_tuple(&format!("Return[{pop}]")).field(e).finish(),
 			Self::If(l, e, label) => line(f, l)?.debug_tuple("If").field(e).field(label).finish(),
 			Self::While(l, e, label) => line(f, l)?.debug_tuple("While").field(e).field(label).finish(),
 			Self::Goto(label) => f.debug_tuple("Goto").field(label).finish(),
@@ -59,6 +59,14 @@ impl Debug for FlatStmt {
 			Self::Debug(l, args) => {
 				line(f, l)?;
 				write_args(f, "Debug", args)
+			}
+			Self::Tailcall(l, a, b, args, pop) => {
+				line(f, l)?;
+				if a.is_empty() {
+					write_args(f, &format!("Tailcall[{b};{pop}]"), args)
+				} else {
+					write_args(f, &format!("Tailcall[{a}.{b};{pop}]"), args)
+				}
 			}
 		}
 	}

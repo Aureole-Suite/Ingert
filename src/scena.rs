@@ -26,13 +26,13 @@ pub fn decompile(scp: &Scp) -> Scena {
 		}
 		let body = match flat::decompile(code) {
 			Ok(body) => {
-				dbg!(&body);
 				// #[cfg(debug_assertions)]
 				similar_asserts::assert_eq!(code, flat::compile(&body).unwrap());
 				Body::Flat(body)
 			},
 			Err(e) => {
 				tracing::error!("decompile error: {e}");
+				dbg!(code);
 				Body::Asm(code.to_vec())
 			},
 		};
@@ -118,6 +118,7 @@ pub enum FlatStmt {
 	PushVar(Line),
 	PopVar,
 	Debug(Line, Vec<Expr>),
+	Tailcall(Line, String, String, Vec<Expr>, usize),
 }
 
 mod fmt;
@@ -210,6 +211,7 @@ impl FlatStmt {
 			Self::PushVar(l) => Some(*l),
 			Self::PopVar => None,
 			Self::Debug(l, _) => Some(*l),
+			Self::Tailcall(l, _, _, _, _) => Some(*l),
 		}
 	}
 
@@ -226,6 +228,7 @@ impl FlatStmt {
 			Self::PushVar(l) => Some(l),
 			Self::PopVar => None,
 			Self::Debug(l, _) => Some(l),
+			Self::Tailcall(l, _, _, _, _) => Some(l),
 		}
 	}
 }

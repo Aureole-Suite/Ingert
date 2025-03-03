@@ -34,7 +34,7 @@ fn main() {
 		let scp2 = ingert::scp::read(&data).unwrap();
 		let data2 = ingert::scp::write(&scp2).unwrap();
 		let scena = ingert::scena::decompile(&scp2);
-		println!("{:#?}", scena);
+		// println!("{:#?}", scena);
 		// std::fs::write("a.bin", &data).unwrap();
 		// std::fs::write("b.bin", &data2).unwrap();
 		let mut scena = ingert::legacy::decompile(&data).unwrap();
