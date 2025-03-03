@@ -109,7 +109,7 @@ pub enum FlatStmt {
 	Label(Label),
 	Expr(Expr),
 	Set(Line, Place, Expr),
-	Return(Line, Option<Expr>),
+	Return(Line, Option<Expr>, usize),
 	If(Line, Expr, Label),
 	While(Line, Expr, Label),
 	Goto(Label),
@@ -199,7 +199,7 @@ impl FlatStmt {
 			Self::Label(_) => None,
 			Self::Expr(_) => None, // Not sure about this one
 			Self::Set(l, _, _) => Some(*l),
-			Self::Return(l, _) => Some(*l),
+			Self::Return(l, _, _) => Some(*l),
 			Self::If(l, _, _) => Some(*l),
 			Self::While(l, _, _) => Some(*l),
 			Self::Goto(_) => None,
@@ -215,7 +215,7 @@ impl FlatStmt {
 			Self::Label(_) => None,
 			Self::Expr(_) => None, // Not sure about this one
 			Self::Set(l, _, _) => Some(l),
-			Self::Return(l, _) => Some(l),
+			Self::Return(l, _, _) => Some(l),
 			Self::If(l, _, _) => Some(l),
 			Self::While(l, _, _) => Some(l),
 			Self::Goto(_) => None,

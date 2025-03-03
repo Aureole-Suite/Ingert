@@ -206,10 +206,7 @@ fn handle_return(ctx: &mut Ctx, val: Option<Expr>) -> Result<(), DecompileError>
 	if let [Op::Return, ..] = ctx.peek() {
 		let line = ctx.pop_stmt_line();
 		ctx.next();
-		ctx.stmt(FlatStmt::Return(line, val))?;
-		for _ in 0..pop {
-			ctx.stmt(FlatStmt::PopVar)?;
-		}
+		ctx.stmt(FlatStmt::Return(line, val, pop))?;
 		Ok(())
 	} else {
 		error::UnexpectedOp.fail()
@@ -292,11 +289,7 @@ impl OutCtx {
 	}
 
 	fn pop(&mut self) {
-		if matches!(self.out.last(), Some(Op::Return)) {
-			self.out.pop();
-			self.pop();
-			self.out.push(Op::Return);
-		} else if let Some(Op::Pop(n)) = self.out.last_mut() {
+		if let Some(Op::Pop(n)) = self.out.last_mut() {
 			*n += 1;
 		} else {
 			self.out.push(Op::Pop(1));
@@ -332,7 +325,7 @@ pub fn compile(stmts: &[FlatStmt]) -> Result<Vec<Op>, CompileError> {
 					Place::Global(n) => ctx.out.push(Op::SetGlobal(n.clone())),
 				}
 			}
-			FlatStmt::Return(l, expr) => {
+			FlatStmt::Return(l, expr, pop) => {
 				ctx.line(*l);
 				if let Some(expr) = expr {
 					compile_expr(&mut ctx, expr, 0);
@@ -340,6 +333,9 @@ pub fn compile(stmts: &[FlatStmt]) -> Result<Vec<Op>, CompileError> {
 					ctx.out.push(Op::PushNull);
 				}
 				ctx.out.push(Op::SetTemp(0));
+				for _ in 0..*pop {
+					ctx.pop();
+				}
 				ctx.out.push(Op::Return);
 			}
 			FlatStmt::If(l, expr, label) => {
