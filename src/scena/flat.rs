@@ -416,7 +416,7 @@ fn compile_expr(ctx: &mut OutCtx, expr: &Expr, depth: u32) {
 		}
 		Expr::Ref(l, n) => {
 			ctx.line(*l);
-			ctx.out.push(Op::PushRef(crate::scp::StackSlot(*n)));
+			ctx.out.push(Op::PushRef(crate::scp::StackSlot(*n + depth)));
 		}
 		Expr::Call(l, call_kind, exprs) => {
 			ctx.line(*l);
