@@ -1,7 +1,7 @@
 mod flat;
 
 use crate::scp::{Op, Scp};
-pub use crate::scp::{Arg, Binop, CallKind, GlobalType, Unop, Value, Label};
+pub use crate::scp::{Arg, Binop, GlobalType, Unop, Value, Label};
 
 pub fn decompile(scp: &Scp) -> Scena {
 	let mut globals = scp.globals.iter().rev();
@@ -92,7 +92,8 @@ pub enum Expr {
 	Value(Line, Value),
 	Var(Line, Place),
 	Ref(Line, u32),
-	Call(Line, CallKind, Vec<Expr>),
+	Call(Line, String, String, Vec<Expr>),
+	Syscall(Line, u8, u8, Vec<Expr>),
 	Unop(Line, Unop, Box<Expr>),
 	Binop(Line, Binop, Box<Expr>, Box<Expr>),
 }
@@ -175,7 +176,8 @@ impl Expr {
 			Self::Value(l, _) => Some(*l),
 			Self::Var(l, _) => Some(*l),
 			Self::Ref(l, _) => Some(*l),
-			Self::Call(l, _, _) => Some(*l),
+			Self::Call(l, _, _, _) => Some(*l),
+			Self::Syscall(l, _, _, _) => Some(*l),
 			Self::Unop(l, _, _) => Some(*l),
 			Self::Binop(l, _, _, _) => Some(*l),
 		}
@@ -186,7 +188,8 @@ impl Expr {
 			Self::Value(l, _) => Some(l),
 			Self::Var(l, _) => Some(l),
 			Self::Ref(l, _) => Some(l),
-			Self::Call(l, _, _) => Some(l),
+			Self::Call(l, _, _, _) => Some(l),
+			Self::Syscall(l, _, _, _) => Some(l),
 			Self::Unop(l, _, _) => Some(l),
 			Self::Binop(l, _, _, _) => Some(l),
 		}

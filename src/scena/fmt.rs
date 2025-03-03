@@ -25,26 +25,18 @@ impl Debug for Expr {
 			}
 			Self::Var(l, v) => line(f, l)?.debug_tuple("Var").field(v).finish(),
 			Self::Ref(l, v) => line(f, l)?.debug_tuple("Ref").field(v).finish(),
-			Self::Call(l, c, args) => {
+			Self::Call(l, a, b, args) => {
 				line(f, l)?;
-				match c {
-					CallKind::Normal(a, b) => {
-						if a.is_empty() {
-							write_args(f, &format!("Call[{b}]"), args)
-						} else {
-							write_args(f, &format!("Call[{a}.{b}]"), args)
-						}
-					},
-					CallKind::Tailcall(a, b) => {
-						if a.is_empty() {
-							write_args(f, &format!("Tailcall[{b}]"), args)
-						} else {
-							write_args(f, &format!("Tailcall[{a}.{b}]"), args)
-						}
-					},
-					CallKind::Syscall(a, b) => write_args(f, &format!("Syscall[{a},{b}]"), args),
+				if a.is_empty() {
+					write_args(f, &format!("Call[{b}]"), args)
+				} else {
+					write_args(f, &format!("Call[{a}.{b}]"), args)
 				}
-			},
+			}
+			Self::Syscall(l, a, b, args) => {
+				line(f, l)?;
+				write_args(f, &format!("Syscall[{a},{b}]"), args)
+			}
 			Self::Unop(l, op, a) => line(f, l)?.debug_tuple(&format!("{op:?}")).field(a).finish(),
 			Self::Binop(l, op, a, b) => line(f, l)?.debug_tuple(&format!("{op:?}")).field(a).field(b).finish(),
 		}

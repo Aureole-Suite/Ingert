@@ -1,7 +1,7 @@
 mod ctx;
 
 use crate::scp::{Binop, Value, Label, Op};
-use super::{Expr, Place, CallKind, FlatStmt};
+use super::{Expr, FlatStmt, Line, Place};
 use ctx::{Ctx, StackVal};
 use snafu::{OptionExt as _, ResultExt as _};
 
@@ -171,7 +171,7 @@ pub fn decompile(code: &[Op]) -> Result<Vec<FlatStmt>, DecompileError> {
 				if n != 0 && ctx.next() != Some(&Op::Pop(n)) {
 					return error::BadCall.fail();
 				}
-				push_call(&mut ctx, CallKind::Syscall(a, b), args)?;
+				push_call(&mut ctx, |l| Expr::Syscall(l, a, b, args))?;
 			}
 			Op::PrepareCallLocal(l) => {
 				prepare_call(&mut ctx, 1, l)?;
@@ -246,18 +246,18 @@ fn make_call(ctx: &mut Ctx, misc: u32, namea: &str, name: &str) -> Result<usize,
 		[Op::Label(l), ..] if *l == label => {}
 		_ => return error::BadCall.fail()
 	}
-	push_call(ctx, CallKind::Normal(namea.to_owned(), name.to_owned()), args)?;
+	push_call(ctx, |l| Expr::Call(l, namea.to_owned(), name.to_owned(), args))?;
 	Ok(nargs)
 }
 
-fn push_call(ctx: &mut Ctx, kind: CallKind, args: Vec<Expr>) -> Result<(), DecompileError> {
+fn push_call(ctx: &mut Ctx, f: impl FnOnce(Line) -> Expr) -> Result<(), DecompileError> {
 	if matches!(ctx.peek(), [Op::GetTemp(0), ..]) {
 		let line = ctx.pop_line();
 		ctx.next();
-		ctx.push(Expr::Call(line, kind, args))?;
+		ctx.push(f(line))?;
 	} else {
 		let line = ctx.pop_stmt_line();
-		ctx.stmt(FlatStmt::Expr(Expr::Call(line, kind, args)))?;
+		ctx.stmt(FlatStmt::Expr(f(line)))?;
 	}
 	Ok(())
 }
@@ -309,7 +309,7 @@ pub fn compile(stmts: &[FlatStmt]) -> Result<Vec<Op>, CompileError> {
 			}
 			FlatStmt::Expr(expr) => {
 				compile_expr(&mut ctx, expr, 0);
-				if matches!(expr, Expr::Call(..)) {
+				if matches!(ctx.out.last(), Some(Op::GetTemp(0))) {
 					ctx.out.pop();
 				} else {
 					// This doesn't happen in any known script, but better than returning an error
@@ -405,37 +405,36 @@ fn compile_expr(ctx: &mut OutCtx, expr: &Expr, depth: u32) {
 			ctx.line(*l);
 			ctx.out.push(Op::PushRef(crate::scp::StackSlot(*n + depth)));
 		}
-		Expr::Call(l, call_kind, exprs) => {
+		Expr::Call(l, a, b, exprs) if a.is_empty() => {
 			ctx.line(*l);
-			match call_kind {
-				CallKind::Normal(a, b) if a.is_empty() => {
-					let l = ctx.label();
-					ctx.out.push(Op::PrepareCallLocal(l));
-					for (expr, i) in exprs.iter().rev().zip(2..) {
-						compile_expr(ctx, expr, depth + i);
-					}
-					ctx.out.push(Op::CallLocal(b.clone()));
-					ctx.out.push(Op::Label(l));
-				}
-				CallKind::Normal(a, b) => {
-					let l = ctx.label();
-					ctx.out.push(Op::PrepareCallExtern(l));
-					for (expr, i) in exprs.iter().rev().zip(5..) {
-						compile_expr(ctx, expr, depth + i);
-					}
-					ctx.out.push(Op::CallExtern(a.clone(), b.clone(), exprs.len() as u8));
-					ctx.out.push(Op::Label(l));
-				}
-				CallKind::Tailcall(a, b) => todo!(),
-				CallKind::Syscall(a, b) => {
-					for (expr, i) in exprs.iter().rev().zip(0..) {
-						compile_expr(ctx, expr, depth + i);
-					}
-					ctx.out.push(Op::CallSystem(*a, *b, exprs.len() as u8));
-					for _ in exprs {
-						ctx.pop();
-					}
-				}
+			let l = ctx.label();
+			ctx.out.push(Op::PrepareCallLocal(l));
+			for (expr, i) in exprs.iter().rev().zip(2..) {
+				compile_expr(ctx, expr, depth + i);
+			}
+			ctx.out.push(Op::CallLocal(b.clone()));
+			ctx.out.push(Op::Label(l));
+			ctx.out.push(Op::GetTemp(0));
+		}
+		Expr::Call(l, a, b, exprs) => {
+			ctx.line(*l);
+			let l = ctx.label();
+			ctx.out.push(Op::PrepareCallExtern(l));
+			for (expr, i) in exprs.iter().rev().zip(5..) {
+				compile_expr(ctx, expr, depth + i);
+			}
+			ctx.out.push(Op::CallExtern(a.clone(), b.clone(), exprs.len() as u8));
+			ctx.out.push(Op::Label(l));
+			ctx.out.push(Op::GetTemp(0));
+		}
+		Expr::Syscall(l, a, b, exprs) => {
+			ctx.line(*l);
+			for (expr, i) in exprs.iter().rev().zip(0..) {
+				compile_expr(ctx, expr, depth + i);
+			}
+			ctx.out.push(Op::CallSystem(*a, *b, exprs.len() as u8));
+			for _ in exprs {
+				ctx.pop();
 			}
 			ctx.out.push(Op::GetTemp(0));
 		}
