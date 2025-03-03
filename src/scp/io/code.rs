@@ -64,7 +64,7 @@ pub fn read(
 				if f.check_u32(func_id as u32).is_ok()
 					&& f.check_u8(0).is_ok()
 					&& f.check_u8(4).is_ok()
-					&& f.clone().u32().is_ok_and(|v| v >> 30 == 0)
+					&& f.clone().u32().is_ok_and(|v| v >> 30 == 0 && v != 0)
 				{
 					break 'a Op::PrepareCallLocal(label(f.u32()?))
 				}
