@@ -185,7 +185,6 @@ pub fn decompile(code: &[Op]) -> Result<Vec<FlatStmt>, DecompileError> {
 				for _ in 0..n {
 					args.push(ctx.pop()?);
 				}
-				args.reverse();
 				ctx.stmt(FlatStmt::Debug(line, args))?;
 			}
 			Op::CallTail(_, _, _) => return error::UnexpectedOp.fail(),
