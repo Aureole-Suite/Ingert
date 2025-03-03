@@ -421,13 +421,22 @@ fn compile_expr(ctx: &mut OutCtx, expr: &Expr, depth: u32) {
 		Expr::Call(l, call_kind, exprs) => {
 			ctx.line(*l);
 			match call_kind {
-				CallKind::Normal(a, b) => {
+				CallKind::Normal(a, b) if a.is_empty() => {
 					let l = ctx.label();
 					ctx.out.push(Op::PrepareCallLocal(l));
 					for (expr, i) in exprs.iter().rev().zip(2..) {
 						compile_expr(ctx, expr, depth + i);
 					}
 					ctx.out.push(Op::CallLocal(b.clone()));
+					ctx.out.push(Op::Label(l));
+				}
+				CallKind::Normal(a, b) => {
+					let l = ctx.label();
+					ctx.out.push(Op::PrepareCallExtern(l));
+					for (expr, i) in exprs.iter().rev().zip(5..) {
+						compile_expr(ctx, expr, depth + i);
+					}
+					ctx.out.push(Op::CallExtern(a.clone(), b.clone(), exprs.len() as u8));
 					ctx.out.push(Op::Label(l));
 				}
 				CallKind::Tailcall(a, b) => todo!(),
