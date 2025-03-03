@@ -9,6 +9,12 @@ pub fn decompile(scp: &Scp) -> Scena {
 	for f in scp.functions.iter().rev() {
 		let _span = tracing::info_span!("function", name = f.name).entered();
 		let mut code = f.code.as_slice();
+
+		// Temporarily remove line numbers so I can roundtrip the rest
+		let mut code = code.to_owned();
+		code.retain_mut(|op| !matches!(op, Op::Line(_)));
+		let mut code = code.as_slice();
+
 		while let Some(Op::Line(n)) = code.last() && let Some(g) = globals.next() {
 			code = &code[..code.len() - 1];
 			items.push(Item::Global(Global {
