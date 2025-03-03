@@ -291,20 +291,18 @@ impl OutCtx {
 		self.label += 1;
 		Label(l)
 	}
-}
 
-fn count_pops<'a>(it: &mut std::iter::Peekable<impl Iterator<Item=&'a FlatStmt>>) -> u8 {
-	let mut n = 0;
-	while let Some(stmt) = it.peek() {
-		match stmt {
-			FlatStmt::PopVar => {
-				n += 1;
-				it.next();
-			}
-			_ => break,
+	fn pop(&mut self) {
+		if matches!(self.out.last(), Some(Op::Return)) {
+			self.out.pop();
+			self.pop();
+			self.out.push(Op::Return);
+		} else if let Some(Op::Pop(n)) = self.out.last_mut() {
+			*n += 1;
+		} else {
+			self.out.push(Op::Pop(1));
 		}
 	}
-	n
 }
 
 pub fn compile(stmts: &[FlatStmt]) -> Result<Vec<Op>, CompileError> {
@@ -312,8 +310,7 @@ pub fn compile(stmts: &[FlatStmt]) -> Result<Vec<Op>, CompileError> {
 		out: Vec::new(),
 		label: crate::labels::max_label(stmts),
 	};
-	let mut iter = stmts.iter().peekable();
-	while let Some(stmt) = iter.next() {
+	for stmt in stmts {
 		match stmt {
 			FlatStmt::Label(l) => {
 				ctx.out.push(Op::Label(*l));
@@ -324,7 +321,7 @@ pub fn compile(stmts: &[FlatStmt]) -> Result<Vec<Op>, CompileError> {
 					ctx.out.pop();
 				} else {
 					// This doesn't happen in any known script, but better than returning an error
-					ctx.out.push(Op::Pop(1));
+					ctx.pop();
 				}
 			},
 			FlatStmt::Set(l, place, expr) => {
@@ -344,10 +341,6 @@ pub fn compile(stmts: &[FlatStmt]) -> Result<Vec<Op>, CompileError> {
 					ctx.out.push(Op::PushNull);
 				}
 				ctx.out.push(Op::SetTemp(0));
-				let pop = count_pops(&mut iter);
-				if pop != 0 {
-					ctx.out.push(Op::Pop(pop));
-				}
 				ctx.out.push(Op::Return);
 			}
 			FlatStmt::If(l, expr, label) => {
@@ -384,8 +377,7 @@ pub fn compile(stmts: &[FlatStmt]) -> Result<Vec<Op>, CompileError> {
 				ctx.out.push(Op::PushNull);
 			}
 			FlatStmt::PopVar => {
-				let pop = 1 + count_pops(&mut iter);
-				ctx.out.push(Op::Pop(pop));
+				ctx.pop();
 			}
 			FlatStmt::Debug(l, exprs) => {
 				ctx.line(*l);
@@ -445,8 +437,8 @@ fn compile_expr(ctx: &mut OutCtx, expr: &Expr, depth: u32) {
 						compile_expr(ctx, expr, depth + i);
 					}
 					ctx.out.push(Op::CallSystem(*a, *b, exprs.len() as u8));
-					if exprs.len() != 0 {
-						ctx.out.push(Op::Pop(exprs.len() as u8));
+					for _ in exprs {
+						ctx.pop();
 					}
 				}
 			}
