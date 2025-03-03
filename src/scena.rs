@@ -18,7 +18,12 @@ pub fn decompile(scp: &Scp) -> Scena {
 			}));
 		}
 		let body = match flat::decompile(code) {
-			Ok(body) => Body::Flat(body),
+			Ok(body) => {
+				dbg!(&body);
+				// #[cfg(debug_assertions)]
+				similar_asserts::assert_eq!(code, flat::compile(&body).unwrap());
+				Body::Flat(body)
+			},
 			Err(e) => {
 				tracing::error!("decompile error: {e}");
 				Body::Asm(code.to_vec())

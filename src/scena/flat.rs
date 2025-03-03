@@ -28,7 +28,7 @@ pub enum DecompileError {
 	BadSwitch,
 	#[snafu(display("unexpected op"))]
 	UnexpectedOp,
-	#[snafu(display("invalid labels"))]
+	#[snafu(display("could not normalize labels"), context(false))]
 	Labels { source: crate::labels::LabelError },
 }
 
@@ -193,7 +193,7 @@ pub fn decompile(code: &[Op]) -> Result<Vec<FlatStmt>, DecompileError> {
 		}
 	}
 	let mut out = ctx.finish()?;
-	crate::labels::normalize(&mut out, 0).context(error::Labels)?;
+	crate::labels::normalize(&mut out, 0)?;
 	Ok(out)
 }
 
@@ -264,4 +264,181 @@ fn push_call(ctx: &mut Ctx, kind: CallKind, args: Vec<Expr>) -> Result<(), Decom
 		ctx.stmt(FlatStmt::Expr(Expr::Call(line, kind, args)))?;
 	}
 	Ok(())
+}
+
+#[derive(Debug, snafu::Snafu)]
+pub enum CompileError {
+	#[snafu(display("could not normalize labels"), context(false))]
+	Labels { source: crate::labels::LabelError },
+	#[snafu(display("FlatExpr::While needs to come after Label"))]
+	UnlabeledLoop
+}
+
+struct OutCtx {
+	out: Vec<Op>,
+	label: u32,
+}
+
+impl OutCtx {
+	fn line(&mut self, l: Option<u16>) {
+		if let Some(l) = l {
+			self.out.push(Op::Line(l));
+		}
+	}
+
+	fn label(&mut self) -> Label {
+		let l = self.label;
+		self.label += 1;
+		Label(l)
+	}
+}
+
+fn count_pops<'a>(it: &mut std::iter::Peekable<impl Iterator<Item=&'a FlatStmt>>) -> u8 {
+	let mut n = 0;
+	while let Some(stmt) = it.peek() {
+		match stmt {
+			FlatStmt::PopVar => {
+				n += 1;
+				it.next();
+			}
+			_ => break,
+		}
+	}
+	n
+}
+
+pub fn compile(stmts: &[FlatStmt]) -> Result<Vec<Op>, CompileError> {
+	let mut ctx = OutCtx {
+		out: Vec::new(),
+		label: crate::labels::max_label(stmts),
+	};
+	let mut iter = stmts.iter().peekable();
+	while let Some(stmt) = iter.next() {
+		match stmt {
+			FlatStmt::Label(l) => {
+				ctx.out.push(Op::Label(*l));
+			}
+			FlatStmt::Expr(expr) => {
+				compile_expr(&mut ctx, expr);
+			},
+			FlatStmt::Set(l, place, expr) => {
+				ctx.line(*l);
+				compile_expr(&mut ctx, expr);
+				match place {
+					Place::Var(n) => ctx.out.push(Op::SetVar(crate::scp::StackSlot(*n))),
+					Place::Deref(n) => ctx.out.push(Op::SetRef(crate::scp::StackSlot(*n))),
+					Place::Global(n) => ctx.out.push(Op::SetGlobal(n.clone())),
+				}
+			}
+			FlatStmt::Return(l, expr) => {
+				ctx.line(*l);
+				if let Some(expr) = expr {
+					compile_expr(&mut ctx, expr);
+				} else {
+					ctx.out.push(Op::PushNull);
+				}
+				ctx.out.push(Op::SetTemp(0));
+				let pop = count_pops(&mut iter);
+				if pop != 0 {
+					ctx.out.push(Op::Pop(pop));
+				}
+				ctx.out.push(Op::Return);
+			}
+			FlatStmt::If(l, expr, label) => {
+				ctx.line(*l);
+				compile_expr(&mut ctx, expr);
+				ctx.out.push(Op::Jz(*label));
+			}
+			FlatStmt::While(l, expr, label) => {
+				let Some(Op::Label(prelabel)) = ctx.out.pop() else {
+					return UnlabeledLoopSnafu.fail();
+				};
+				ctx.line(*l);
+				ctx.out.push(Op::Label(prelabel));
+				compile_expr(&mut ctx, expr);
+				ctx.out.push(Op::Jz(*label));
+			}
+			FlatStmt::Goto(label) => {
+				ctx.out.push(Op::Goto(*label));
+			}
+			FlatStmt::Switch(l, expr, items, label) => {
+				ctx.line(*l);
+				compile_expr(&mut ctx, expr);
+				ctx.out.push(Op::SetTemp(0));
+				for (n, l) in items {
+					ctx.out.push(Op::GetTemp(0));
+					ctx.out.push(Op::Push(Value::Int(*n)));
+					ctx.out.push(Op::Binop(Binop::Eq));
+					ctx.out.push(Op::Jnz(*l));
+				}
+				ctx.out.push(Op::Goto(*label));
+			}
+			FlatStmt::PushVar(l) => {
+				ctx.line(*l);
+				ctx.out.push(Op::PushNull);
+				ctx.out.push(Op::SetTemp(0));
+			}
+			FlatStmt::PopVar => {
+				let pop = 1 + count_pops(&mut iter);
+				ctx.out.push(Op::Pop(pop));
+			}
+			FlatStmt::Debug(l, exprs) => {
+				ctx.line(*l);
+				for expr in exprs {
+					compile_expr(&mut ctx, expr);
+				}
+				ctx.out.push(Op::Debug(exprs.len() as u8));
+			}
+		}
+	}
+	crate::labels::normalize(&mut ctx.out, 0)?;
+	Ok(ctx.out)
+}
+
+fn compile_expr(ctx: &mut OutCtx, expr: &Expr) {
+	match expr {
+		Expr::Value(l, value) => {
+			ctx.line(*l);
+			ctx.out.push(Op::Push(value.clone()));
+		}
+		Expr::Var(l, place) => {
+			ctx.line(*l);
+			match place {
+				Place::Var(n) => ctx.out.push(Op::GetVar(crate::scp::StackSlot(*n))),
+				Place::Deref(n) => ctx.out.push(Op::GetRef(crate::scp::StackSlot(*n))),
+				Place::Global(n) => ctx.out.push(Op::GetGlobal(n.clone())),
+			}
+		}
+		Expr::Ref(l, n) => {
+			ctx.line(*l);
+			ctx.out.push(Op::PushRef(crate::scp::StackSlot(*n)));
+		}
+		Expr::Call(l, call_kind, exprs) => {
+			ctx.line(*l);
+			match call_kind {
+				CallKind::Normal(a, b) => {
+					let l = ctx.label();
+					ctx.out.push(Op::PrepareCallLocal(l));
+					for expr in exprs.iter().rev() {
+						compile_expr(ctx, expr);
+					}
+					ctx.out.push(Op::CallLocal(b.clone()));
+					ctx.out.push(Op::Label(l));
+				}
+				CallKind::Tailcall(a, b) => todo!(),
+				CallKind::Syscall(a, b) => todo!(),
+			}
+		}
+		Expr::Unop(l, unop, expr) => {
+			ctx.line(*l);
+			compile_expr(ctx, expr);
+			ctx.out.push(Op::Unop(*unop));
+		}
+		Expr::Binop(l, binop, a, b) => {
+			ctx.line(*l);
+			compile_expr(ctx, a);
+			compile_expr(ctx, b);
+			ctx.out.push(Op::Binop(*binop));
+		}
+	}
 }
