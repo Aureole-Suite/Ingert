@@ -431,7 +431,15 @@ fn compile_expr(ctx: &mut OutCtx, expr: &Expr, depth: u32) {
 					ctx.out.push(Op::Label(l));
 				}
 				CallKind::Tailcall(a, b) => todo!(),
-				CallKind::Syscall(a, b) => todo!(),
+				CallKind::Syscall(a, b) => {
+					for (expr, i) in exprs.iter().rev().zip(0..) {
+						compile_expr(ctx, expr, depth + i);
+					}
+					ctx.out.push(Op::CallSystem(*a, *b, exprs.len() as u8));
+					if exprs.len() != 0 {
+						ctx.out.push(Op::Pop(exprs.len() as u8));
+					}
+				}
 			}
 			ctx.out.push(Op::GetTemp(0));
 		}
