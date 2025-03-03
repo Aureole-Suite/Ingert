@@ -382,7 +382,6 @@ pub fn compile(stmts: &[FlatStmt]) -> Result<Vec<Op>, CompileError> {
 			FlatStmt::PushVar(l) => {
 				ctx.line(*l);
 				ctx.out.push(Op::PushNull);
-				ctx.out.push(Op::SetTemp(0));
 			}
 			FlatStmt::PopVar => {
 				let pop = 1 + count_pops(&mut iter);
