@@ -320,6 +320,12 @@ pub fn compile(stmts: &[FlatStmt]) -> Result<Vec<Op>, CompileError> {
 			}
 			FlatStmt::Expr(expr) => {
 				compile_expr(&mut ctx, expr, 0);
+				if matches!(expr, Expr::Call(..)) {
+					ctx.out.pop();
+				} else {
+					// This doesn't happen in any known script, but better than returning an error
+					ctx.out.push(Op::Pop(1));
+				}
 			},
 			FlatStmt::Set(l, place, expr) => {
 				ctx.line(*l);
@@ -428,6 +434,7 @@ fn compile_expr(ctx: &mut OutCtx, expr: &Expr, depth: u32) {
 				CallKind::Tailcall(a, b) => todo!(),
 				CallKind::Syscall(a, b) => todo!(),
 			}
+			ctx.out.push(Op::GetTemp(0));
 		}
 		Expr::Unop(l, unop, expr) => {
 			ctx.line(*l);
