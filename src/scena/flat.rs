@@ -1,9 +1,10 @@
 mod ctx;
+mod line;
 
 use std::collections::HashMap;
 
 use crate::scp::{Binop, Value, Label, Op};
-use super::{Expr, FlatStmt, Line, Place};
+use super::{Expr, FlatStmt, Place};
 use ctx::{Ctx, StackVal};
 use snafu::OptionExt as _;
 
