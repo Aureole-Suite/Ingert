@@ -15,8 +15,8 @@ pub struct Ctx<'a> {
 	pos: usize,
 
 	label: Option<Label>,
-	lines: Vec<Option<u16>>,
-	stack: Vec<StackVal>,
+	lines: Vec<u16>,
+	stack: Vec<(StackVal, Vec<u16>)>,
 	output: Vec<FlatStmt>,
 }
 
@@ -55,12 +55,24 @@ impl<'a> Ctx<'a> {
 	}
 
 	pub fn push(&mut self, val: impl Into<StackVal>) -> Result<(), DecompileError> {
-		self.stack.push(val.into());
+		let mut val = val.into();
+		if let StackVal::Expr(e) = &mut val {
+			if let Some(l) = e.line_mut() {
+				assert!(l.is_none());
+				*l = self.lines.pop();
+			}
+		}
+		self.stack.push((val, std::mem::take(&mut self.lines)));
 		Ok(())
 	}
 
 	pub fn pop_any(&mut self) -> Result<StackVal, DecompileError> {
-		self.stack.pop().context(error::PopEmpty)
+		let (v, l) = self.stack.pop().context(error::PopEmpty)?;
+		if !self.lines.is_empty() {
+			tracing::warn!("lines: {:?}", self.lines);
+		}
+		self.lines = l;
+		Ok(v)
 	}
 
 	pub fn pop(&mut self) -> Result<Expr, DecompileError> {
@@ -82,40 +94,33 @@ impl<'a> Ctx<'a> {
 	}
 
 	pub fn line(&mut self, line: u16) -> Result<(), DecompileError> {
-		self.lines.push(Some(line));
+		self.lines.push(line);
 		Ok(())
 	}
 
+	#[deprecated]
 	pub fn pop_line(&mut self) -> Option<u16> {
-		if let Some(Some(_)) = self.lines.last() && self.lines.len() > 1 {
-			let line = self.lines.pop()??;
-			Some(line)
-		} else {
-			None
-		}
+		None
 	}
 
+	#[deprecated]
 	pub fn pop_stmt_line(&mut self) -> Option<u16> {
-		if let Some(Some(_)) = self.lines.last() && self.lines.len() <= 1{
-			let line = self.lines.pop()??;
-			tracing::trace!("pop stmt line: {line}");
-			Some(line)
-		} else {
-			None
-		}
+		None
 	}
 
-	pub fn delimit_line(&mut self) {
-		self.lines.push(None);
-	}
+	#[deprecated]
+	pub fn delimit_line(&mut self) {}
 
-	pub fn undelimit_line(&mut self) {
-		while let Some(Some(_)) = self.lines.pop() {}
-	}
+	#[deprecated]
+	pub fn undelimit_line(&mut self) {}
 
-	pub fn stmt(&mut self, stmt: FlatStmt) -> Result<(), DecompileError> {
-		tracing::trace!("stmt: {stmt:?}");
+	pub fn stmt(&mut self, mut stmt: FlatStmt) -> Result<(), DecompileError> {
 		self.check_empty()?;
+		if let Some(l) = stmt.line_mut() {
+			assert!(l.is_none());
+			*l = self.lines.pop();
+		}
+		tracing::trace!("stmt: {stmt:?}");
 		if !self.lines.is_empty() {
 			tracing::warn!("lines: {:?}", self.lines);
 			self.lines.clear();
