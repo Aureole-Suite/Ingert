@@ -289,7 +289,9 @@ fn push_call(ctx: &mut Ctx, f: impl FnOnce(Line) -> Expr) -> Result<(), Decompil
 		ctx.push(f(line))?;
 	} else {
 		let line = ctx.pop_stmt_line();
-		ctx.stmt(FlatStmt::Expr(f(line)))?;
+		ctx.push(f(line))?;
+		let e = ctx.pop()?;
+		ctx.stmt(FlatStmt::Expr(e))?;
 	}
 	Ok(())
 }
