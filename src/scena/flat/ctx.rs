@@ -104,6 +104,7 @@ impl<'a> Ctx<'a> {
 			assert!(l.is_none());
 			*l = self.lines.pop();
 		}
+		super::line::sink(&mut stmt);
 		tracing::trace!("stmt: {stmt:?}");
 		if !self.lines.is_empty() {
 			tracing::warn!("lines: {:?}", self.lines);
@@ -126,4 +127,3 @@ impl<'a> Ctx<'a> {
 		Ok(())
 	}
 }
-

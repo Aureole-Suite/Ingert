@@ -61,3 +61,101 @@ impl FlatStmt {
 		}
 	}
 }
+
+pub fn sink(stmt: &mut FlatStmt) {
+	let lines = &mut Vec::new();
+	match stmt {
+		FlatStmt::Label(_) => {}
+		FlatStmt::Expr(expr) => {
+			sink_expr(expr, lines);
+		}
+		FlatStmt::Set(l, _, expr) => {
+			sink_expr(expr, lines);
+			lines.push(l);
+		}
+		FlatStmt::Return(l, expr, _) => {
+			if let Some(expr) = expr {
+				sink_expr(expr, lines);
+			}
+			lines.push(l);
+		}
+		FlatStmt::If(l, expr, _) => {
+			sink_expr(expr, lines);
+			lines.push(l);
+		}
+		FlatStmt::While(l, expr, _) => {
+			sink_expr(expr, lines);
+			lines.push(l);
+		}
+		FlatStmt::Goto(_) => {}
+		FlatStmt::Switch(l, expr, _, _) => {
+			sink_expr(expr, lines);
+			lines.push(l);
+		}
+		FlatStmt::PushVar(l) => {
+			lines.push(l);
+		}
+		FlatStmt::PopVar(_) => {}
+		FlatStmt::Debug(l, exprs) => {
+			sink_exprs(exprs, lines);
+			lines.push(l);
+		}
+		FlatStmt::Tailcall(l, _, _, exprs, _) => {
+			sink_exprs(exprs, lines);
+			lines.push(l);
+		}
+	}
+	sink_lines(lines);
+}
+
+fn sink_expr<'a>(expr: &'a mut Expr, lines: &mut Vec<&'a mut Line>) {
+	match expr {
+		Expr::Value(l, _) => {
+			lines.push(l);
+		}
+		Expr::Var(l, _) => {
+			lines.push(l);
+		}
+		Expr::Ref(l, _) => {
+			lines.push(l);
+		}
+		Expr::Call(l, _, _, exprs) => {
+			sink_exprs(exprs, lines);
+			lines.push(l);
+		}
+		Expr::Syscall(l, _, _, exprs) => {
+			sink_exprs(exprs, lines);
+			lines.push(l);
+		}
+		Expr::Unop(l, _, expr) => {
+			sink_expr(expr, lines);
+			lines.push(l);
+		}
+		Expr::Binop(l, _, a, b) => {
+			sink_expr(b, lines);
+			sink_lines(lines);
+			sink_expr(a, lines);
+			lines.push(l);
+		}
+	}
+}
+
+fn sink_exprs<'a>(exprs: &'a mut [Expr], lines: &mut Vec<&'a mut Line>) {
+	for expr in exprs.iter_mut().rev() {
+		sink_lines(lines);
+		sink_expr(expr, lines);
+	}
+}
+
+
+fn sink_lines(lines: &mut Vec<&mut Line>) {
+	let count = lines.iter().take_while(|l| l.is_some()).count();
+	let part2 = lines.len() - count;
+	if part2 != 0 {
+		for i in (0..count).rev() {
+			let (a, b) = lines[i..].split_at_mut(part2);
+			std::mem::swap(a[0], b[0]);
+		}
+	}
+	lines.clear();
+}
