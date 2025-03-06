@@ -183,9 +183,7 @@ pub fn decompile(code: &[Op]) -> Result<Vec<FlatStmt>, DecompileError> {
 				ctx.stmt(FlatStmt::PushVar(line))?;
 			}
 			Op::Pop(n) => {
-				for _ in 0..n {
-					ctx.stmt(FlatStmt::PopVar)?;
-				}
+				ctx.stmt(FlatStmt::PopVar(n as usize))?;
 			}
 
 			Op::CallLocal(ref name) => {
@@ -321,14 +319,6 @@ impl OutCtx {
 		self.label += 1;
 		Label(l)
 	}
-
-	fn pop(&mut self) {
-		if let Some(Op::Pop(n)) = self.out.last_mut() {
-			*n += 1;
-		} else {
-			self.out.push(Op::Pop(1));
-		}
-	}
 }
 
 pub fn compile(stmts: &[FlatStmt]) -> Result<Vec<Op>, CompileError> {
@@ -347,7 +337,7 @@ pub fn compile(stmts: &[FlatStmt]) -> Result<Vec<Op>, CompileError> {
 					ctx.out.pop();
 				} else {
 					// This doesn't happen in any known script, but better than returning an error
-					ctx.pop();
+					ctx.out.push(Op::Pop(1));
 				}
 			},
 			FlatStmt::Set(l, place, expr) => {
@@ -367,8 +357,8 @@ pub fn compile(stmts: &[FlatStmt]) -> Result<Vec<Op>, CompileError> {
 					ctx.out.push(Op::PushNull);
 				}
 				ctx.out.push(Op::SetTemp(0));
-				for _ in 0..*pop {
-					ctx.pop();
+				if *pop != 0 {
+					ctx.out.push(Op::Pop(*pop as u8));
 				}
 				ctx.out.push(Op::Return);
 			}
@@ -405,8 +395,8 @@ pub fn compile(stmts: &[FlatStmt]) -> Result<Vec<Op>, CompileError> {
 				ctx.line(*l);
 				ctx.out.push(Op::PushNull);
 			}
-			FlatStmt::PopVar => {
-				ctx.pop();
+			FlatStmt::PopVar(pop) => {
+				ctx.out.push(Op::Pop(*pop as u8));
 			}
 			FlatStmt::Debug(l, exprs) => {
 				ctx.line(*l);
@@ -424,8 +414,8 @@ pub fn compile(stmts: &[FlatStmt]) -> Result<Vec<Op>, CompileError> {
 				for i in 1..=n {
 					ctx.out.push(Op::SetTemp(i));
 				}
-				for _ in 0..*pop {
-					ctx.pop();
+				if *pop != 0 {
+					ctx.out.push(Op::Pop(*pop as u8));
 				}
 				for i in (1..=n).rev() {
 					ctx.out.push(Op::GetTemp(i));
@@ -484,8 +474,8 @@ fn compile_expr(ctx: &mut OutCtx, expr: &Expr, depth: u32) {
 				compile_expr(ctx, expr, depth + i);
 			}
 			ctx.out.push(Op::CallSystem(*a, *b, exprs.len() as u8));
-			for _ in exprs {
-				ctx.pop();
+			if !exprs.is_empty() {
+				ctx.out.push(Op::Pop(exprs.len() as u8));
 			}
 			ctx.out.push(Op::GetTemp(0));
 		}

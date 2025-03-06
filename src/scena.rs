@@ -116,7 +116,7 @@ pub enum FlatStmt {
 	Goto(Label),
 	Switch(Line, Expr, Vec<(i32, Label)>, Label),
 	PushVar(Line),
-	PopVar,
+	PopVar(usize),
 	Debug(Line, Vec<Expr>),
 	Tailcall(Line, String, String, Vec<Expr>, usize),
 }
@@ -209,7 +209,7 @@ impl FlatStmt {
 			Self::Goto(_) => None,
 			Self::Switch(l, _, _, _) => Some(*l),
 			Self::PushVar(l) => Some(*l),
-			Self::PopVar => None,
+			Self::PopVar(_) => None,
 			Self::Debug(l, _) => Some(*l),
 			Self::Tailcall(l, _, _, _, _) => Some(*l),
 		}
@@ -226,7 +226,7 @@ impl FlatStmt {
 			Self::Goto(_) => None,
 			Self::Switch(l, _, _, _) => Some(l),
 			Self::PushVar(l) => Some(l),
-			Self::PopVar => None,
+			Self::PopVar(_) => None,
 			Self::Debug(l, _) => Some(l),
 			Self::Tailcall(l, _, _, _, _) => Some(l),
 		}
