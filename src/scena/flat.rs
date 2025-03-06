@@ -1,5 +1,7 @@
 mod ctx;
 
+use std::collections::HashMap;
+
 use crate::scp::{Binop, Value, Label, Op};
 use super::{Expr, FlatStmt, Line, Place};
 use ctx::{Ctx, StackVal};
@@ -300,8 +302,6 @@ fn push_call(ctx: &mut Ctx, f: impl FnOnce(Line) -> Expr) -> Result<(), Decompil
 pub enum CompileError {
 	#[snafu(display("could not normalize labels"), context(false))]
 	Labels { source: crate::labels::LabelError },
-	#[snafu(display("FlatExpr::While needs to come after Label"))]
-	UnlabeledLoop
 }
 
 struct OutCtx {
@@ -328,6 +328,7 @@ pub fn compile(stmts: &[FlatStmt]) -> Result<Vec<Op>, CompileError> {
 		out: Vec::new(),
 		label: crate::labels::max_label(stmts),
 	};
+	let mut backrefs = HashMap::new();
 	for stmt in stmts {
 		match stmt {
 			FlatStmt::Label(l) => {
@@ -370,16 +371,19 @@ pub fn compile(stmts: &[FlatStmt]) -> Result<Vec<Op>, CompileError> {
 				ctx.out.push(Op::Jz(*label));
 			}
 			FlatStmt::While(l, expr, label) => {
-				let Some(Op::Label(prelabel)) = ctx.out.pop() else {
-					return UnlabeledLoopSnafu.fail();
-				};
-				ctx.line(*l);
-				ctx.out.push(Op::Label(prelabel));
+				if let Some(&Op::Label(prelabel)) = ctx.out.last() && l.is_some() {
+					ctx.line(*l);
+					let newlabel = ctx.label();
+					ctx.out.push(Op::Label(newlabel));
+					backrefs.insert(prelabel, newlabel);
+				} else {
+					ctx.line(*l);
+				}
 				compile_expr(&mut ctx, expr, 0);
 				ctx.out.push(Op::Jz(*label));
 			}
 			FlatStmt::Goto(label) => {
-				ctx.out.push(Op::Goto(*label));
+				ctx.out.push(Op::Goto(*backrefs.get(label).unwrap_or(label)));
 			}
 			FlatStmt::Switch(l, expr, items, label) => {
 				ctx.line(*l);
