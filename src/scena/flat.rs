@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use crate::scp::{Binop, Value, Label, Op};
 use super::{Expr, FlatStmt, Line, Place};
 use ctx::{Ctx, StackVal};
-use snafu::{OptionExt as _, ResultExt as _};
+use snafu::OptionExt as _;
 
 impl From<Expr> for StackVal {
 	fn from(e: Expr) -> Self {
@@ -48,11 +48,9 @@ pub fn decompile(code: &[Op]) -> Result<Vec<FlatStmt>, DecompileError> {
 				ctx.line(l)?;
 			}
 			Op::Push(ref v) => {
-				let line = ctx.pop_line();
-				ctx.push(Expr::Value(line, v.clone()))?;
+				ctx.push(Expr::Value(None, v.clone()))?;
 			}
 			Op::SetTemp(0) if matches!(ctx.peek(), [Op::GetTemp(0) | Op::Goto(_), ..]) => {
-				let line = ctx.pop_stmt_line();
 				let v = ctx.pop()?;
 				let mut cases = Vec::new();
 				let default = loop {
@@ -72,64 +70,54 @@ pub fn decompile(code: &[Op]) -> Result<Vec<FlatStmt>, DecompileError> {
 						_ => return error::BadSwitch.fail(),
 					}
 				};
-				ctx.stmt(FlatStmt::Switch(line, v, cases, default))?;
+				ctx.stmt(FlatStmt::Switch(None, v, cases, default))?;
 			}
 			Op::GetVar(s) => {
-				let line = ctx.pop_line();
 				let p = Place::Var(ctx.var(s)?);
-				ctx.push(Expr::Var(line, p))?;
+				ctx.push(Expr::Var(None, p))?;
 			}
 			Op::GetRef(s) => {
-				let line = ctx.pop_line();
 				let p = Place::Deref(ctx.var(s)?);
-				ctx.push(Expr::Var(line, p))?;
+				ctx.push(Expr::Var(None, p))?;
 			}
 			Op::GetGlobal(ref name) => {
-				let line = ctx.pop_line();
 				let p = Place::Global(name.clone());
-				ctx.push(Expr::Var(line, p))?;
+				ctx.push(Expr::Var(None, p))?;
 			}
 			Op::PushRef(s) => {
-				let line = ctx.pop_line();
 				let n = ctx.var(s)?;
-				ctx.push(Expr::Ref(line, n))?;
+				ctx.push(Expr::Ref(None, n))?;
 			}
 			Op::SetVar(s) => {
-				let line = ctx.pop_stmt_line();
 				let v = ctx.pop()?;
 				let p = Place::Var(ctx.var(s)?);
-				ctx.stmt(FlatStmt::Set(line, p, v))?;
+				ctx.stmt(FlatStmt::Set(None, p, v))?;
 			}
 			Op::SetRef(s) => {
-				let line = ctx.pop_stmt_line();
 				let v = ctx.pop()?;
 				let p = Place::Deref(ctx.var(s)?);
-				ctx.stmt(FlatStmt::Set(line, p, v))?;
+				ctx.stmt(FlatStmt::Set(None, p, v))?;
 			}
 			Op::SetGlobal(ref name) => {
-				let line = ctx.pop_stmt_line();
 				let v = ctx.pop()?;
 				let p = Place::Global(name.clone());
-				ctx.stmt(FlatStmt::Set(line, p, v))?;
+				ctx.stmt(FlatStmt::Set(None, p, v))?;
 			}
 			Op::Binop(o) => {
-				let line = ctx.pop_line();
 				let b = ctx.pop()?;
 				let a = ctx.pop()?;
-				ctx.push(Expr::Binop(line, o, Box::new(a), Box::new(b)))?;
+				ctx.push(Expr::Binop(None, o, Box::new(a), Box::new(b)))?;
 			}
 			Op::Unop(o) => {
-				let line = ctx.pop_line();
 				let a = ctx.pop()?;
-				ctx.push(Expr::Unop(line, o, Box::new(a)))?;
+				ctx.push(Expr::Unop(None, o, Box::new(a)))?;
 			}
 			Op::Jz(l) => {
-				let line = ctx.pop_stmt_line();
 				let cond = ctx.pop()?;
 				if ctx.get_label().is_some_and(|v| backrefs.contains(&v)) {
-					ctx.stmt(FlatStmt::While(line, cond, l))?;
+					ctx.stmt(FlatStmt::While(None, cond, l))?;
 				} else {
-					ctx.stmt(FlatStmt::If(line, cond, l))?;
+					ctx.stmt(FlatStmt::If(None, cond, l))?;
 				}
 			}
 			Op::Goto(l) => {
@@ -138,11 +126,9 @@ pub fn decompile(code: &[Op]) -> Result<Vec<FlatStmt>, DecompileError> {
 
 			Op::Pop(n) if let [Op::CallTail(a, b, 0), ..] = ctx.peek() => {
 				ctx.next();
-				let line = ctx.pop_stmt_line();
-				ctx.stmt(FlatStmt::Tailcall(line, a.clone(), b.clone(), vec![], n as usize))?;
+				ctx.stmt(FlatStmt::Tailcall(None, a.clone(), b.clone(), vec![], n as usize))?;
 			}
 			Op::SetTemp(1) => {
-				let line = ctx.pop_stmt_line();
 				let mut args = vec![ctx.pop()?];
 				let pop = loop {
 					match ctx.next().context(error::BadTailcall)? {
@@ -165,7 +151,7 @@ pub fn decompile(code: &[Op]) -> Result<Vec<FlatStmt>, DecompileError> {
 				if *n != args.len() as u8 {
 					return error::BadTailcall.fail();
 				}
-				ctx.stmt(FlatStmt::Tailcall(line, a.clone(), b.clone(), args, pop as usize))?;
+				ctx.stmt(FlatStmt::Tailcall(None, a.clone(), b.clone(), args, pop as usize))?;
 			}
 
 			Op::PushNull if matches!(ctx.peek(), [Op::SetTemp(0), ..]) => {
@@ -181,8 +167,7 @@ pub fn decompile(code: &[Op]) -> Result<Vec<FlatStmt>, DecompileError> {
 			}
 
 			Op::PushNull => {
-				let line = ctx.pop_stmt_line();
-				ctx.stmt(FlatStmt::PushVar(line))?;
+				ctx.stmt(FlatStmt::PushVar(None))?;
 			}
 			Op::Pop(n) => {
 				ctx.stmt(FlatStmt::PopVar(n as usize))?;
@@ -205,7 +190,8 @@ pub fn decompile(code: &[Op]) -> Result<Vec<FlatStmt>, DecompileError> {
 				if n != 0 && ctx.next() != Some(&Op::Pop(n)) {
 					return error::BadCall.fail();
 				}
-				push_call(&mut ctx, |l| Expr::Syscall(l, a, b, args))?;
+				ctx.push(Expr::Syscall(None, a, b, args))?;
+				end_call(&mut ctx)?;
 			}
 			Op::PrepareCallLocal(l) => {
 				prepare_call(&mut ctx, 1, l)?;
@@ -214,12 +200,11 @@ pub fn decompile(code: &[Op]) -> Result<Vec<FlatStmt>, DecompileError> {
 				prepare_call(&mut ctx, 4, l)?;
 			}
 			Op::Debug(n) => {
-				let line = ctx.pop_stmt_line();
 				let mut args = Vec::new();
 				for _ in 0..n {
 					args.push(ctx.pop()?);
 				}
-				ctx.stmt(FlatStmt::Debug(line, args))?;
+				ctx.stmt(FlatStmt::Debug(None, args))?;
 			}
 			Op::CallTail(_, _, _) => return error::UnexpectedOp.fail(),
 			Op::Jnz(_) | Op::GetTemp(_) | Op::SetTemp(_) => return error::UnexpectedOp.fail(),
@@ -238,9 +223,8 @@ fn handle_return(ctx: &mut Ctx, val: Option<Expr>) -> Result<(), DecompileError>
 		0
 	};
 	if let [Op::Return, ..] = ctx.peek() {
-		let line = ctx.pop_stmt_line();
 		ctx.next();
-		ctx.stmt(FlatStmt::Return(line, val, pop))?;
+		ctx.stmt(FlatStmt::Return(None, val, pop))?;
 		Ok(())
 	} else {
 		error::UnexpectedOp.fail()
@@ -248,7 +232,6 @@ fn handle_return(ctx: &mut Ctx, val: Option<Expr>) -> Result<(), DecompileError>
 }
 
 fn prepare_call(ctx: &mut Ctx, misc: u32, label: Label) -> Result<(), DecompileError> {
-	ctx.delimit_line();
 	for _ in 0..misc {
 		ctx.push(StackVal::RetMisc)?;
 	}
@@ -257,7 +240,6 @@ fn prepare_call(ctx: &mut Ctx, misc: u32, label: Label) -> Result<(), DecompileE
 }
 
 fn make_call(ctx: &mut Ctx, misc: u32, namea: &str, name: &str) -> Result<usize, DecompileError> {
-	ctx.undelimit_line();
 	let mut args = Vec::new();
 	let label = loop {
 		match ctx.pop_any()? {
@@ -280,18 +262,15 @@ fn make_call(ctx: &mut Ctx, misc: u32, namea: &str, name: &str) -> Result<usize,
 		[Op::Label(l), ..] if *l == label => {}
 		_ => return error::BadCall.fail()
 	}
-	push_call(ctx, |l| Expr::Call(l, namea.to_owned(), name.to_owned(), args))?;
+	ctx.push(Expr::Call(None, namea.to_owned(), name.to_owned(), args))?;
+	end_call(ctx)?;
 	Ok(nargs)
 }
 
-fn push_call(ctx: &mut Ctx, f: impl FnOnce(Line) -> Expr) -> Result<(), DecompileError> {
+fn end_call(ctx: &mut Ctx) -> Result<(), DecompileError> {
 	if matches!(ctx.peek(), [Op::GetTemp(0), ..]) {
-		let line = ctx.pop_line();
 		ctx.next();
-		ctx.push(f(line))?;
 	} else {
-		let line = ctx.pop_stmt_line();
-		ctx.push(f(line))?;
 		let e = ctx.pop()?;
 		ctx.stmt(FlatStmt::Expr(e))?;
 	}

@@ -98,22 +98,6 @@ impl<'a> Ctx<'a> {
 		Ok(())
 	}
 
-	#[deprecated]
-	pub fn pop_line(&mut self) -> Option<u16> {
-		None
-	}
-
-	#[deprecated]
-	pub fn pop_stmt_line(&mut self) -> Option<u16> {
-		None
-	}
-
-	#[deprecated]
-	pub fn delimit_line(&mut self) {}
-
-	#[deprecated]
-	pub fn undelimit_line(&mut self) {}
-
 	pub fn stmt(&mut self, mut stmt: FlatStmt) -> Result<(), DecompileError> {
 		self.check_empty()?;
 		if let Some(l) = stmt.line_mut() {
