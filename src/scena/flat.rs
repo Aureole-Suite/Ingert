@@ -4,7 +4,7 @@ mod line;
 use std::collections::HashMap;
 
 use crate::scp::{Binop, Value, Label, Op};
-use super::{Expr, FlatStmt, Place};
+use super::{Expr, FlatStmt, Name, Place};
 use ctx::{Ctx, StackVal};
 use snafu::OptionExt as _;
 
@@ -120,9 +120,9 @@ pub fn decompile(code: &[Op]) -> Result<Vec<FlatStmt>, DecompileError> {
 				ctx.stmt(FlatStmt::Goto(l))?;
 			}
 
-			Op::Pop(n) if let [Op::CallTail(a, b, 0), ..] = ctx.peek() => {
+			Op::Pop(n) if let [Op::CallTail(name, 0), ..] = ctx.peek() => {
 				ctx.next();
-				ctx.stmt(FlatStmt::Tailcall(None, a.clone(), b.clone(), vec![], n as usize))?;
+				ctx.stmt(FlatStmt::Tailcall(None, name.clone(), vec![], n as usize))?;
 			}
 			Op::SetTemp(1) => {
 				let mut args = vec![ctx.pop()?];
@@ -141,13 +141,13 @@ pub fn decompile(code: &[Op]) -> Result<Vec<FlatStmt>, DecompileError> {
 						return error::BadTailcall.fail();
 					}
 				}
-				let Some(Op::CallTail(a, b, n)) = ctx.next() else {
+				let Some(Op::CallTail(name, n)) = ctx.next() else {
 					return error::BadTailcall.fail();
 				};
 				if *n != args.len() as u8 {
 					return error::BadTailcall.fail();
 				}
-				ctx.stmt(FlatStmt::Tailcall(None, a.clone(), b.clone(), args, pop as usize))?;
+				ctx.stmt(FlatStmt::Tailcall(None, name.clone(), args, pop as usize))?;
 			}
 
 			Op::PushNull if matches!(ctx.peek(), [Op::SetTemp(0), ..]) => {
@@ -170,10 +170,10 @@ pub fn decompile(code: &[Op]) -> Result<Vec<FlatStmt>, DecompileError> {
 			}
 
 			Op::CallLocal(ref name) => {
-				make_call(&mut ctx, 1, "", name)?;
+				make_call(&mut ctx, 1, Name::local(name.clone()))?;
 			}
-			Op::CallExtern(ref a, ref b, n) => {
-				let nargs = make_call(&mut ctx, 4, a, b)?;
+			Op::CallExtern(ref name, n) => {
+				let nargs = make_call(&mut ctx, 4, name.clone())?;
 				if nargs != n as usize {
 					return error::BadCall.fail();
 				}
@@ -202,7 +202,7 @@ pub fn decompile(code: &[Op]) -> Result<Vec<FlatStmt>, DecompileError> {
 				}
 				ctx.stmt(FlatStmt::Debug(None, args))?;
 			}
-			Op::CallTail(_, _, _) => return error::UnexpectedOp.fail(),
+			Op::CallTail(_, _) => return error::UnexpectedOp.fail(),
 			Op::Jnz(_) | Op::GetTemp(_) | Op::SetTemp(_) => return error::UnexpectedOp.fail(),
 		}
 	}
@@ -235,7 +235,7 @@ fn prepare_call(ctx: &mut Ctx, misc: u32, label: Label) -> Result<(), DecompileE
 	Ok(())
 }
 
-fn make_call(ctx: &mut Ctx, misc: u32, namea: &str, name: &str) -> Result<usize, DecompileError> {
+fn make_call(ctx: &mut Ctx, misc: u32, name: Name) -> Result<usize, DecompileError> {
 	let mut args = Vec::new();
 	let label = loop {
 		match ctx.pop_any()? {
@@ -258,7 +258,7 @@ fn make_call(ctx: &mut Ctx, misc: u32, namea: &str, name: &str) -> Result<usize,
 		[Op::Label(l), ..] if *l == label => {}
 		_ => return error::BadCall.fail()
 	}
-	ctx.push(Expr::Call(None, namea.to_owned(), name.to_owned(), args))?;
+	ctx.push(Expr::Call(None, name, args))?;
 	end_call(ctx)?;
 	Ok(nargs)
 }
@@ -381,7 +381,7 @@ pub fn compile(stmts: &[FlatStmt]) -> Result<Vec<Op>, CompileError> {
 				}
 				ctx.out.push(Op::Debug(exprs.len() as u8));
 			}
-			FlatStmt::Tailcall(l, a, b, exprs, pop) => {
+			FlatStmt::Tailcall(l, name, exprs, pop) => {
 				ctx.line(*l);
 				for (expr, i) in exprs.iter().rev().zip(0..) {
 					compile_expr(&mut ctx, expr, i);
@@ -396,7 +396,7 @@ pub fn compile(stmts: &[FlatStmt]) -> Result<Vec<Op>, CompileError> {
 				for i in (1..=n).rev() {
 					ctx.out.push(Op::GetTemp(i));
 				}
-				ctx.out.push(Op::CallTail(a.clone(), b.clone(), n));
+				ctx.out.push(Op::CallTail(name.clone(), n));
 			}
 		}
 	}
@@ -422,25 +422,22 @@ fn compile_expr(ctx: &mut OutCtx, expr: &Expr, depth: u32) {
 			ctx.line(*l);
 			ctx.out.push(Op::PushRef(crate::scp::StackSlot(*n + depth)));
 		}
-		Expr::Call(l, a, b, exprs) if a.is_empty() => {
+		Expr::Call(l, name, exprs) => {
 			ctx.line(*l);
 			let l = ctx.label();
-			ctx.out.push(Op::PrepareCallLocal(l));
-			for (expr, i) in exprs.iter().rev().zip(2..) {
-				compile_expr(ctx, expr, depth + i);
+			if let Some(name) = name.as_local() {
+				ctx.out.push(Op::PrepareCallLocal(l));
+				for (expr, i) in exprs.iter().rev().zip(2..) {
+					compile_expr(ctx, expr, depth + i);
+				}
+				ctx.out.push(Op::CallLocal(name.clone()));
+			} else {
+				ctx.out.push(Op::PrepareCallExtern(l));
+				for (expr, i) in exprs.iter().rev().zip(5..) {
+					compile_expr(ctx, expr, depth + i);
+				}
+				ctx.out.push(Op::CallExtern(name.clone(), exprs.len() as u8));
 			}
-			ctx.out.push(Op::CallLocal(b.clone()));
-			ctx.out.push(Op::Label(l));
-			ctx.out.push(Op::GetTemp(0));
-		}
-		Expr::Call(l, a, b, exprs) => {
-			ctx.line(*l);
-			let l = ctx.label();
-			ctx.out.push(Op::PrepareCallExtern(l));
-			for (expr, i) in exprs.iter().rev().zip(5..) {
-				compile_expr(ctx, expr, depth + i);
-			}
-			ctx.out.push(Op::CallExtern(a.clone(), b.clone(), exprs.len() as u8));
 			ctx.out.push(Op::Label(l));
 			ctx.out.push(Op::GetTemp(0));
 		}

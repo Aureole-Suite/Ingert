@@ -6,7 +6,7 @@ impl Expr {
 			Self::Value(l, _) => Some(*l),
 			Self::Var(l, _) => Some(*l),
 			Self::Ref(l, _) => Some(*l),
-			Self::Call(l, _, _, _) => Some(*l),
+			Self::Call(l, _, _) => Some(*l),
 			Self::Syscall(l, _, _, _) => Some(*l),
 			Self::Unop(l, _, _) => Some(*l),
 			Self::Binop(l, _, _, _) => Some(*l),
@@ -18,7 +18,7 @@ impl Expr {
 			Self::Value(l, _) => Some(l),
 			Self::Var(l, _) => Some(l),
 			Self::Ref(l, _) => Some(l),
-			Self::Call(l, _, _, _) => Some(l),
+			Self::Call(l, _, _) => Some(l),
 			Self::Syscall(l, _, _, _) => Some(l),
 			Self::Unop(l, _, _) => Some(l),
 			Self::Binop(l, _, _, _) => Some(l),
@@ -39,7 +39,7 @@ impl FlatStmt {
 			Self::PushVar(l) => Some(*l),
 			Self::PopVar(_) => None,
 			Self::Debug(l, _) => Some(*l),
-			Self::Tailcall(l, _, _, _, _) => Some(*l),
+			Self::Tailcall(l, _, _, _) => Some(*l),
 		}
 	}
 
@@ -55,7 +55,7 @@ impl FlatStmt {
 			Self::PushVar(l) => Some(l),
 			Self::PopVar(_) => None,
 			Self::Debug(l, _) => Some(l),
-			Self::Tailcall(l, _, _, _, _) => Some(l),
+			Self::Tailcall(l, _, _, _) => Some(l),
 		}
 	}
 }
@@ -94,7 +94,7 @@ pub fn sink(stmt: &mut FlatStmt) {
 			sink_exprs(exprs, lines);
 			lines.push(l);
 		}
-		FlatStmt::Tailcall(l, _, _, exprs, _) => {
+		FlatStmt::Tailcall(l, _, exprs, _) => {
 			sink_exprs(exprs, lines);
 			lines.push(l);
 		}
@@ -113,7 +113,7 @@ fn sink_expr<'a>(expr: &'a mut Expr, lines: &mut Vec<&'a mut Line>) {
 		Expr::Ref(l, _) => {
 			lines.push(l);
 		}
-		Expr::Call(l, _, _, exprs) | Expr::Syscall(l, _, _, exprs) => {
+		Expr::Call(l, _, exprs) | Expr::Syscall(l, _, _, exprs) => {
 			sink_exprs(exprs, lines);
 			sink_lines(lines);
 			lines.push(l);

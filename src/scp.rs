@@ -96,10 +96,49 @@ impl std::fmt::Debug for CallArg {
 	}
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct Name(pub String, pub String);
+
+impl Name {
+	pub fn local(name: String) -> Self {
+		Self(String::new(), name)
+	}
+
+	pub fn as_local(&self) -> Option<&String> {
+		if self.0.is_empty() {
+			Some(&self.1)
+		} else {
+			None
+		}
+	}
+}
+
+impl std::fmt::Display for Name {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		if self.0.is_empty() {
+			write!(f, "{}", self.1)
+		} else {
+			write!(f, "{}.{}", self.0, self.1)
+		}
+	}
+}
+
+impl std::str::FromStr for Name {
+	type Err = std::convert::Infallible;
+
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		if let Some((a, b)) = s.split_once('.') {
+			Ok(Self(a.to_owned(), b.to_owned()))
+		} else {
+			Ok(Self::local(s.to_owned()))
+		}
+	}
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum CallKind {
-	Normal(String, String),
-	Tailcall(String, String),
+	Normal(Name),
+	Tailcall(Name),
 	Syscall(u8, u8),
 }
 
@@ -160,8 +199,8 @@ pub enum Op {
 	Goto(Label),
 
 	CallLocal(String),
-	CallExtern(String, String, u8),
-	CallTail(String, String, u8),
+	CallExtern(Name, u8),
+	CallTail(Name, u8),
 	CallSystem(u8, u8, u8),
 	PrepareCallLocal(Label),
 	PrepareCallExtern(Label),

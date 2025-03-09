@@ -1,7 +1,7 @@
 mod flat;
 
 use crate::scp::{Op, Scp};
-pub use crate::scp::{Arg, Binop, GlobalType, Unop, Value, Label};
+pub use crate::scp::{Arg, Binop, GlobalType, Unop, Value, Label, Name};
 
 pub fn decompile(scp: &Scp) -> Scena {
 	let mut globals = scp.globals.iter().rev();
@@ -86,7 +86,7 @@ pub enum Expr {
 	Value(Line, Value),
 	Var(Line, Place),
 	Ref(Line, u32),
-	Call(Line, String, String, Vec<Expr>),
+	Call(Line, Name, Vec<Expr>),
 	Syscall(Line, u8, u8, Vec<Expr>),
 	Unop(Line, Unop, Box<Expr>),
 	Binop(Line, Binop, Box<Expr>, Box<Expr>),
@@ -111,7 +111,7 @@ pub enum FlatStmt {
 	PushVar(Line),
 	PopVar(usize),
 	Debug(Line, Vec<Expr>),
-	Tailcall(Line, String, String, Vec<Expr>, usize),
+	Tailcall(Line, Name, Vec<Expr>, usize),
 }
 
 mod fmt;

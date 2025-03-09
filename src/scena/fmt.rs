@@ -25,13 +25,9 @@ impl Debug for Expr {
 			}
 			Self::Var(l, v) => line(f, l)?.debug_tuple("Var").field(v).finish(),
 			Self::Ref(l, v) => line(f, l)?.debug_tuple("Ref").field(v).finish(),
-			Self::Call(l, a, b, args) => {
+			Self::Call(l, name, args) => {
 				line(f, l)?;
-				if a.is_empty() {
-					write_args(f, &format!("Call[{b}]"), args)
-				} else {
-					write_args(f, &format!("Call[{a}.{b}]"), args)
-				}
+				write_args(f, &format!("Call[{name}]"), args)
 			}
 			Self::Syscall(l, a, b, args) => {
 				line(f, l)?;
@@ -59,13 +55,9 @@ impl Debug for FlatStmt {
 				line(f, l)?;
 				write_args(f, "Debug", args)
 			}
-			Self::Tailcall(l, a, b, args, pop) => {
+			Self::Tailcall(l, name, args, pop) => {
 				line(f, l)?;
-				if a.is_empty() {
-					write_args(f, &format!("Tailcall[{b};{pop}]"), args)
-				} else {
-					write_args(f, &format!("Tailcall[{a}.{b};{pop}]"), args)
-				}
+				write_args(f, &format!("Tailcall[{name};{pop}]"), args)
 			}
 		}
 	}

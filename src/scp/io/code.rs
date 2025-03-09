@@ -5,6 +5,8 @@ use gospel::read::{Le as _, Reader};
 use gospel::write::Le as _;
 use snafu::{OptionExt as _, ResultExt as _};
 
+use crate::scp::Name;
+
 use super::super::{Op, Label, StackSlot, Binop, Unop};
 use super::value::{string_value, value, write_string_value, write_value, ValueError};
 
@@ -105,13 +107,13 @@ pub fn read(
 				let a = string_value(f).context(FuncNameSnafu)?;
 				let b = string_value(f).context(FuncNameSnafu)?;
 				let c = f.u8()?;
-				Op::CallExtern(a, b, c)
+				Op::CallExtern(Name(a, b), c)
 			}
 			35 => {
 				let a = string_value(f).context(FuncNameSnafu)?;
 				let b = string_value(f).context(FuncNameSnafu)?;
 				let c = f.u8()?;
-				Op::CallTail(a, b, c)
+				Op::CallTail(Name(a, b), c)
 			}
 			36 => {
 				let a = f.u8()?;
@@ -261,16 +263,16 @@ pub fn write(code: &[Op], number: usize, w: &mut super::WCtx) -> Result<(), Writ
 				f.u8(12);
 				f.u16(*w.function_names.get(&name).context(write::Function { name })? as u16);
 			}
-			Op::CallExtern(ref a, ref b, n) => {
+			Op::CallExtern(ref name, n) => {
 				f.u8(34);
-				write_string_value(f, &mut w.f_code_strings, a);
-				write_string_value(f, &mut w.f_code_strings, b);
+				write_string_value(f, &mut w.f_code_strings, &name.0);
+				write_string_value(f, &mut w.f_code_strings, &name.1);
 				f.u8(n);
 			}
-			Op::CallTail(ref a, ref b, n) => {
+			Op::CallTail(ref name, n) => {
 				f.u8(35);
-				write_string_value(f, &mut w.f_code_strings, a);
-				write_string_value(f, &mut w.f_code_strings, b);
+				write_string_value(f, &mut w.f_code_strings, &name.0);
+				write_string_value(f, &mut w.f_code_strings, &name.1);
 				f.u8(n);
 			}
 			Op::CallSystem(a, b, n) => {
