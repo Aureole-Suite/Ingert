@@ -1,6 +1,6 @@
 use gospel::read::{Le as _, Reader};
 use gospel::write::Le as _;
-use snafu::{ensure, ResultExt as _};
+use snafu::{ensure, OptionExt as _, ResultExt as _};
 use crate::scp::{CallArg, CallKind, Call};
 
 use super::value::{value, write_string_value, write_value, Value, ValueError};
@@ -28,12 +28,13 @@ pub enum ReadError {
 	BadCall { kind: RawCallKind, name: Option<String>, args: Vec<CallArg> },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, strum::FromRepr)]
+#[repr(u16)]
 pub enum RawCallKind {
-	Local,
-	Extern,
-	Tailcall,
-	Syscall,
+	Local = 0,
+	Extern = 1,
+	Tailcall = 2,
+	Syscall = 3,
 }
 
 pub fn read(f: &mut Reader, func_names: &[String]) -> Result<Call, ReadError> {
@@ -56,13 +57,8 @@ fn parse(f: &mut Reader, func_names: &[String]) -> Result<(Option<String>, RawCa
 			Some(func_names[id as usize].to_owned())
 		}
 	};
-	let kind = match f.u16()? {
-		0 => RawCallKind::Local,
-		1 => RawCallKind::Extern,
-		2 => RawCallKind::Tailcall,
-		3 => RawCallKind::Syscall,
-		kind => BadKindSnafu { kind }.fail()?
-	};
+	let kind = f.u16()?;
+	let kind = RawCallKind::from_repr(kind).context(BadKindSnafu { kind })?;
 	let arg_count = f.u16()? as usize;
 	let arg_start = f.u32()? as usize;
 
@@ -148,12 +144,12 @@ pub fn write(call: &Call, w: &mut super::WCtx) -> Result<(), WriteError> {
 				return write::MissingFunction { name: b }.fail();
 			};
 			f.u32(id as u32);
-			f.u16(0);
+			f.u16(RawCallKind::Local as u16);
 			f.u16(nargs);
 		}
 		CallKind::Normal(a, b) => {
 			f.u32(0xFFFFFFFF);
-			f.u16(1);
+			f.u16(RawCallKind::Extern as u16);
 			f.u16(1 + nargs);
 			write_string_value(g, &mut w.f_called_strings, &format!("{a}.{b}"));
 			g.u32(0);
@@ -165,21 +161,21 @@ pub fn write(call: &Call, w: &mut super::WCtx) -> Result<(), WriteError> {
 				tracing::warn!("tail call to missing function {b}");
 				f.u32(0xFFFFFFFF);
 			}
-			f.u16(2);
+			f.u16(RawCallKind::Tailcall as u16);
 			f.u16(1 + nargs);
 			write_string_value(g, &mut w.f_called_strings, b);
 			g.u32(0);
 		}
 		CallKind::Tailcall(a, b) => {
 			f.u32(0xFFFFFFFF);
-			f.u16(2);
+			f.u16(RawCallKind::Extern as u16);
 			f.u16(1 + nargs);
 			write_string_value(g, &mut w.f_called_strings, &format!("{a}.{b}"));
 			g.u32(0);
 		}
 		CallKind::Syscall(a, b) => {
 			f.u32(0xFFFFFFFF);
-			f.u16(3);
+			f.u16(RawCallKind::Syscall as u16);
 			f.u16(2 + nargs);
 			write_value(g, &mut w.f_called_strings, &Value::Int(*a as i32));
 			g.u32(0);
