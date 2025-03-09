@@ -80,19 +80,3 @@ pub fn normalize<T: LabelsMut>(ops: &mut Vec<T>, mut number: u32) -> Result<u32,
 pub fn max_label<T: Labels>(ops: &[T]) -> u32 {
 	ops.iter().filter_map(|op| op.defined()).map(|Label(n)| n).max().map_or(0, |n| *n + 1)
 }
-
-pub fn backrefs<T: Labels>(ops: &[T]) -> HashSet<Label> {
-	let mut seen = HashSet::new();
-	let mut backrefs = HashSet::new();
-	for op in ops {
-		if let Some(l) = op.defined() {
-			seen.insert(*l);
-		}
-		op.referenced(|l| {
-			if seen.contains(l) {
-				backrefs.insert(*l);
-			}
-		});
-	}
-	backrefs
-}

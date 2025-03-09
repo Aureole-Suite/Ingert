@@ -38,7 +38,6 @@ pub enum DecompileError {
 }
 
 pub fn decompile(code: &[Op]) -> Result<Vec<FlatStmt>, DecompileError> {
-	let backrefs = crate::labels::backrefs(code);
 	let mut ctx = Ctx::new(code);
 	while let Some(op) = ctx.next() {
 		match *op {
@@ -115,11 +114,7 @@ pub fn decompile(code: &[Op]) -> Result<Vec<FlatStmt>, DecompileError> {
 			}
 			Op::Jz(l) => {
 				let cond = ctx.pop()?;
-				if ctx.get_label().is_some_and(|v| backrefs.contains(&v)) {
-					ctx.stmt(FlatStmt::While(None, cond, l))?;
-				} else {
-					ctx.stmt(FlatStmt::If(None, cond, l))?;
-				}
+				ctx.stmt(FlatStmt::If(None, cond, l))?;
 			}
 			Op::Goto(l) => {
 				ctx.stmt(FlatStmt::Goto(l))?;
@@ -346,11 +341,6 @@ pub fn compile(stmts: &[FlatStmt]) -> Result<Vec<Op>, CompileError> {
 				ctx.out.push(Op::Return);
 			}
 			FlatStmt::If(l, expr, label) => {
-				ctx.line(*l);
-				compile_expr(&mut ctx, expr, 0);
-				ctx.out.push(Op::Jz(*label));
-			}
-			FlatStmt::While(l, expr, label) => {
 				if let Some(&Op::Label(prelabel)) = ctx.out.last() && l.is_some() {
 					ctx.line(*l);
 					let newlabel = ctx.label();
