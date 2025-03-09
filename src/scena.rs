@@ -2,7 +2,7 @@ mod flat;
 mod called;
 
 use crate::scp::{Op, Scp};
-pub use crate::scp::{Arg, Binop, GlobalType, Unop, Value, Label, Name};
+pub use crate::scp::{ArgType, Binop, GlobalType, Unop, Value, Label, Name};
 
 pub fn decompile(scp: &Scp) -> Scena {
 	let mut globals = scp.globals.iter().rev();
@@ -34,7 +34,11 @@ pub fn decompile(scp: &Scp) -> Scena {
 		};
 		items.push(Item::Function(Function {
 			name: f.name.clone(),
-			args: f.args.clone(),
+			args: f.args.iter().map(|a| Arg {
+				ty: a.ty,
+				default: a.default.clone(),
+				line: None,
+			}).collect(),
 			body,
 		}));
 	}
@@ -72,6 +76,13 @@ pub struct Function {
 	pub name: String,
 	pub args: Vec<Arg>,
 	pub body: Body,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Arg {
+	pub ty: ArgType,
+	pub default: Option<Value>,
+	pub line: Line,
 }
 
 #[derive(Debug, Clone, PartialEq)]

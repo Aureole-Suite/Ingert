@@ -47,7 +47,7 @@ pub struct Function {
 	pub code: Vec<Op>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ArgType {
 	Number,
 	String,
