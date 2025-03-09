@@ -104,8 +104,12 @@ impl Name {
 		Self(String::new(), name)
 	}
 
+	pub fn is_local(&self) -> bool {
+		self.0.is_empty()
+	}
+
 	pub fn as_local(&self) -> Option<&String> {
-		if self.0.is_empty() {
+		if self.is_local() {
 			Some(&self.1)
 		} else {
 			None

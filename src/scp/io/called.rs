@@ -25,7 +25,7 @@ pub enum ReadError {
 		"bad call {kind:?} for {} with args {args:?}",
 		match name { Some(name) => format!("name {name}"), None => "unnamed".to_string() }
 	))]
-	BadCall { kind: RawCallKind, name: Option<String>, args: Vec<CallArg> },
+	BadCall { kind: RawCallKind, name: Option<Name>, args: Vec<CallArg> },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, strum::FromRepr)]
@@ -49,7 +49,7 @@ pub fn read(f: &mut Reader, func_names: &[String]) -> Result<Call, ReadError> {
 	}
 }
 
-fn parse(f: &mut Reader, func_names: &[String]) -> Result<(Option<String>, RawCallKind, Vec<CallArg>), ReadError> {
+fn parse(f: &mut Reader, func_names: &[String]) -> Result<(Option<Name>, RawCallKind, Vec<CallArg>), ReadError> {
 	let name = match f.u32()? {
 		0xFFFFFFFF => None,
 		id => {
@@ -57,6 +57,7 @@ fn parse(f: &mut Reader, func_names: &[String]) -> Result<(Option<String>, RawCa
 			Some(func_names[id as usize].to_owned())
 		}
 	};
+	let name = name.map(|name| name.parse().unwrap());
 	let kind = f.u16()?;
 	let kind = RawCallKind::from_repr(kind).context(BadKindSnafu { kind })?;
 	let arg_count = f.u16()? as usize;
@@ -92,29 +93,36 @@ fn parse(f: &mut Reader, func_names: &[String]) -> Result<(Option<String>, RawCa
 	Ok((name, kind, args))
 }
 
-fn make_sense(name: Option<String>, kind: RawCallKind, args: Vec<CallArg>) -> Option<Call> {
+fn make_sense(name: Option<Name>, kind: RawCallKind, args: Vec<CallArg>) -> Option<Call> {
 	let mut args = args.into_iter();
 	let kind = match kind {
 		RawCallKind::Local => {
 			let name = name?;
-			if name.contains('.') { return None; }
-			CallKind::Normal(Name::local(name))
+			if name.is_local() {
+				CallKind::Normal(name)
+			} else {
+				return None;
+			}
 		}
 		RawCallKind::Extern => {
 			if name.is_some() { return None; }
 			let Some(CallArg::Value(Value::String(name2))) = args.next() else { return None; };
-			let (a, b) = name2.split_once('.')?;
-			CallKind::Normal(Name(a.to_owned(), b.to_owned()))
+			let name2 = name2.parse::<Name>().unwrap();
+			if name2.is_local() {
+				return None;
+			} else {
+				CallKind::Normal(name2)
+			}
 		}
 		RawCallKind::Tailcall => {
 			let Some(CallArg::Value(Value::String(name2))) = args.next() else { return None; };
+			let name2 = name2.parse::<Name>().unwrap();
 			if let Some(name) = name {
 				if name != name2 { return None; }
-			} else if !name2.contains('.') {
+			} else if name2.is_local() {
 				tracing::warn!("tail call to missing function {name2}");
 			}
-			let (a, b) = name2.split_once('.').unwrap_or(("", &name2));
-			CallKind::Tailcall(Name(a.to_owned(), b.to_owned()))
+			CallKind::Tailcall(name2)
 		}
 		RawCallKind::Syscall => {
 			if name.is_some() { return None; }
