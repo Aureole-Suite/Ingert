@@ -1,83 +1,96 @@
 mod flat;
 mod called;
 
+use indexmap::IndexMap;
+
 use crate::scp::{Op, Scp};
 pub use crate::scp::{ArgType, Binop, GlobalType, Unop, Value, Label, Name};
 
-pub fn decompile(scp: &Scp) -> Scena {
-	let mut globals = scp.globals.iter().rev();
-	let mut items = Vec::new();
-	for f in scp.functions.iter().rev() {
+pub fn from_scp(scp: Scp) -> Scena {
+	let mut globals = scp.globals.into_iter().map(|g| (g.name, Global {
+		ty: g.ty,
+		line: None,
+	})).collect::<IndexMap<_, _>>();
+	let mut globals_iter = globals.iter_mut();
+	let mut functions = IndexMap::with_capacity(scp.functions.len());
+	for mut f in scp.functions {
 		let _span = tracing::info_span!("function", name = f.name).entered();
-		let mut code = f.code.as_slice();
 
-		while let Some(Op::Line(n)) = code.last() && let Some(g) = globals.next() {
+		let mut code = f.code.as_slice();
+		while code.last().is_some_and(|op| matches!(op, Op::Line(_))) {
 			code = &code[..code.len() - 1];
-			items.push(Item::Global(Global {
-				name: g.name.clone(),
-				ty: g.ty,
-				line: Some(*n),
-			}));
 		}
-		let body = match flat::decompile(code) {
-			Ok(body) => {
-				let code2 = flat::compile(&body).unwrap();
-				similar_asserts::assert_eq!(code, code2);
-				let (body2, dup) = called::apply_flat(body.clone(), &f.called, &scp.functions).unwrap();
-				let (body3, called) = called::infer_flat(body2.clone(), dup, &scp.functions).unwrap();
-				similar_asserts::assert_eq!(f.called, called);
-				similar_asserts::assert_eq!(body, body3);
-				Body::Flat(body)
-			},
-			Err(e) => {
-				tracing::error!("decompile error: {e}");
-				dbg!(code);
-				Body::Asm(code.to_vec())
-			},
-		};
-		items.push(Item::Function(Function {
-			name: f.name.clone(),
-			args: f.args.iter().map(|a| Arg {
+		for line in f.code.drain(code.len()..) {
+			let Op::Line(n) = line else { unreachable!() };
+			if let Some(g) = globals_iter.next() {
+				g.1.line = Some(n);
+			} else {
+				tracing::warn!("extra line number: {n}");
+			}
+		}
+
+		functions.insert(f.name, Function {
+			args: f.args.into_iter().map(|a| Arg {
 				ty: a.ty,
-				default: a.default.clone(),
+				default: a.default,
 				line: None,
 			}).collect(),
-			body,
-		}));
+			called: Called::Raw(f.called),
+			body: Body::Asm(f.code),
+		});
 	}
-	for g in globals {
-		items.push(Item::Global(Global {
-			name: g.name.clone(),
-			ty: g.ty,
-			line: None,
-		}));
-	}
-	items.reverse();
-	Scena { items }
+	Scena { globals, functions }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+pub fn decompile(scena: &mut Scena) {
+	for i in 0..scena.functions.len() { // need indexes to satisfy borrowck
+		let mut f = scena.functions.get_index_mut(i).unwrap().1.clone();
+
+		if let Body::Asm(ops) = &mut f.body {
+			match flat::decompile(ops) {
+				Ok(stmts) => {
+					similar_asserts::assert_eq!(*ops, flat::compile(&stmts).unwrap());
+					f.body = Body::Flat(stmts);
+				}
+				Err(e) => {
+					tracing::error!("decompile error: {e} for {ops:#?}");
+				}
+			}
+		}
+
+		if let Called::Raw(called) = &f.called {
+			match &mut f.body {
+				Body::Asm(_) => {},
+				Body::Flat(stmts) => {
+					let (stmts2, dup) = called::apply_flat(stmts.clone(), called, &scena.functions).unwrap();
+					let (stmts3, called2) = called::infer_flat(stmts2.clone(), dup, &scena.functions).unwrap();
+					similar_asserts::assert_eq!(*called, called2);
+					similar_asserts::assert_eq!(*stmts, stmts3);
+					f.called = Called::Merged(dup);
+				}
+			}
+		}
+
+		*scena.functions.get_index_mut(i).unwrap().1 = f;
+	}
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Scena {
-	pub items: Vec<Item>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum Item {
-	Global(Global),
-	Function(Function),
+	pub globals: IndexMap<String, Global>,
+	pub functions: IndexMap<String, Function>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Global {
-	pub name: String,
 	pub ty: GlobalType,
 	pub line: Option<u16>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Function {
-	pub name: String,
 	pub args: Vec<Arg>,
+	pub called: Called,
 	pub body: Body,
 }
 
@@ -89,10 +102,15 @@ pub struct Arg {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum Called {
+	Raw(Vec<crate::scp::Call>),
+	Merged(bool),
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum Body {
 	Asm(Vec<Op>),
 	Flat(Vec<FlatStmt>),
-	Tree(()),
 }
 
 pub type Line = Option<u16>;

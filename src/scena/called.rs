@@ -1,10 +1,10 @@
 #![allow(clippy::result_large_err)]
-use std::collections::HashMap;
-
 use snafu::OptionExt as _;
 
-use crate::scp::{self, Call, CallArg, CallKind};
-use super::{FlatStmt, Expr};
+use crate::scp::{Call, CallArg, CallKind};
+use super::{Arg, FlatStmt, Expr, Function};
+
+type Functions = indexmap::IndexMap<String, Function>;
 
 trait Visit {
 	type Error;
@@ -113,7 +113,7 @@ pub enum ApplyError {
 	#[snafu(display("signature mismatch for function {name}: expected {signature:?}, got {args:?}"))]
 	SignatureMismatch {
 		name: String,
-		signature: Vec<scp::Arg>,
+		signature: Vec<Arg>,
 		args: Vec<CallArg>,
 	},
 	#[snafu(display("called table has {called:?} calls but code has {code:?}"))]
@@ -126,12 +126,11 @@ pub enum ApplyError {
 struct Apply<'a> {
 	called: &'a [Call],
 	pos: usize,
-	functions: HashMap<&'a str, &'a scp::Function>,
+	functions: &'a Functions,
 }
 
 impl Apply<'_> {
-	pub fn new<'a>(called: &'a [Call], functions: &'a [scp::Function]) -> Apply<'a> {
-		let functions = functions.iter().map(|f| (f.name.as_str(), f)).collect();
+	pub fn new<'a>(called: &'a [Call], functions: &'a Functions) -> Apply<'a> {
 		Apply { called, pos: 0, functions }
 	}
 
@@ -198,7 +197,7 @@ impl Visit for Apply<'_> {
 pub fn apply_flat(
 	mut body: Vec<FlatStmt>,
 	called: &[Call],
-	functions: &[scp::Function],
+	functions: &Functions,
 ) -> Result<(Vec<FlatStmt>, bool), ApplyError> {
 	let mut ctx = Visitor(Apply::new(called, functions));
 	for stmt in &mut body {
@@ -217,19 +216,18 @@ pub enum InferError {
 	#[snafu(display("signature mismatch for function {name}: expected {signature:?}, got {args:?}"))]
 	SignatureMismatch {
 		name: String,
-		signature: Vec<scp::Arg>,
+		signature: Vec<Arg>,
 		args: Vec<CallArg>,
 	},
 }
 
 struct Infer<'a> {
 	called: Vec<Call>,
-	functions: HashMap<&'a str, &'a scp::Function>,
+	functions: &'a Functions,
 }
 
 impl Infer<'_> {
-	pub fn new(functions: &[scp::Function]) -> Infer<'_> {
-		let functions = functions.iter().map(|f| (f.name.as_str(), f)).collect();
+	pub fn new(functions: &Functions) -> Infer<'_> {
 		Infer { called: Vec::new(), functions }
 	}
 
@@ -272,7 +270,7 @@ impl Visit for Infer<'_> {
 pub fn infer_flat(
 	mut body: Vec<FlatStmt>,
 	dup: bool,
-	functions: &[scp::Function],
+	functions: &Functions,
 ) -> Result<(Vec<FlatStmt>, Vec<Call>), InferError> {
 	let mut ctx = Visitor(Infer::new(functions));
 	for stmt in &mut body {

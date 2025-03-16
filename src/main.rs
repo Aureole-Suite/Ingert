@@ -32,8 +32,9 @@ fn main() {
 
 		let scp = ingert::legacy::scp::parse_scp(&data).unwrap();
 		let scp2 = ingert::scp::read(&data).unwrap();
+		let mut scena2 = ingert::scena::from_scp(scp2.clone());
 		let data2 = ingert::scp::write(&scp2).unwrap();
-		let scena = ingert::scena::decompile(&scp2);
+		ingert::scena::decompile(&mut scena2);
 		// println!("{:#?}", scena);
 		// std::fs::write("a.bin", &data).unwrap();
 		// std::fs::write("b.bin", &data2).unwrap();
