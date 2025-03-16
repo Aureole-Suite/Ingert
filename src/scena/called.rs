@@ -6,6 +6,98 @@ use snafu::OptionExt as _;
 use crate::scp::{self, Call, CallArg, CallKind};
 use super::{FlatStmt, Expr};
 
+trait Visit {
+	type Error;
+	fn call(&mut self, kind: CallKind, args: &mut Vec<Expr>) -> Result<(), Self::Error>;
+}
+
+struct Visitor<F>(F);
+
+impl<F: Visit> Visitor<F> {
+	fn flat_stmt(&mut self, stmt: &mut FlatStmt) -> Result<(), F::Error> {
+		match stmt {
+			FlatStmt::Label(_) => {}
+			FlatStmt::Expr(expr) => {
+				self.expr(expr)?;
+			},
+			FlatStmt::Set(_, _, expr) => {
+				self.expr(expr)?;
+			}
+			FlatStmt::Return(_, expr, _) => {
+				if let Some(expr) = expr {
+					self.expr(expr)?;
+				}
+			}
+			FlatStmt::If(_, expr, _) => {
+				self.expr(expr)?;
+			}
+			FlatStmt::Goto(_) => {},
+			FlatStmt::Switch(_, expr, _, _) => {
+				self.expr(expr)?;
+			}
+			FlatStmt::PushVar(_) => {}
+			FlatStmt::PopVar(_) => {}
+			FlatStmt::Debug(_, exprs) => {
+				for expr in exprs {
+					self.expr(expr)?;
+				}
+			},
+			FlatStmt::Tailcall(_, name, exprs, _) => {
+				self.call(CallKind::Tailcall(name.clone()), exprs)?;
+			}
+		}
+		Ok(())
+	}
+
+	pub fn expr(&mut self, expr: &mut Expr) -> Result<(), F::Error> {
+		match expr {
+			Expr::Value(_, _) => {}
+			Expr::Var(_, _) => {}
+			Expr::Ref(_, _) => {}
+			Expr::Call(_, name, exprs) => {
+				self.call(CallKind::Normal(name.clone()), exprs)?;
+			}
+			Expr::Syscall(_, a, b, exprs) => {
+				self.call(CallKind::Syscall(*a, *b), exprs)?;
+			}
+			Expr::Unop(_, _, v) => {
+				self.expr(v)?;
+			}
+			Expr::Binop(_, _, a, b) => {
+				self.expr(a)?;
+				self.expr(b)?;
+			}
+		}
+		Ok(())
+	}
+
+	fn call(&mut self, kind: CallKind, args: &mut Vec<Expr>) -> Result<(), F::Error> {
+		self.0.call(kind, args)?;
+		for expr in args {
+			self.expr(expr)?;
+		}
+		Ok(())
+	}
+}
+
+fn code_args<'a>(kind: &'a CallKind, args: &[Expr]) -> (Option<&'a str>, Vec<CallArg>) {
+	let name = if let CallKind::Normal(name) = kind  {
+		name.as_local().map(|s| s.as_str())
+	} else {
+		None
+	};
+	let args = args.iter().map(|e| match e {
+		Expr::Value(_, value) => CallArg::Value(value.clone()),
+		Expr::Var(..) => CallArg::Var,
+		Expr::Ref(..) => CallArg::Var,
+		Expr::Call(..) => CallArg::Call,
+		Expr::Syscall(..) => CallArg::Call,
+		Expr::Unop(..) => CallArg::Expr,
+		Expr::Binop(..) => CallArg::Expr,
+	}).collect::<Vec<_>>();
+	(name, args)
+}
+
 #[derive(Debug, snafu::Snafu)]
 #[snafu(module(apply), context(suffix(false)))]
 pub enum ApplyError {
@@ -43,78 +135,34 @@ impl Apply<'_> {
 		Apply { called, pos: 0, functable }
 	}
 
-	pub fn flat_stmt(&mut self, stmt: &mut FlatStmt) -> Result<(), ApplyError> {
-		match stmt {
-			FlatStmt::Label(_) => {}
-			FlatStmt::Expr(expr) => {
-				self.expr(expr)?;
-			},
-			FlatStmt::Set(_, _, expr) => {
-				self.expr(expr)?;
-			}
-			FlatStmt::Return(_, expr, _) => {
-				if let Some(expr) = expr {
-					self.expr(expr)?;
-				}
-			}
-			FlatStmt::If(_, expr, _) => {
-				self.expr(expr)?;
-			}
-			FlatStmt::Goto(_) => {},
-			FlatStmt::Switch(_, expr, _, _) => {
-				self.expr(expr)?;
-			}
-			FlatStmt::PushVar(_) => {}
-			FlatStmt::PopVar(_) => {}
-			FlatStmt::Debug(_, exprs) => {
-				for expr in exprs {
-					self.expr(expr)?;
-				}
-			},
-			FlatStmt::Tailcall(_, name, exprs, _) => {
-				self.call(CallKind::Tailcall(name.clone()), exprs)?;
-			}
+	pub fn finish(self) -> Result<bool, ApplyError> {
+		if self.called.len() == self.pos * 2 {
+			let (first, second) = self.called.split_at(self.pos);
+			snafu::ensure!(first == second, apply::WrongNumber {
+				called: self.called.len(),
+				code: self.pos,
+			});
+			Ok(true)
+		} else {
+			snafu::ensure!(self.pos == self.called.len(), apply::WrongNumber {
+				called: self.called.len(),
+				code: self.pos,
+			});
+			Ok(false)
 		}
-		Ok(())
 	}
+}
 
-	pub fn expr(&mut self, expr: &mut Expr) -> Result<(), ApplyError> {
-		match expr {
-			Expr::Value(_, _) => {}
-			Expr::Var(_, _) => {}
-			Expr::Ref(_, _) => {}
-			Expr::Call(_, name, exprs) => {
-				self.call(CallKind::Normal(name.clone()), exprs)?;
-			}
-			Expr::Syscall(_, a, b, exprs) => {
-				self.call(CallKind::Syscall(*a, *b), exprs)?;
-			}
-			Expr::Unop(_, _, v) => {
-				self.expr(v)?;
-			}
-			Expr::Binop(_, _, a, b) => {
-				self.expr(a)?;
-				self.expr(b)?;
-			}
-		}
-		Ok(())
-	}
+impl Visit for Apply<'_> {
+	type Error = ApplyError;
 
 	fn call(&mut self, kind: CallKind, args: &mut Vec<Expr>) -> Result<(), ApplyError> {
 		self.pos += 1;
 		let Some(called) = self.called.get(self.pos - 1) else { return Ok(()) }; // it'll error on finish
 
-		let code_args = args.iter().map(|e| match e {
-			Expr::Value(_, value) => CallArg::Value(value.clone()),
-			Expr::Var(..) => CallArg::Var,
-			Expr::Ref(..) => CallArg::Var,
-			Expr::Call(..) => CallArg::Call,
-			Expr::Syscall(..) => CallArg::Call,
-			Expr::Unop(..) => CallArg::Expr,
-			Expr::Binop(..) => CallArg::Expr,
-		}).collect::<Vec<_>>();
+		let (name, code_args) = code_args(&kind, args);
 
-		if let CallKind::Normal(name) = &kind && let Some(name) = name.as_local().map(|s| s.as_str()) {
+		if let Some(name) = name {
 			snafu::ensure!(kind == called.kind && code_args.starts_with(&called.args), apply::Mismatch {
 				called: called.clone(),
 				code: Call { kind, args: code_args },
@@ -143,27 +191,7 @@ impl Apply<'_> {
 			});
 		}
 
-		for expr in args {
-			self.expr(expr)?;
-		}
 		Ok(())
-	}
-
-	pub fn finish(self) -> Result<bool, ApplyError> {
-		if self.called.len() == self.pos * 2 {
-			let (first, second) = self.called.split_at(self.pos);
-			snafu::ensure!(first == second, apply::WrongNumber {
-				called: self.called.len(),
-				code: self.pos,
-			});
-			Ok(true)
-		} else {
-			snafu::ensure!(self.pos == self.called.len(), apply::WrongNumber {
-				called: self.called.len(),
-				code: self.pos,
-			});
-			Ok(false)
-		}
 	}
 }
 
@@ -172,11 +200,11 @@ pub fn apply_flat(
 	called: &[Call],
 	functions: &[scp::Function],
 ) -> Result<(Vec<FlatStmt>, bool), ApplyError> {
-	let mut ctx = Apply::new(called, functions);
+	let mut ctx = Visitor(Apply::new(called, functions));
 	for stmt in &mut body {
 		ctx.flat_stmt(stmt)?;
 	}
-	Ok((body, ctx.finish()?))
+	Ok((body, ctx.0.finish()?))
 }
 
 #[derive(Debug, snafu::Snafu)]
@@ -205,75 +233,22 @@ impl Infer<'_> {
 		Infer { called: Vec::new(), functable }
 	}
 
-	pub fn flat_stmt(&mut self, stmt: &mut FlatStmt) -> Result<(), InferError> {
-		match stmt {
-			FlatStmt::Label(_) => {}
-			FlatStmt::Expr(expr) => {
-				self.expr(expr)?;
-			},
-			FlatStmt::Set(_, _, expr) => {
-				self.expr(expr)?;
-			}
-			FlatStmt::Return(_, expr, _) => {
-				if let Some(expr) = expr {
-					self.expr(expr)?;
-				}
-			}
-			FlatStmt::If(_, expr, _) => {
-				self.expr(expr)?;
-			}
-			FlatStmt::Goto(_) => {},
-			FlatStmt::Switch(_, expr, _, _) => {
-				self.expr(expr)?;
-			}
-			FlatStmt::PushVar(_) => {}
-			FlatStmt::PopVar(_) => {}
-			FlatStmt::Debug(_, exprs) => {
-				for expr in exprs {
-					self.expr(expr)?;
-				}
-			},
-			FlatStmt::Tailcall(_, name, exprs, _) => {
-				self.call(CallKind::Tailcall(name.clone()), exprs)?;
-			}
+	pub fn finish(self, dup: bool) -> Result<Vec<Call>, InferError> {
+		let mut called = self.called;
+		if dup {
+			called.extend_from_within(..);
 		}
-		Ok(())
+		Ok(called)
 	}
+}
 
-	pub fn expr(&mut self, expr: &mut Expr) -> Result<(), InferError> {
-		match expr {
-			Expr::Value(_, _) => {}
-			Expr::Var(_, _) => {}
-			Expr::Ref(_, _) => {}
-			Expr::Call(_, name, exprs) => {
-				self.call(CallKind::Normal(name.clone()), exprs)?;
-			}
-			Expr::Syscall(_, a, b, exprs) => {
-				self.call(CallKind::Syscall(*a, *b), exprs)?;
-			}
-			Expr::Unop(_, _, v) => {
-				self.expr(v)?;
-			}
-			Expr::Binop(_, _, a, b) => {
-				self.expr(a)?;
-				self.expr(b)?;
-			}
-		}
-		Ok(())
-	}
+impl Visit for Infer<'_> {
+	type Error = InferError;
 
 	fn call(&mut self, kind: CallKind, args: &mut Vec<Expr>) -> Result<(), InferError> {
-		let code_args = args.iter().map(|e| match e {
-			Expr::Value(_, value) => CallArg::Value(value.clone()),
-			Expr::Var(..) => CallArg::Var,
-			Expr::Ref(..) => CallArg::Var,
-			Expr::Call(..) => CallArg::Call,
-			Expr::Syscall(..) => CallArg::Call,
-			Expr::Unop(..) => CallArg::Expr,
-			Expr::Binop(..) => CallArg::Expr,
-		}).collect::<Vec<_>>();
+		let (name, code_args) = code_args(&kind, args);
 
-		if let CallKind::Normal(name) = &kind && let Some(name) = name.as_local().map(|s| s.as_str()) {
+		if let Some(name) = name {
 			let func = self.functable.get(name).context(infer::MissingFunction { name })?;
 
 			let mismatch_error = infer::SignatureMismatch {
@@ -290,18 +265,7 @@ impl Infer<'_> {
 
 		self.called.push(Call { kind, args: code_args });
 
-		for expr in args {
-			self.expr(expr)?;
-		}
 		Ok(())
-	}
-
-	pub fn finish(self, dup: bool) -> Result<Vec<Call>, InferError> {
-		let mut called = self.called;
-		if dup {
-			called.extend_from_within(..);
-		}
-		Ok(called)
 	}
 }
 
@@ -310,9 +274,9 @@ pub fn infer_flat(
 	dup: bool,
 	functions: &[scp::Function],
 ) -> Result<(Vec<FlatStmt>, Vec<Call>), InferError> {
-	let mut ctx = Infer::new(functions);
+	let mut ctx = Visitor(Infer::new(functions));
 	for stmt in &mut body {
 		ctx.flat_stmt(stmt)?;
 	}
-	Ok((body, ctx.finish(dup)?))
+	Ok((body, ctx.0.finish(dup)?))
 }
