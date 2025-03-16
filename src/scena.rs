@@ -64,10 +64,15 @@ pub fn decompile(scena: &mut Scena) {
 			match &mut f.body {
 				Body::Asm(_) => {},
 				Body::Flat(stmts) => {
-					let (stmts2, dup) = called::apply_flat(stmts.clone(), called, &scena.functions).unwrap();
-					let (stmts3, called2) = called::infer_flat(stmts2.clone(), dup, &scena.functions).unwrap();
+					let mut new = stmts.clone();
+					let dup = called::apply_flat(&mut new, called, &scena.functions).unwrap();
+
+					let mut stmts2 = new.clone();
+					let called2 = called::infer_flat(&mut stmts2, dup, &scena.functions).unwrap();
 					similar_asserts::assert_eq!(*called, called2);
-					similar_asserts::assert_eq!(*stmts, stmts3);
+					similar_asserts::assert_eq!(*stmts, stmts2);
+
+					*stmts = new;
 					f.called = Called::Merged(dup);
 				}
 			}

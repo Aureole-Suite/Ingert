@@ -195,15 +195,15 @@ impl Visit for Apply<'_> {
 }
 
 pub fn apply_flat(
-	mut body: Vec<FlatStmt>,
+	body: &mut [FlatStmt],
 	called: &[Call],
 	functions: &Functions,
-) -> Result<(Vec<FlatStmt>, bool), ApplyError> {
+) -> Result<bool, ApplyError> {
 	let mut ctx = Visitor(Apply::new(called, functions));
-	for stmt in &mut body {
+	for stmt in body {
 		ctx.flat_stmt(stmt)?;
 	}
-	Ok((body, ctx.0.finish()?))
+	ctx.0.finish()
 }
 
 #[derive(Debug, snafu::Snafu)]
@@ -268,13 +268,13 @@ impl Visit for Infer<'_> {
 }
 
 pub fn infer_flat(
-	mut body: Vec<FlatStmt>,
+	body: &mut [FlatStmt],
 	dup: bool,
 	functions: &Functions,
-) -> Result<(Vec<FlatStmt>, Vec<Call>), InferError> {
+) -> Result<Vec<Call>, InferError> {
 	let mut ctx = Visitor(Infer::new(functions));
-	for stmt in &mut body {
+	for stmt in body {
 		ctx.flat_stmt(stmt)?;
 	}
-	Ok((body, ctx.0.finish(dup)?))
+	ctx.0.finish(dup)
 }
