@@ -126,13 +126,13 @@ pub enum ApplyError {
 struct Apply<'a> {
 	called: &'a [Call],
 	pos: usize,
-	functable: HashMap<&'a str, &'a scp::Function>,
+	functions: HashMap<&'a str, &'a scp::Function>,
 }
 
 impl Apply<'_> {
 	pub fn new<'a>(called: &'a [Call], functions: &'a [scp::Function]) -> Apply<'a> {
-		let functable = functions.iter().map(|f| (f.name.as_str(), f)).collect();
-		Apply { called, pos: 0, functable }
+		let functions = functions.iter().map(|f| (f.name.as_str(), f)).collect();
+		Apply { called, pos: 0, functions }
 	}
 
 	pub fn finish(self) -> Result<bool, ApplyError> {
@@ -167,7 +167,7 @@ impl Visit for Apply<'_> {
 				called: called.clone(),
 				code: Call { kind, args: code_args },
 			});
-			let func = self.functable.get(name).context(apply::MissingFunction { name })?;
+			let func = self.functions.get(name).context(apply::MissingFunction { name })?;
 			let mismatch_error = apply::SignatureMismatch {
 				name,
 				signature: func.args.as_slice(),
@@ -224,13 +224,13 @@ pub enum InferError {
 
 struct Infer<'a> {
 	called: Vec<Call>,
-	functable: HashMap<&'a str, &'a scp::Function>,
+	functions: HashMap<&'a str, &'a scp::Function>,
 }
 
 impl Infer<'_> {
 	pub fn new(functions: &[scp::Function]) -> Infer<'_> {
-		let functable = functions.iter().map(|f| (f.name.as_str(), f)).collect();
-		Infer { called: Vec::new(), functable }
+		let functions = functions.iter().map(|f| (f.name.as_str(), f)).collect();
+		Infer { called: Vec::new(), functions }
 	}
 
 	pub fn finish(self, dup: bool) -> Result<Vec<Call>, InferError> {
@@ -249,7 +249,7 @@ impl Visit for Infer<'_> {
 		let (name, code_args) = code_args(&kind, args);
 
 		if let Some(name) = name {
-			let func = self.functable.get(name).context(infer::MissingFunction { name })?;
+			let func = self.functions.get(name).context(infer::MissingFunction { name })?;
 
 			let mismatch_error = infer::SignatureMismatch {
 				name,
