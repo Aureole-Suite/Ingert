@@ -21,9 +21,12 @@ pub fn decompile(scp: &Scp) -> Scena {
 		}
 		let body = match flat::decompile(code) {
 			Ok(body) => {
-				// #[cfg(debug_assertions)]
-				similar_asserts::assert_eq!(code, flat::compile(&body).unwrap());
-				let (body, dup) = called::apply_flat(body, &f.called, &scp.functions).unwrap();
+				let code2 = flat::compile(&body).unwrap();
+				similar_asserts::assert_eq!(code, code2);
+				let (body2, dup) = called::apply_flat(body.clone(), &f.called, &scp.functions).unwrap();
+				let (body3, called) = called::infer_flat(body2.clone(), dup, &scp.functions).unwrap();
+				similar_asserts::assert_eq!(f.called, called);
+				similar_asserts::assert_eq!(body, body3);
 				Body::Flat(body)
 			},
 			Err(e) => {
