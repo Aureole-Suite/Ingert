@@ -44,7 +44,9 @@ pub fn from_scp(scp: Scp) -> Scena {
 
 pub fn decompile(scena: &mut Scena) {
 	for i in 0..scena.functions.len() { // need indexes to satisfy borrowck
-		let mut f = scena.functions.get_index_mut(i).unwrap().1.clone();
+		let entry = scena.functions.get_index_mut(i).unwrap();
+		let mut f = entry.1.clone();
+		let _span = tracing::info_span!("function", name = entry.0).entered();
 
 		if let Body::Asm(ops) = &mut f.body {
 			match flat::decompile(ops) {
