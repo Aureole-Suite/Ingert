@@ -167,12 +167,11 @@ impl Apply<'_> {
 }
 
 pub fn apply_flat(
-	body: &[FlatStmt],
+	mut body: Vec<FlatStmt>,
 	called: &[Call],
 	functions: &[scp::Function],
 ) -> Result<(Vec<FlatStmt>, bool), ApplyError> {
 	let mut ctx = Apply::new(called, functions);
-	let mut body = body.to_vec();
 	for stmt in &mut body {
 		ctx.flat_stmt(stmt)?;
 	}

@@ -23,7 +23,7 @@ pub fn decompile(scp: &Scp) -> Scena {
 			Ok(body) => {
 				// #[cfg(debug_assertions)]
 				similar_asserts::assert_eq!(code, flat::compile(&body).unwrap());
-				let expected_called = called::apply_flat(&body, &f.called, &scp.functions).unwrap();
+				let (body, dup) = called::apply_flat(body, &f.called, &scp.functions).unwrap();
 				Body::Flat(body)
 			},
 			Err(e) => {
