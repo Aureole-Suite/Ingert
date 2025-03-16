@@ -7,6 +7,7 @@ use crate::scp::{self, Call, CallArg, CallKind};
 use super::{FlatStmt, Expr};
 
 #[derive(Debug, snafu::Snafu)]
+#[snafu(module(apply), context(suffix(false)))]
 pub enum ApplyError {
 	#[snafu(display("called table has {called:?} but code has {code:?}"))]
 	Mismatch {
@@ -114,12 +115,12 @@ impl Apply<'_> {
 		}).collect::<Vec<_>>();
 
 		if let CallKind::Normal(name) = &kind && let Some(name) = name.as_local().map(|s| s.as_str()) {
-			snafu::ensure!(kind == called.kind && code_args.starts_with(&called.args), MismatchSnafu {
+			snafu::ensure!(kind == called.kind && code_args.starts_with(&called.args), apply::Mismatch {
 				called: called.clone(),
 				code: Call { kind, args: code_args },
 			});
-			let func = self.functable.get(name).context(MissingFunctionSnafu { name })?;
-			let mismatch_error = SignatureMismatchSnafu {
+			let func = self.functable.get(name).context(apply::MissingFunction { name })?;
+			let mismatch_error = apply::SignatureMismatch {
 				name,
 				signature: func.args.as_slice(),
 				args: code_args.as_slice(),
@@ -136,7 +137,7 @@ impl Apply<'_> {
 			}
 			args.truncate(called.args.len());
 		} else {
-			snafu::ensure!(kind == called.kind && code_args == called.args, MismatchSnafu {
+			snafu::ensure!(kind == called.kind && code_args == called.args, apply::Mismatch {
 				called: called.clone(),
 				code: Call { kind, args: code_args },
 			});
@@ -151,13 +152,13 @@ impl Apply<'_> {
 	pub fn finish(self) -> Result<bool, ApplyError> {
 		if self.called.len() == self.pos * 2 {
 			let (first, second) = self.called.split_at(self.pos);
-			snafu::ensure!(first == second, WrongNumberSnafu {
+			snafu::ensure!(first == second, apply::WrongNumber {
 				called: self.called.len(),
 				code: self.pos,
 			});
 			Ok(true)
 		} else {
-			snafu::ensure!(self.pos == self.called.len(), WrongNumberSnafu {
+			snafu::ensure!(self.pos == self.called.len(), apply::WrongNumber {
 				called: self.called.len(),
 				code: self.pos,
 			});
