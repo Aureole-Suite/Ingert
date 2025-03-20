@@ -126,11 +126,11 @@ pub enum ApplyError {
 struct Apply<'a> {
 	called: &'a [Call],
 	pos: usize,
-	functions: &'a Functions,
+	functions: &'a mut Functions,
 }
 
 impl Apply<'_> {
-	pub fn new<'a>(called: &'a [Call], functions: &'a Functions) -> Apply<'a> {
+	pub fn new<'a>(called: &'a [Call], functions: &'a mut Functions) -> Apply<'a> {
 		Apply { called, pos: 0, functions }
 	}
 
@@ -166,20 +166,33 @@ impl Visit for Apply<'_> {
 				called: called.clone(),
 				code: Call { kind, args: code_args },
 			});
-			let sig = self.functions.get(name).context(apply::MissingFunction { name })?;
-			let mismatch_error = apply::SignatureMismatch {
+			let sig = self.functions.get_mut(name).context(apply::MissingFunction { name })?;
+			snafu::ensure!(sig.len() == code_args.len(), apply::SignatureMismatch {
 				name,
 				signature: sig.as_slice(),
 				args: code_args.as_slice(),
-			};
-			snafu::ensure!(sig.len() == code_args.len(), mismatch_error);
+			});
 
-			let extra_args = &code_args[called.args.len()..];
-			let extra_sig = &sig[called.args.len()..];
-			for (arg, sig) in extra_args.iter().zip(extra_sig) {
-				match (arg, sig.default.as_ref()) {
-					(CallArg::Value(v), Some(default)) if v == default => {}
-					_ => return mismatch_error.fail()
+			let extra_args = &args[called.args.len()..];
+			let extra_sig = &mut sig[called.args.len()..];
+			for (arg, sigarg) in extra_args.iter().zip(extra_sig) {
+				match (arg, sigarg) {
+					(Expr::Value(expr_line, v), Arg { default: Some(default), line, ty: _ }) if v == default => {
+						if let Some(expr_line) = expr_line {
+							if let Some(line) = line {
+								if expr_line != line {
+									tracing::warn!(expr_line, line, "default value has different line");
+								}
+							} else {
+								*line = Some(*expr_line);
+							}
+						}
+					}
+					_ => return apply::SignatureMismatch {
+						name,
+						signature: sig.as_slice(),
+						args: code_args.as_slice(),
+					}.fail()
 				}
 			}
 			args.truncate(called.args.len());
@@ -197,7 +210,7 @@ impl Visit for Apply<'_> {
 pub fn apply_flat(
 	body: &mut [FlatStmt],
 	called: &[Call],
-	functions: &Functions,
+	functions: &mut Functions,
 ) -> Result<bool, ApplyError> {
 	let mut ctx = Visitor(Apply::new(called, functions));
 	for stmt in body {
@@ -255,9 +268,9 @@ impl Visit for Infer<'_> {
 				args: code_args.as_slice(),
 			};
 
-			for default in sig.get(code_args.len()..).context(mismatch_error)? {
-				let default = default.default.as_ref().context(mismatch_error)?;
-				args.push(Expr::Value(None, default.clone()));
+			for sigarg in sig.get(code_args.len()..).context(mismatch_error)? {
+				let default = sigarg.default.as_ref().context(mismatch_error)?;
+				args.push(Expr::Value(sigarg.line, default.clone()));
 			}
 		}
 

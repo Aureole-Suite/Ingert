@@ -43,7 +43,7 @@ pub fn from_scp(scp: Scp) -> Scena {
 }
 
 pub fn decompile(scena: &mut Scena) {
-	let funcsig = scena.functions.iter().map(|(name, f)| (name.clone(), f.args.clone())).collect();
+	let mut funcsig = scena.functions.iter().map(|(name, f)| (name.clone(), f.args.clone())).collect();
 
 	for (name, f) in &mut scena.functions {
 		let _span = tracing::info_span!("function", name = name).entered();
@@ -65,7 +65,7 @@ pub fn decompile(scena: &mut Scena) {
 				Body::Asm(_) => {},
 				Body::Flat(stmts) => {
 					let mut new = stmts.clone();
-					let dup = called::apply_flat(&mut new, called, &funcsig).unwrap();
+					let dup = called::apply_flat(&mut new, called, &mut funcsig).unwrap();
 
 					let mut stmts2 = new.clone();
 					let called2 = called::infer_flat(&mut stmts2, dup, &funcsig).unwrap();
@@ -77,6 +77,10 @@ pub fn decompile(scena: &mut Scena) {
 				}
 			}
 		}
+	}
+
+	for (k, v) in funcsig {
+		scena.functions[&k].args = v;
 	}
 }
 
