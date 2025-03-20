@@ -177,7 +177,7 @@ pub enum Stmt {
 	Return(Line, Option<Expr>),
 	If(Line, Expr, Vec<Stmt>, Option<Vec<Stmt>>),
 	While(Line, Expr, Vec<Stmt>),
-	Switch(Line, Expr, Vec<(Option<i32>, Vec<Stmt>)>),
+	Switch(Line, Expr, IndexMap<Option<i32>, Vec<Stmt>>),
 	PushVar(Line),
 	Debug(Line, Vec<Expr>),
 	Tailcall(Line, Name, Vec<Expr>),

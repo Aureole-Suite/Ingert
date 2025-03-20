@@ -80,7 +80,7 @@ impl Debug for Stmt {
 				tup.finish()
 			},
 			Self::While(l, e, body) => line(f, l)?.debug_tuple("While").field(e).field(body).finish(),
-			Self::Switch(l, e, cases) => line(f, l)?.debug_tuple("Switch").field(e).field(&Cases(cases)).finish(),
+			Self::Switch(l, e, cases) => line(f, l)?.debug_tuple("Switch").field(e).field(cases).finish(),
 			Self::PushVar(l) => line(f, l)?.debug_tuple("PushVar").finish(),
 			Self::Debug(l, args) => {
 				line(f, l)?;
@@ -91,16 +91,5 @@ impl Debug for Stmt {
 				write_args(f, &format!("Tailcall[{name}]"), args)
 			}
 		}
-	}
-}
-
-struct Cases<'a>(&'a [(Option<i32>, Vec<Stmt>)]);
-impl Debug for Cases<'_> {
-	fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-		let mut map = f.debug_map();
-		for (k, v) in self.0 {
-			map.entry(&k, &v);
-		}
-		map.finish()
 	}
 }
