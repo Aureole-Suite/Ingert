@@ -43,10 +43,10 @@ pub fn from_scp(scp: Scp) -> Scena {
 }
 
 pub fn decompile(scena: &mut Scena) {
-	for i in 0..scena.functions.len() { // need indexes to satisfy borrowck
-		let entry = scena.functions.get_index_mut(i).unwrap();
-		let mut f = entry.1.clone();
-		let _span = tracing::info_span!("function", name = entry.0).entered();
+	let funcsig = scena.functions.iter().map(|(name, f)| (name.clone(), f.args.clone())).collect();
+
+	for (name, f) in &mut scena.functions {
+		let _span = tracing::info_span!("function", name = name).entered();
 
 		if let Body::Asm(ops) = &mut f.body {
 			match flat::decompile(ops) {
@@ -65,10 +65,10 @@ pub fn decompile(scena: &mut Scena) {
 				Body::Asm(_) => {},
 				Body::Flat(stmts) => {
 					let mut new = stmts.clone();
-					let dup = called::apply_flat(&mut new, called, &scena.functions).unwrap();
+					let dup = called::apply_flat(&mut new, called, &funcsig).unwrap();
 
 					let mut stmts2 = new.clone();
-					let called2 = called::infer_flat(&mut stmts2, dup, &scena.functions).unwrap();
+					let called2 = called::infer_flat(&mut stmts2, dup, &funcsig).unwrap();
 					similar_asserts::assert_eq!(*called, called2);
 					similar_asserts::assert_eq!(*stmts, stmts2);
 
@@ -77,8 +77,6 @@ pub fn decompile(scena: &mut Scena) {
 				}
 			}
 		}
-
-		*scena.functions.get_index_mut(i).unwrap().1 = f;
 	}
 }
 

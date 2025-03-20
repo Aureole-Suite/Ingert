@@ -2,9 +2,9 @@
 use snafu::OptionExt as _;
 
 use crate::scp::{Call, CallArg, CallKind};
-use super::{Arg, FlatStmt, Expr, Function};
+use super::{Arg, FlatStmt, Expr};
 
-type Functions = indexmap::IndexMap<String, Function>;
+type Functions = indexmap::IndexMap<String, Vec<Arg>>;
 
 trait Visit {
 	type Error;
@@ -166,16 +166,16 @@ impl Visit for Apply<'_> {
 				called: called.clone(),
 				code: Call { kind, args: code_args },
 			});
-			let func = self.functions.get(name).context(apply::MissingFunction { name })?;
+			let sig = self.functions.get(name).context(apply::MissingFunction { name })?;
 			let mismatch_error = apply::SignatureMismatch {
 				name,
-				signature: func.args.as_slice(),
+				signature: sig.as_slice(),
 				args: code_args.as_slice(),
 			};
-			snafu::ensure!(func.args.len() == code_args.len(), mismatch_error);
+			snafu::ensure!(sig.len() == code_args.len(), mismatch_error);
 
 			let extra_args = &code_args[called.args.len()..];
-			let extra_sig = &func.args[called.args.len()..];
+			let extra_sig = &sig[called.args.len()..];
 			for (arg, sig) in extra_args.iter().zip(extra_sig) {
 				match (arg, sig.default.as_ref()) {
 					(CallArg::Value(v), Some(default)) if v == default => {}
@@ -247,15 +247,15 @@ impl Visit for Infer<'_> {
 		let (name, code_args) = code_args(&kind, args);
 
 		if let Some(name) = name {
-			let func = self.functions.get(name).context(infer::MissingFunction { name })?;
+			let sig = self.functions.get(name).context(infer::MissingFunction { name })?;
 
 			let mismatch_error = infer::SignatureMismatch {
 				name,
-				signature: func.args.as_slice(),
+				signature: sig.as_slice(),
 				args: code_args.as_slice(),
 			};
 
-			for default in func.args.get(code_args.len()..).context(mismatch_error)? {
+			for default in sig.get(code_args.len()..).context(mismatch_error)? {
 				let default = default.default.as_ref().context(mismatch_error)?;
 				args.push(Expr::Value(None, default.clone()));
 			}
