@@ -258,26 +258,18 @@ fn parse_switch(stmts: &mut Vec<Stmt>, ctx: &mut Ctx, l: Line, e: Expr, cases: &
 			body.push(Stmt::Break);
 			cases2.insert(last.0, body);
 			stmts.push(Stmt::Switch(l, e, cases2));
-		} else if Some(goto) == ctx.brk {
-			// found a break from the parent element
-			if last.0.is_some() {
-				cases2.insert(last.0, Vec::new());
-			}
-			stmts.push(Stmt::Switch(l, e, cases2));
-			stmts.extend(body);
-			stmts.push(Stmt::Break);
+			return Ok(());
 		} else {
-			// found weirdo goto
-			return decompile::UnexpectedJump { label: goto }.fail();
+			// this goto probably belongs to a parent scope. Rewind and let the parent handle it.
+			ctx.pos -= 1;
 		}
-	} else {
-		// got to end of block without a break, so assume the last case is empty
-		if last.0.is_some() {
-			cases2.insert(last.0, Vec::new());
-		}
-		stmts.push(Stmt::Switch(l, e, cases2));
-		stmts.extend(body);
 	}
+	// got to end of block without a break, so assume the last case is empty
+	if last.0.is_some() {
+		cases2.insert(last.0, Vec::new());
+	}
+	stmts.push(Stmt::Switch(l, e, cases2));
+	stmts.extend(body);
 
 	Ok(())
 }
