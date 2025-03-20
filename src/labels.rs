@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Label(pub u32);
 
 pub trait Labels {
@@ -53,12 +53,12 @@ pub fn normalize<T: LabelsMut>(ops: &mut Vec<T>, mut number: u32) -> Result<u32,
 
 	if !duplicate.is_empty() {
 		let mut duplicates = duplicate.into_iter().collect::<Vec<_>>();
-		duplicates.sort();
+		duplicates.sort_by_key(|l| l.0);
 		return Err(LabelError::Duplicate { labels: duplicates });
 	}
 
 	let mut missing = referenced.iter().filter(|l| !labels.contains_key(l)).copied().collect::<Vec<_>>();
-	missing.sort();
+	missing.sort_by_key(|l| l.0);
 	if !missing.is_empty() {
 		return Err(LabelError::Missing { labels: missing });
 	}

@@ -207,15 +207,23 @@ fn parse_if(stmts: &mut Vec<Stmt>, ctx: &mut Ctx, l: Line, e: Expr, label: Label
 }
 
 fn parse_switch(stmts: &mut Vec<Stmt>, ctx: &mut Ctx, l: Line, e: Expr, cases: &[(i32, Label)], default: Label) -> Result<(), DecompileError> {
-	snafu::ensure!(cases.is_sorted_by_key(|(_, a)| a), decompile::UnsortedSwitch);
-	let default_pos = cases.partition_point(|(_, a)| *a < default);
+	let pos = cases.iter().map(|(_, l)| ctx.lookup(*l)).collect::<Result<Vec<_>, _>>()?;
+	snafu::ensure!(pos.is_sorted(), decompile::UnsortedSwitch);
+	let default_pos = ctx.lookup(default)?;
+	let default_index = pos.partition_point(|&p| p < default_pos);
 	let mut cases = cases.iter().map(|(k, l)| (Some(*k), *l)).collect::<Vec<_>>();
-	cases.insert(default_pos, (None, default));
+	cases.insert(default_index, (None, default));
 
 	let mut brk = None;
+	let mut brk_pos = 0;
 	for (_, l) in &cases {
-		if let Some(goto) = ctx.goto_before(*l)? && goto > *l {
-			brk = brk.max(Some(goto));
+		if let Some(goto) = ctx.goto_before(*l)?
+			&& let goto_pos = ctx.lookup(goto)?
+			&& goto_pos >= ctx.lookup(*l)?
+			&& goto_pos > brk_pos
+		{
+			brk = Some(goto);
+			brk_pos = goto_pos;
 		}
 	}
 
@@ -240,7 +248,7 @@ fn parse_switch(stmts: &mut Vec<Stmt>, ctx: &mut Ctx, l: Line, e: Expr, cases: &
 	}
 
 	let last = cases.last().unwrap();
-	assert!(ctx.gctx.lookup(last.1)? == ctx.pos);
+	assert_eq!(ctx.gctx.lookup(last.1)?, ctx.pos);
 	let prev_brk = ctx.brk.take();
 	let (mut body, goto) = ctx.block("switch last body", GotoAllowed::Anywhere)?;
 	ctx.brk = prev_brk;
