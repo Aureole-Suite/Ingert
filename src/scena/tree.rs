@@ -6,10 +6,21 @@ use super::{Expr, FlatStmt, Label, Line, Stmt};
 #[derive(Debug, snafu::Snafu)]
 #[snafu(module(decompile), context(suffix(false)))]
 pub enum DecompileError {
-	#[snafu(display("unknown label: {label:?}"))]
-	MissingLabel { label: Label },
-	#[snafu(display("label out of bounds: {label:?} at {pos} should be in {start}..={end}"))]
-	WrongLabel { label: Label, pos: usize, start: usize, end: usize },
+	#[snafu(display("unknown label: {label:?} ({location})"))]
+	MissingLabel {
+		label: Label,
+		#[snafu(implicit)]
+		location: snafu::Location,
+	},
+	#[snafu(display("label out of bounds: {label:?} at {pos} should be in {start}..={end} ({location})"))]
+	WrongLabel {
+		label: Label,
+		pos: usize,
+		start: usize,
+		end: usize,
+		#[snafu(implicit)]
+		location: snafu::Location,
+	},
 	#[snafu(display("unsorted switch"))]
 	UnsortedSwitch,
 	#[snafu(display("unexpected jump to {label:?}"))]
@@ -43,6 +54,7 @@ struct Gctx<'a> {
 }
 
 impl Gctx<'_> {
+	#[track_caller]
     fn lookup(&self, label: Label) -> Result<usize, DecompileError> {
 		self.labels.get(&label).copied().context(decompile::MissingLabel { label })
 	}
@@ -77,6 +89,7 @@ impl<'a> Ctx<'a> {
 		}
 	}
 
+	#[track_caller]
 	fn lookup(&self, label: Label) -> Result<usize, DecompileError> {
 		let pos = self.gctx.lookup(label)?;
 		snafu::ensure!((self.pos..=self.end).contains(&pos), decompile::WrongLabel {
@@ -88,6 +101,7 @@ impl<'a> Ctx<'a> {
 		Ok(pos)
 	}
 
+	#[track_caller]
 	fn sub(&mut self, label: Label) -> Result<Ctx<'a>, DecompileError> {
 		let pos = self.lookup(label)?;
 		let sub = Self {
@@ -98,6 +112,7 @@ impl<'a> Ctx<'a> {
 		Ok(sub)
 	}
 
+	#[track_caller]
 	fn goto_before(&self, label: Label) -> Result<Option<Label>, DecompileError> {
 		let pos = self.lookup(label)?;
 		if pos > 0 && let FlatStmt::Goto(cont) = self.gctx.stmts[pos - 1] {
