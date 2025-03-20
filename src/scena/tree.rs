@@ -26,7 +26,7 @@ pub enum DecompileError {
 	#[snafu(display("unexpected jump to {label:?}"))]
 	UnexpectedJump { label: Label },
 
-	#[snafu(display("while parsing {what} at {start}..={end}"))]
+	#[snafu(display("while parsing {what} at {start}..{end}"))]
 	Block {
 		what: &'static str,
 		start: usize,
