@@ -87,6 +87,8 @@ impl<F: Visit> Visitor<F> {
 					}
 				}
 			}
+			Stmt::Break => {}
+			Stmt::Continue => {}
 			Stmt::PushVar(_) => {}
 			Stmt::Debug(_, exprs) => {
 				for expr in exprs {

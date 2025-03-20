@@ -81,6 +81,8 @@ impl Debug for Stmt {
 			},
 			Self::While(l, e, body) => line(f, l)?.debug_tuple("While").field(e).field(body).finish(),
 			Self::Switch(l, e, cases) => line(f, l)?.debug_tuple("Switch").field(e).field(cases).finish(),
+			Self::Break => f.debug_tuple("Break").finish(),
+			Self::Continue => f.debug_tuple("Continue").finish(),
 			Self::PushVar(l) => line(f, l)?.debug_tuple("PushVar").finish(),
 			Self::Debug(l, args) => {
 				line(f, l)?;
