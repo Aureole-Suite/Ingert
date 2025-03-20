@@ -1,4 +1,5 @@
 mod flat;
+mod tree;
 mod called;
 
 use indexmap::IndexMap;
@@ -48,7 +49,7 @@ pub fn decompile(scena: &mut Scena) {
 	for (name, f) in &mut scena.functions {
 		let _span = tracing::info_span!("function", name = name).entered();
 
-		if let Body::Asm(ops) = &mut f.body {
+		if let Body::Asm(ops) = &f.body {
 			match flat::decompile(ops) {
 				Ok(stmts) => {
 					similar_asserts::assert_eq!(*ops, flat::compile(&stmts).unwrap());
@@ -56,6 +57,17 @@ pub fn decompile(scena: &mut Scena) {
 				}
 				Err(e) => {
 					tracing::error!("decompile error: {e} for {ops:#?}");
+				}
+			}
+		}
+
+		if let Body::Flat(fstmts) = &f.body {
+			match tree::decompile(fstmts) {
+				Ok(stmts) => {
+					f.body = Body::Tree(stmts);
+				}
+				Err(e) => {
+					tracing::error!("decompile error: {e} for {fstmts:#?}");
 				}
 			}
 		}
