@@ -75,6 +75,18 @@ pub fn decompile(scena: &mut Scena) {
 					*stmts = new;
 					f.called = Called::Merged(dup);
 				}
+				Body::Tree(stmts) => {
+					let mut new = stmts.clone();
+					let dup = called::apply_tree(&mut new, called, &mut funcsig).unwrap();
+
+					let mut stmts2 = new.clone();
+					let called2 = called::infer_tree(&mut stmts2, dup, &funcsig).unwrap();
+					similar_asserts::assert_eq!(*called, called2);
+					similar_asserts::assert_eq!(*stmts, stmts2);
+
+					*stmts = new;
+					f.called = Called::Merged(dup);
+				}
 			}
 		}
 	}
@@ -120,6 +132,7 @@ pub enum Called {
 pub enum Body {
 	Asm(Vec<Op>),
 	Flat(Vec<FlatStmt>),
+	Tree(Vec<Stmt>),
 }
 
 pub type Line = Option<u16>;
@@ -155,6 +168,19 @@ pub enum FlatStmt {
 	PopVar(usize),
 	Debug(Line, Vec<Expr>),
 	Tailcall(Line, Name, Vec<Expr>, usize),
+}
+
+#[derive(Clone, PartialEq)]
+pub enum Stmt {
+	Expr(Expr),
+	Set(Line, Place, Expr),
+	Return(Line, Option<Expr>),
+	If(Line, Expr, Vec<Stmt>, Option<Vec<Stmt>>),
+	While(Line, Expr, Vec<Stmt>),
+	Switch(Line, Expr, Vec<(Option<i32>, Vec<Stmt>)>),
+	PushVar(Line),
+	Debug(Line, Vec<Expr>),
+	Tailcall(Line, Name, Vec<Expr>),
 }
 
 mod fmt;

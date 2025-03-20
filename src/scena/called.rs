@@ -2,7 +2,7 @@
 use snafu::OptionExt as _;
 
 use crate::scp::{Call, CallArg, CallKind};
-use super::{Arg, FlatStmt, Expr};
+use super::{Arg, FlatStmt, Expr, Stmt};
 
 type Functions = indexmap::IndexMap<String, Vec<Arg>>;
 
@@ -49,7 +49,58 @@ impl<F: Visit> Visitor<F> {
 		Ok(())
 	}
 
-	pub fn expr(&mut self, expr: &mut Expr) -> Result<(), F::Error> {
+	fn stmt(&mut self, stmt: &mut Stmt) -> Result<(), F::Error> {
+		match stmt {
+			Stmt::Expr(expr) => {
+				self.expr(expr)?;
+			}
+			Stmt::Set(_, _, expr) => {
+				self.expr(expr)?;
+			}
+			Stmt::Return(_, expr) => {
+				if let Some(expr) = expr {
+					self.expr(expr)?;
+				}
+			}
+			Stmt::If(_, expr, a, b) => {
+				self.expr(expr)?;
+				for stmt in a {
+					self.stmt(stmt)?;
+				}
+				if let Some(b) = b {
+					for stmt in b {
+						self.stmt(stmt)?;
+					}
+				}
+			}
+			Stmt::While(_, expr, a) => {
+				self.expr(expr)?;
+				for stmt in a {
+					self.stmt(stmt)?;
+				}
+			}
+			Stmt::Switch(_, expr, cases) => {
+				self.expr(expr)?;
+				for (_, a) in cases {
+					for stmt in a {
+						self.stmt(stmt)?;
+					}
+				}
+			}
+			Stmt::PushVar(_) => {}
+			Stmt::Debug(_, exprs) => {
+				for expr in exprs {
+					self.expr(expr)?;
+				}
+			}
+			Stmt::Tailcall(_, name, exprs) => {
+				self.call(CallKind::Tailcall(name.clone()), exprs)?;
+			}
+		}
+		Ok(())
+	}
+
+	fn expr(&mut self, expr: &mut Expr) -> Result<(), F::Error> {
 		match expr {
 			Expr::Value(_, _) => {}
 			Expr::Var(_, _) => {}
@@ -207,14 +258,18 @@ impl Visit for Apply<'_> {
 	}
 }
 
-pub fn apply_flat(
-	body: &mut [FlatStmt],
-	called: &[Call],
-	functions: &mut Functions,
-) -> Result<bool, ApplyError> {
+pub fn apply_flat(body: &mut [FlatStmt], called: &[Call], functions: &mut Functions) -> Result<bool, ApplyError> {
 	let mut ctx = Visitor(Apply::new(called, functions));
 	for stmt in body {
 		ctx.flat_stmt(stmt)?;
+	}
+	ctx.0.finish()
+}
+
+pub fn apply_tree(body: &mut [Stmt], called: &[Call], functions: &mut Functions) -> Result<bool, ApplyError> {
+	let mut ctx = Visitor(Apply::new(called, functions));
+	for stmt in body {
+		ctx.stmt(stmt)?;
 	}
 	ctx.0.finish()
 }
@@ -280,14 +335,18 @@ impl Visit for Infer<'_> {
 	}
 }
 
-pub fn infer_flat(
-	body: &mut [FlatStmt],
-	dup: bool,
-	functions: &Functions,
-) -> Result<Vec<Call>, InferError> {
+pub fn infer_flat(body: &mut [FlatStmt], dup: bool, functions: &Functions) -> Result<Vec<Call>, InferError> {
 	let mut ctx = Visitor(Infer::new(functions));
 	for stmt in body {
 		ctx.flat_stmt(stmt)?;
+	}
+	ctx.0.finish(dup)
+}
+
+pub fn infer_tree(body: &mut [Stmt], dup: bool, functions: &Functions) -> Result<Vec<Call>, InferError> {
+	let mut ctx = Visitor(Infer::new(functions));
+	for stmt in body {
+		ctx.stmt(stmt)?;
 	}
 	ctx.0.finish(dup)
 }

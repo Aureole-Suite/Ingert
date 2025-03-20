@@ -62,3 +62,45 @@ impl Debug for FlatStmt {
 		}
 	}
 }
+
+impl Debug for Stmt {
+	fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+		match self {
+			Self::Expr(e) => f.debug_tuple("Expr").field(e).finish(),
+			Self::Set(l, v, e) => line(f, l)?.debug_tuple("Set").field(v).field(e).finish(),
+			Self::Return(l, e) => line(f, l)?.debug_tuple("Return").field(e).finish(),
+			Self::If(l, e, then, els) => {
+				line(f, l)?;
+				let mut tup = f.debug_tuple("If");
+				tup.field(e);
+				tup.field(then);
+				if let Some(els) = els {
+					tup.field(els);
+				}
+				tup.finish()
+			},
+			Self::While(l, e, body) => line(f, l)?.debug_tuple("While").field(e).field(body).finish(),
+			Self::Switch(l, e, cases) => line(f, l)?.debug_tuple("Switch").field(e).field(&Cases(cases)).finish(),
+			Self::PushVar(l) => line(f, l)?.debug_tuple("PushVar").finish(),
+			Self::Debug(l, args) => {
+				line(f, l)?;
+				write_args(f, "Debug", args)
+			}
+			Self::Tailcall(l, name, args) => {
+				line(f, l)?;
+				write_args(f, &format!("Tailcall[{name}]"), args)
+			}
+		}
+	}
+}
+
+struct Cases<'a>(&'a [(Option<i32>, Vec<Stmt>)]);
+impl Debug for Cases<'_> {
+	fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+		let mut map = f.debug_map();
+		for (k, v) in self.0 {
+			map.entry(&k, &v);
+		}
+		map.finish()
+	}
+}
