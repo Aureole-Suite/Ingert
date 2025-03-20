@@ -184,8 +184,8 @@ fn block(ctx: &mut Ctx, goto_allowed: GotoAllowed) -> Result<(Vec<Stmt>, Option<
 
 fn parse_if(stmts: &mut Vec<Stmt>, ctx: &mut Ctx, l: Line, e: Expr, label: Label) -> Result<(), DecompileError> {
 	if let Some(cont) = ctx.goto_before(label)?
-			&& ctx.pos > 0
-			&& ctx.gctx.lookup(cont)? == ctx.pos - 1 {
+			&& ctx.pos >= 2
+			&& ctx.gctx.lookup(cont)? == ctx.pos - 2 {
 		let mut sub = ctx.sub(label)?;
 		sub.brk = Some(label);
 		sub.cont = Some(cont);
