@@ -1,5 +1,5 @@
 use indexmap::IndexMap;
-use snafu::OptionExt as _;
+use snafu::{OptionExt as _, ResultExt as _};
 
 use super::{FlatStmt, Label, Stmt};
 
@@ -14,6 +14,15 @@ pub enum DecompileError {
 	UnsortedSwitch { stmt: FlatStmt },
 	#[snafu(display("unexpected jump to {label:?}"))]
 	UnexpectedJump { label: Label },
+
+	#[snafu(display("while parsing {what} at {start}..={end}"))]
+	Block {
+		what: &'static str,
+		start: usize,
+		end: usize,
+		#[snafu(source(from(DecompileError, Box::new)))]
+		source: Box<DecompileError>,
+	},
 }
 
 pub fn decompile(stmts: &[FlatStmt]) -> Result<Vec<Stmt>, DecompileError> {
@@ -24,7 +33,7 @@ pub fn decompile(stmts: &[FlatStmt]) -> Result<Vec<Stmt>, DecompileError> {
 		}
 	}
 
-	let (body, _) = Ctx::new(&Gctx { stmts, labels }).block(GotoAllowed::No)?;
+	let (body, _) = Ctx::new(&Gctx { stmts, labels }).block("body", GotoAllowed::No)?;
 	Ok(body)
 }
 
@@ -98,8 +107,10 @@ impl<'a> Ctx<'a> {
 		}
 	}
 
-	fn block(&mut self, goto_allowed: GotoAllowed) -> Result<(Vec<Stmt>, Option<Label>), DecompileError> {
-		block(self, goto_allowed)
+	fn block(&mut self, what: &'static str, goto_allowed: GotoAllowed) -> Result<(Vec<Stmt>, Option<Label>), DecompileError> {
+		let start = self.pos;
+		let end = self.end;
+		block(self, goto_allowed).context(decompile::Block { what, start, end })
 	}
 }
 
@@ -130,16 +141,16 @@ fn block(ctx: &mut Ctx, goto_allowed: GotoAllowed) -> Result<(Vec<Stmt>, Option<
 					let mut sub = ctx.sub(*label)?;
 					sub.brk = Some(*label);
 					sub.cont = Some(cont);
-					let (mut body, _) = sub.block(GotoAllowed::No)?;
+					let (mut body, _) = sub.block("while body", GotoAllowed::No)?;
 					assert_eq!(body.pop(), Some(Stmt::Continue));
 					stmts.push(Stmt::While(*l, e, body));
 					continue
 				}
 
-				let (body, goto) = ctx.sub(*label)?.block(GotoAllowed::Yes)?;
+				let (body, goto) = ctx.sub(*label)?.block("if body", GotoAllowed::Yes)?;
 
 				if let Some(goto) = goto {
-					let (no, _) = ctx.sub(goto)?.block(GotoAllowed::No)?;
+					let (no, _) = ctx.sub(goto)?.block("else body", GotoAllowed::No)?;
 					stmts.push(Stmt::If(*l, e, body, Some(no)));
 				} else {
 					stmts.push(Stmt::If(*l, e, body, None));
@@ -168,7 +179,7 @@ fn block(ctx: &mut Ctx, goto_allowed: GotoAllowed) -> Result<(Vec<Stmt>, Option<
 					assert_eq!(ctx.pos, target);
 					let mut sub = ctx.sub(end)?;
 					sub.brk = brk;
-					let (body, _) = sub.block(GotoAllowed::No)?;
+					let (body, _) = sub.block("switch body", GotoAllowed::No)?;
 					cases2.insert(key, body);
 				}
 
@@ -184,7 +195,7 @@ fn block(ctx: &mut Ctx, goto_allowed: GotoAllowed) -> Result<(Vec<Stmt>, Option<
 				let last = cases.last().unwrap();
 				assert!(ctx.gctx.lookup(last.1)? == ctx.pos);
 				let prev_brk = ctx.brk.take();
-				let (mut body, goto) = ctx.block(GotoAllowed::Anywhere)?;
+				let (mut body, goto) = ctx.block("switch last body", GotoAllowed::Anywhere)?;
 				ctx.brk = prev_brk;
 				if let Some(goto) = goto {
 					if ctx.gctx.lookup(goto)? == ctx.pos {
