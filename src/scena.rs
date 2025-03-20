@@ -2,6 +2,7 @@ mod flat;
 mod tree;
 mod called;
 
+use std::fmt::Write as _;
 use indexmap::IndexMap;
 
 use crate::scp::{Op, Scp};
@@ -67,7 +68,15 @@ pub fn decompile(scena: &mut Scena) {
 					f.body = Body::Tree(stmts);
 				}
 				Err(e) => {
-					tracing::error!("decompile error: {e} for {fstmts:#?}");
+					tracing::error!("decompile error");
+					for error in snafu::ErrorCompat::iter_chain(&e) {
+						tracing::error!("- {error}");
+					}
+					let mut str = "code:".to_string();
+					for (i, stmt) in fstmts.iter().enumerate() {
+						write!(str, "\n{i}: {stmt:?}");
+					}
+					tracing::error!("{str}");
 				}
 			}
 		}
