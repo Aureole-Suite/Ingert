@@ -323,7 +323,7 @@ fn compile_block(
 			Stmt::Set(l, place, expr) => ctx.push(FlatStmt::Set(*l, place.clone(), expr.clone())),
 			Stmt::Return(l, expr) => ctx.push(FlatStmt::Return(*l, expr.clone(), std::mem::take(&mut depth))),
 			Stmt::Debug(l, exprs) => ctx.push(FlatStmt::Debug(*l, exprs.clone())),
-			Stmt::Tailcall(l, name, exprs) => ctx.push(FlatStmt::Tailcall(*l, name.clone(), exprs.clone(), std::mem::take(&mut depth))),
+			Stmt::Tailcall(l, name, exprs) => ctx.push(FlatStmt::Tailcall(*l, name.clone(), exprs.clone(), depth)),
 			Stmt::If(l, expr, stmts, stmts1) => {
 				let label = ctx.label();
 				ctx.push(FlatStmt::If(*l, expr.clone(), label));
