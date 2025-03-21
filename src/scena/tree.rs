@@ -281,6 +281,8 @@ pub enum CompileError {
 	BadBreak,
 	#[snafu(display("continue outside while"))]
 	BadContinue,
+	#[snafu(display("could not normalize labels"), context(false))]
+	Labels { source: crate::labels::LabelError },
 }
 
 struct OutCtx {
@@ -298,7 +300,8 @@ impl OutCtx {
 
 pub fn compile(stmts: &[Stmt], nargs: usize) -> Result<Vec<FlatStmt>, CompileError> {
 	let mut ctx = OutCtx { out: Vec::new(), label: 0 };
-	compile_block(&mut ctx, stmts, None, None)?;
+	compile_block(&mut ctx, stmts, None, None, nargs)?;
+	crate::labels::normalize(&mut ctx.out, 0)?;
 	Ok(ctx.out)
 }
 
