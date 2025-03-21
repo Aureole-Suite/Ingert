@@ -296,6 +296,10 @@ impl OutCtx {
 		self.label += 1;
 		Label(l)
 	}
+
+	fn push(&mut self, stmt: FlatStmt) {
+		self.out.push(stmt);
+	}
 }
 
 pub fn compile(stmts: &[Stmt], nargs: usize) -> Result<Vec<FlatStmt>, CompileError> {
@@ -314,65 +318,65 @@ fn compile_block(
 ) -> Result<(), CompileError> {
 	for stmt in stmts {
 		match stmt {
-			Stmt::Expr(expr) => ctx.out.push(FlatStmt::Expr(expr.clone())),
-			Stmt::Set(l, place, expr) => ctx.out.push(FlatStmt::Set(*l, place.clone(), expr.clone())),
-			Stmt::Return(l, expr) => ctx.out.push(FlatStmt::Return(*l, expr.clone(), depth)),
-			Stmt::Debug(l, exprs) => ctx.out.push(FlatStmt::Debug(*l, exprs.clone())),
-			Stmt::Tailcall(l, name, exprs) => ctx.out.push(FlatStmt::Tailcall(*l, name.clone(), exprs.clone(), depth)),
+			Stmt::Expr(expr) => ctx.push(FlatStmt::Expr(expr.clone())),
+			Stmt::Set(l, place, expr) => ctx.push(FlatStmt::Set(*l, place.clone(), expr.clone())),
+			Stmt::Return(l, expr) => ctx.push(FlatStmt::Return(*l, expr.clone(), depth)),
+			Stmt::Debug(l, exprs) => ctx.push(FlatStmt::Debug(*l, exprs.clone())),
+			Stmt::Tailcall(l, name, exprs) => ctx.push(FlatStmt::Tailcall(*l, name.clone(), exprs.clone(), depth)),
 			Stmt::If(l, expr, stmts, stmts1) => {
 				let label = ctx.label();
-				ctx.out.push(FlatStmt::If(*l, expr.clone(), label));
+				ctx.push(FlatStmt::If(*l, expr.clone(), label));
 				compile_block(ctx, stmts, brk, cont, depth)?;
 				if let Some(stmts1) = stmts1 {
 					let label2 = ctx.label();
-					ctx.out.push(FlatStmt::Goto(label2));
-					ctx.out.push(FlatStmt::Label(label));
+					ctx.push(FlatStmt::Goto(label2));
+					ctx.push(FlatStmt::Label(label));
 					compile_block(ctx, stmts1, brk, cont, depth)?;
-					ctx.out.push(FlatStmt::Label(label2));
+					ctx.push(FlatStmt::Label(label2));
 				} else {
-					ctx.out.push(FlatStmt::Label(label));
+					ctx.push(FlatStmt::Label(label));
 				}
 			}
 			Stmt::While(l, expr, stmts) => {
 				let brk = ctx.label();
 				let cont = ctx.label();
-				ctx.out.push(FlatStmt::Label(cont));
-				ctx.out.push(FlatStmt::If(*l, expr.clone(), brk));
+				ctx.push(FlatStmt::Label(cont));
+				ctx.push(FlatStmt::If(*l, expr.clone(), brk));
 				compile_block(ctx, stmts, Some(brk), Some(cont), depth)?;
-				ctx.out.push(FlatStmt::Goto(cont));
-				ctx.out.push(FlatStmt::Label(brk));
+				ctx.push(FlatStmt::Goto(cont));
+				ctx.push(FlatStmt::Label(brk));
 			}
 			Stmt::Switch(l, expr, cases) => {
 				let brk = ctx.label();
 				let labels = cases.iter().map(|(k, _)| (*k, ctx.label())).collect::<IndexMap<_, _>>();
-				ctx.out.push(FlatStmt::Switch(
+				ctx.push(FlatStmt::Switch(
 					*l,
 					expr.clone(),
 					labels.iter().filter_map(|(&k, &v)| Some((k?, v))).collect(),
 					labels.get(&None).copied().unwrap_or(brk),
 				));
 				for (k, l) in labels {
-					ctx.out.push(FlatStmt::Label(l));
+					ctx.push(FlatStmt::Label(l));
 					compile_block(ctx, &cases[&k], Some(brk), cont, depth)?;
 				}
-				ctx.out.push(FlatStmt::Label(brk));
+				ctx.push(FlatStmt::Label(brk));
 			}
 			Stmt::Break => {
 				if let Some(brk) = brk {
-					ctx.out.push(FlatStmt::Goto(brk));
+					ctx.push(FlatStmt::Goto(brk));
 				} else {
 					return compile::BadBreak.fail()
 				}
 			}
 			Stmt::Continue => {
 				if let Some(cont) = cont {
-					ctx.out.push(FlatStmt::Goto(cont));
+					ctx.push(FlatStmt::Goto(cont));
 				} else {
 					return compile::BadContinue.fail()
 				}
 			}
 			Stmt::PushVar(l) => {
-				ctx.out.push(FlatStmt::PushVar(*l));
+				ctx.push(FlatStmt::PushVar(*l));
 				depth += 1;
 			}
 		}
