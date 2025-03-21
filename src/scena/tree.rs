@@ -273,3 +273,102 @@ fn parse_switch(stmts: &mut Vec<Stmt>, ctx: &mut Ctx, l: Line, e: Expr, cases: &
 
 	Ok(())
 }
+
+#[derive(Debug, snafu::Snafu)]
+#[snafu(module(compile), context(suffix(false)))]
+pub enum CompileError {
+	#[snafu(display("break outside while/switch"))]
+	BadBreak,
+	#[snafu(display("continue outside while"))]
+	BadContinue,
+}
+
+struct OutCtx {
+	out: Vec<FlatStmt>,
+	label: u32,
+}
+
+impl OutCtx {
+	fn label(&mut self) -> Label {
+		let l = self.label;
+		self.label += 1;
+		Label(l)
+	}
+}
+
+pub fn compile(stmts: &[Stmt]) -> Result<Vec<FlatStmt>, CompileError> {
+	let mut ctx = OutCtx { out: Vec::new(), label: 0 };
+	compile_block(&mut ctx, stmts, None, None)?;
+	Ok(ctx.out)
+}
+
+fn compile_block(
+	ctx: &mut OutCtx,
+	stmts: &[Stmt],
+	brk: Option<Label>,
+	cont: Option<Label>,
+) -> Result<(), CompileError> {
+	for stmt in stmts {
+		match stmt {
+			Stmt::Expr(expr) => ctx.out.push(FlatStmt::Expr(expr.clone())),
+			Stmt::Set(l, place, expr) => ctx.out.push(FlatStmt::Set(*l, place.clone(), expr.clone())),
+			Stmt::Return(l, expr) => ctx.out.push(FlatStmt::Return(*l, expr.clone(), 0)),
+			Stmt::Debug(l, exprs) => ctx.out.push(FlatStmt::Debug(*l, exprs.clone())),
+			Stmt::Tailcall(l, name, exprs) => ctx.out.push(FlatStmt::Tailcall(*l, name.clone(), exprs.clone(), 0)),
+			Stmt::If(l, expr, stmts, stmts1) => {
+				let label = ctx.label();
+				ctx.out.push(FlatStmt::If(*l, expr.clone(), label));
+				compile_block(ctx, stmts, brk, cont)?;
+				if let Some(stmts1) = stmts1 {
+					let label2 = ctx.label();
+					ctx.out.push(FlatStmt::Goto(label2));
+					ctx.out.push(FlatStmt::Label(label));
+					compile_block(ctx, stmts1, brk, cont)?;
+					ctx.out.push(FlatStmt::Label(label2));
+				} else {
+					ctx.out.push(FlatStmt::Label(label));
+				}
+			}
+			Stmt::While(l, expr, stmts) => {
+				let brk = ctx.label();
+				let cont = ctx.label();
+				ctx.out.push(FlatStmt::Label(cont));
+				ctx.out.push(FlatStmt::If(*l, expr.clone(), brk));
+				compile_block(ctx, stmts, Some(brk), Some(cont))?;
+				ctx.out.push(FlatStmt::Goto(cont));
+				ctx.out.push(FlatStmt::Label(brk));
+			}
+			Stmt::Switch(l, expr, cases) => {
+				let brk = ctx.label();
+				let labels = cases.iter().map(|(k, _)| (*k, ctx.label())).collect::<IndexMap<_, _>>();
+				ctx.out.push(FlatStmt::Switch(
+					*l,
+					expr.clone(),
+					labels.iter().filter_map(|(&k, &v)| Some((k?, v))).collect(),
+					labels.get(&None).copied().unwrap_or(brk),
+				));
+				for (k, l) in labels {
+					ctx.out.push(FlatStmt::Label(l));
+					compile_block(ctx, &cases[&k], Some(brk), cont)?;
+				}
+				ctx.out.push(FlatStmt::Label(brk));
+			}
+			Stmt::Break => {
+				if let Some(brk) = brk {
+					ctx.out.push(FlatStmt::Goto(brk));
+				} else {
+					return compile::BadBreak.fail()
+				}
+			}
+			Stmt::Continue => {
+				if let Some(cont) = cont {
+					ctx.out.push(FlatStmt::Goto(cont));
+				} else {
+					return compile::BadContinue.fail()
+				}
+			}
+			Stmt::PushVar(l) => ctx.out.push(FlatStmt::PushVar(*l)),
+		}
+	}
+	Ok(())
+}
