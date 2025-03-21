@@ -316,13 +316,14 @@ fn compile_block(
 	cont: Option<Label>,
 	mut depth: usize,
 ) -> Result<(), CompileError> {
+	let depth0 = depth;
 	for stmt in stmts {
 		match stmt {
 			Stmt::Expr(expr) => ctx.push(FlatStmt::Expr(expr.clone())),
 			Stmt::Set(l, place, expr) => ctx.push(FlatStmt::Set(*l, place.clone(), expr.clone())),
-			Stmt::Return(l, expr) => ctx.push(FlatStmt::Return(*l, expr.clone(), depth)),
+			Stmt::Return(l, expr) => ctx.push(FlatStmt::Return(*l, expr.clone(), std::mem::take(&mut depth))),
 			Stmt::Debug(l, exprs) => ctx.push(FlatStmt::Debug(*l, exprs.clone())),
-			Stmt::Tailcall(l, name, exprs) => ctx.push(FlatStmt::Tailcall(*l, name.clone(), exprs.clone(), depth)),
+			Stmt::Tailcall(l, name, exprs) => ctx.push(FlatStmt::Tailcall(*l, name.clone(), exprs.clone(), std::mem::take(&mut depth))),
 			Stmt::If(l, expr, stmts, stmts1) => {
 				let label = ctx.label();
 				ctx.push(FlatStmt::If(*l, expr.clone(), label));
@@ -380,6 +381,11 @@ fn compile_block(
 				depth += 1;
 			}
 		}
+	}
+	if depth > depth0 {
+		ctx.push(FlatStmt::PopVar(depth - depth0));
+	} else if depth != 0 {
+		tracing::warn!("weird variable management, possibly doing things after a return");
 	}
 	Ok(())
 }
