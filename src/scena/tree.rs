@@ -312,8 +312,8 @@ pub fn compile(stmts: &[Stmt], nargs: usize) -> Result<Vec<FlatStmt>, CompileErr
 fn compile_block(
 	ctx: &mut OutCtx,
 	stmts: &[Stmt],
-	brk: Option<Label>,
-	cont: Option<Label>,
+	brk: Option<(usize, Label)>,
+	cont: Option<(usize, Label)>,
 	mut depth: usize,
 ) -> Result<(), CompileError> {
 	let depth0 = depth;
@@ -339,39 +339,47 @@ fn compile_block(
 				}
 			}
 			Stmt::While(l, expr, stmts) => {
-				let brk = ctx.label();
-				let cont = ctx.label();
-				ctx.push(FlatStmt::Label(cont));
-				ctx.push(FlatStmt::If(*l, expr.clone(), brk));
+				let brk = (depth, ctx.label());
+				let cont = (depth, ctx.label());
+				ctx.push(FlatStmt::Label(cont.1));
+				ctx.push(FlatStmt::If(*l, expr.clone(), brk.1));
 				compile_block(ctx, stmts, Some(brk), Some(cont), depth)?;
-				ctx.push(FlatStmt::Goto(cont));
-				ctx.push(FlatStmt::Label(brk));
+				ctx.push(FlatStmt::Goto(cont.1));
+				ctx.push(FlatStmt::Label(brk.1));
 			}
 			Stmt::Switch(l, expr, cases) => {
-				let brk = ctx.label();
+				let brk = (depth, ctx.label());
 				let labels = cases.iter().map(|(k, _)| (*k, ctx.label())).collect::<IndexMap<_, _>>();
 				ctx.push(FlatStmt::Switch(
 					*l,
 					expr.clone(),
 					labels.iter().filter_map(|(&k, &v)| Some((k?, v))).collect(),
-					labels.get(&None).copied().unwrap_or(brk),
+					labels.get(&None).copied().unwrap_or(brk.1),
 				));
 				for (k, l) in labels {
 					ctx.push(FlatStmt::Label(l));
 					compile_block(ctx, &cases[&k], Some(brk), cont, depth)?;
 				}
-				ctx.push(FlatStmt::Label(brk));
+				ctx.push(FlatStmt::Label(brk.1));
 			}
 			Stmt::Break => {
 				if let Some(brk) = brk {
-					ctx.push(FlatStmt::Goto(brk));
+					if depth > brk.0 {
+						ctx.push(FlatStmt::PopVar(depth - brk.0));
+					}
+					depth = brk.0;
+					ctx.push(FlatStmt::Goto(brk.1));
 				} else {
 					return compile::BadBreak.fail()
 				}
 			}
 			Stmt::Continue => {
 				if let Some(cont) = cont {
-					ctx.push(FlatStmt::Goto(cont));
+					if depth > cont.0 {
+						ctx.push(FlatStmt::PopVar(depth - cont.0));
+					}
+					depth = cont.0;
+					ctx.push(FlatStmt::Goto(cont.1));
 				} else {
 					return compile::BadContinue.fail()
 				}
