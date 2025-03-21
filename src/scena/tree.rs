@@ -392,8 +392,6 @@ fn compile_block(
 	}
 	if depth > depth0 {
 		ctx.push(FlatStmt::PopVar(depth - depth0));
-	} else if depth != 0 {
-		tracing::warn!("weird variable management, possibly doing things after a return");
 	}
 	Ok(())
 }
