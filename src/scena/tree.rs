@@ -296,7 +296,7 @@ impl OutCtx {
 	}
 }
 
-pub fn compile(stmts: &[Stmt]) -> Result<Vec<FlatStmt>, CompileError> {
+pub fn compile(stmts: &[Stmt], nargs: usize) -> Result<Vec<FlatStmt>, CompileError> {
 	let mut ctx = OutCtx { out: Vec::new(), label: 0 };
 	compile_block(&mut ctx, stmts, None, None)?;
 	Ok(ctx.out)
@@ -307,23 +307,24 @@ fn compile_block(
 	stmts: &[Stmt],
 	brk: Option<Label>,
 	cont: Option<Label>,
+	mut depth: usize,
 ) -> Result<(), CompileError> {
 	for stmt in stmts {
 		match stmt {
 			Stmt::Expr(expr) => ctx.out.push(FlatStmt::Expr(expr.clone())),
 			Stmt::Set(l, place, expr) => ctx.out.push(FlatStmt::Set(*l, place.clone(), expr.clone())),
-			Stmt::Return(l, expr) => ctx.out.push(FlatStmt::Return(*l, expr.clone(), 0)),
+			Stmt::Return(l, expr) => ctx.out.push(FlatStmt::Return(*l, expr.clone(), depth)),
 			Stmt::Debug(l, exprs) => ctx.out.push(FlatStmt::Debug(*l, exprs.clone())),
-			Stmt::Tailcall(l, name, exprs) => ctx.out.push(FlatStmt::Tailcall(*l, name.clone(), exprs.clone(), 0)),
+			Stmt::Tailcall(l, name, exprs) => ctx.out.push(FlatStmt::Tailcall(*l, name.clone(), exprs.clone(), depth)),
 			Stmt::If(l, expr, stmts, stmts1) => {
 				let label = ctx.label();
 				ctx.out.push(FlatStmt::If(*l, expr.clone(), label));
-				compile_block(ctx, stmts, brk, cont)?;
+				compile_block(ctx, stmts, brk, cont, depth)?;
 				if let Some(stmts1) = stmts1 {
 					let label2 = ctx.label();
 					ctx.out.push(FlatStmt::Goto(label2));
 					ctx.out.push(FlatStmt::Label(label));
-					compile_block(ctx, stmts1, brk, cont)?;
+					compile_block(ctx, stmts1, brk, cont, depth)?;
 					ctx.out.push(FlatStmt::Label(label2));
 				} else {
 					ctx.out.push(FlatStmt::Label(label));
@@ -334,7 +335,7 @@ fn compile_block(
 				let cont = ctx.label();
 				ctx.out.push(FlatStmt::Label(cont));
 				ctx.out.push(FlatStmt::If(*l, expr.clone(), brk));
-				compile_block(ctx, stmts, Some(brk), Some(cont))?;
+				compile_block(ctx, stmts, Some(brk), Some(cont), depth)?;
 				ctx.out.push(FlatStmt::Goto(cont));
 				ctx.out.push(FlatStmt::Label(brk));
 			}
@@ -349,7 +350,7 @@ fn compile_block(
 				));
 				for (k, l) in labels {
 					ctx.out.push(FlatStmt::Label(l));
-					compile_block(ctx, &cases[&k], Some(brk), cont)?;
+					compile_block(ctx, &cases[&k], Some(brk), cont, depth)?;
 				}
 				ctx.out.push(FlatStmt::Label(brk));
 			}
@@ -367,7 +368,10 @@ fn compile_block(
 					return compile::BadContinue.fail()
 				}
 			}
-			Stmt::PushVar(l) => ctx.out.push(FlatStmt::PushVar(*l)),
+			Stmt::PushVar(l) => {
+				ctx.out.push(FlatStmt::PushVar(*l));
+				depth += 1;
+			}
 		}
 	}
 	Ok(())

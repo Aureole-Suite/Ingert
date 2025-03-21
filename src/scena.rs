@@ -65,7 +65,7 @@ pub fn decompile(scena: &mut Scena) {
 		if let Body::Flat(fstmts) = &f.body {
 			match tree::decompile(fstmts) {
 				Ok(stmts) => {
-					similar_asserts::assert_eq!(*fstmts, tree::compile(&stmts).unwrap());
+					similar_asserts::assert_eq!(*fstmts, tree::compile(&stmts, f.args.len()).unwrap());
 					f.body = Body::Tree(stmts);
 				}
 				Err(e) => {
