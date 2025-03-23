@@ -31,6 +31,10 @@ fn main() {
 
 		let mut scena = ingert::scena::from_scp(scp.clone());
 		ingert::scena::decompile(&mut scena);
+
+		let str = ingert::print::print(&scena);
+		println!("{}", str);
+
 		let scp2 = ingert::scena::compile(scena).unwrap();
 		similar_asserts::assert_eq!(scp, scp2);
 	}
