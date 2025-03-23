@@ -145,9 +145,9 @@ fn block(ctx: &mut Ctx, goto_allowed: GotoAllowed) -> Result<(Vec<Stmt>, Option<
 			FlatStmt::Label(_) => {}
 			FlatStmt::Expr(expr) => stmts.push(Stmt::Expr(expr.clone())),
 			FlatStmt::Set(l, v, e) => stmts.push(Stmt::Set(*l, v.clone(), e.clone())),
-			FlatStmt::Return(l, e, _) => stmts.push(Stmt::Return(*l, e.clone())),
+			FlatStmt::Return(l, e, _) => push_diverging(ctx, &mut stmts, Stmt::Return(*l, e.clone())),
 			FlatStmt::Debug(l, e) => stmts.push(Stmt::Debug(*l, e.clone())),
-			FlatStmt::Tailcall(l, n, e, _) => stmts.push(Stmt::Tailcall(*l, n.clone(), e.clone())),
+			FlatStmt::Tailcall(l, n, e, _) => push_diverging(ctx, &mut stmts, Stmt::Tailcall(*l, n.clone(), e.clone())),
 
 			FlatStmt::If(l, e, label) => {
 				let start = ctx.pos - 1;
@@ -162,8 +162,8 @@ fn block(ctx: &mut Ctx, goto_allowed: GotoAllowed) -> Result<(Vec<Stmt>, Option<
 					.context(decompile::Block { what: "switch", start, end })?
 			},
 
-			FlatStmt::Goto(l, _) if Some(*l) == ctx.brk => stmts.push(Stmt::Break),
-			FlatStmt::Goto(l, _) if Some(*l) == ctx.cont => stmts.push(Stmt::Continue),
+			FlatStmt::Goto(l, _) if Some(*l) == ctx.brk => push_diverging(ctx, &mut stmts, Stmt::Break),
+			FlatStmt::Goto(l, _) if Some(*l) == ctx.cont => push_diverging(ctx, &mut stmts, Stmt::Continue),
 			FlatStmt::Goto(l, _) => {
 				let ok = match goto_allowed {
 					GotoAllowed::Anywhere => true,
@@ -191,6 +191,14 @@ fn block(ctx: &mut Ctx, goto_allowed: GotoAllowed) -> Result<(Vec<Stmt>, Option<
 		}
 	}
 	Ok((stmts, None))
+}
+
+fn push_diverging(ctx: &mut Ctx, stmts: &mut Vec<Stmt>, stmt: Stmt) {
+	if ctx.pos < ctx.end && !matches!(ctx.gctx.stmts[ctx.pos], FlatStmt::Label(..)) {
+		stmts.push(Stmt::Block(vec![stmt]));
+	} else {
+		stmts.push(stmt);
+	}
 }
 
 fn parse_if(stmts: &mut Vec<Stmt>, ctx: &mut Ctx, l: Line, e: Expr, label: Label) -> Result<(), DecompileError> {
