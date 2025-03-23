@@ -5,36 +5,57 @@ use crate::scena::{ArgType, Called, Function, Line, Scena, Name};
 
 pub struct Ctx {
 	out: String,
+	space: bool,
 }
+
 impl Ctx {
 	fn new() -> Self {
 		Self {
 			out: String::new(),
+			space: false,
 		}
 	}
 
 	fn word(&mut self, word: impl Into<Cow<'static, str>>) {
+		if self.space {
+			self.out.push(' ');
+		}
 		self.out.push_str(&word.into());
+		self.space = true;
 	}
 
 	fn ident(&mut self, name: &str) {
+		if self.space {
+			self.out.push(' ');
+		}
 		self.out.push_str(name);
+		self.space = true;
 	}
 
 	fn sym(&mut self, sym: &'static str) {
 		self.out.push_str(sym);
+		self.space = false;
 	}
 
 	fn _sym(&mut self, sym: &'static str) {
+		if self.space {
+			self.out.push(' ');
+		}
 		self.out.push_str(sym);
+		self.space = false;
 	}
 
 	fn sym_(&mut self, sym: &'static str) {
 		self.out.push_str(sym);
+		self.space = true;
 	}
 
 	fn _sym_(&mut self, sym: &'static str) {
+		if self.space {
+			self.out.push(' ');
+		}
 		self.out.push_str(sym);
+		self.space = true;
 	}
 
 	fn arglist<I: IntoIterator>(&mut self, args: I, mut f: impl FnMut(&mut Self, I::Item)) {
@@ -45,16 +66,16 @@ impl Ctx {
 			}
 			f(self, arg);
 		}
-		self.sym(")");
+		self.sym_(")");
 	}
 
 	fn block<I: IntoIterator>(&mut self, block: I, mut f: impl FnMut(&mut Self, I::Item)) {
-		self.sym("{");
+		self._sym_("{");
 		for stmt in block {
 			f(self, stmt);
 			self.sym_(";");
 		}
-		self.sym("}");
+		self._sym_("}");
 	}
 
 	fn value(&mut self, value: &crate::scena::Value) {
