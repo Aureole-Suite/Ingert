@@ -4,23 +4,16 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-camino = "1.1.9"
 clap = { version = "4.5.20", features = ["derive"] }
 tracing-subscriber = { version = "0.3.18", features = ["env-filter", "fmt"] }
-
 gospel = "0.3.1"
 snafu = "0.8.5"
 tracing = { version = "0.1.40", features = ["attributes"] }
-glam = "0.29.0"
 crc32fast = "1.4.2"
 strum = { version = "0.26", features = ["derive"] }
 compact-debug = "0.1.2"
-lalrpop-util = { version = "0.22.0", features = ["lexer", "unicode"] }
 similar-asserts = "1.6.0"
 indexmap = "2.8.0"
-
-[build-dependencies]
-lalrpop = "0.22.0"
 
 [profile.dev.package."*"]
 opt-level = 3
