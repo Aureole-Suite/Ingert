@@ -117,7 +117,7 @@ impl<'a> Ctx<'a> {
 	#[track_caller]
 	fn goto_before(&self, label: Label) -> Result<Option<Label>, DecompileError> {
 		let pos = self.lookup(label)?;
-		if pos > 0 && let FlatStmt::Goto(cont) = self.gctx.stmts[pos - 1] {
+		if pos > 0 && let FlatStmt::Goto(cont, _) = self.gctx.stmts[pos - 1] {
 			Ok(Some(cont))
 		} else {
 			Ok(None)
@@ -162,9 +162,9 @@ fn block(ctx: &mut Ctx, goto_allowed: GotoAllowed) -> Result<(Vec<Stmt>, Option<
 					.context(decompile::Block { what: "switch", start, end })?
 			},
 
-			FlatStmt::Goto(l) if Some(*l) == ctx.brk => stmts.push(Stmt::Break),
-			FlatStmt::Goto(l) if Some(*l) == ctx.cont => stmts.push(Stmt::Continue),
-			FlatStmt::Goto(l) => {
+			FlatStmt::Goto(l, _) if Some(*l) == ctx.brk => stmts.push(Stmt::Break),
+			FlatStmt::Goto(l, _) if Some(*l) == ctx.cont => stmts.push(Stmt::Continue),
+			FlatStmt::Goto(l, _) => {
 				let ok = match goto_allowed {
 					GotoAllowed::Anywhere => true,
 					GotoAllowed::Yes => ctx.pos == ctx.end,
@@ -315,7 +315,7 @@ impl OutCtx {
 
 pub fn compile(stmts: &[Stmt], nargs: usize) -> Result<Vec<FlatStmt>, CompileError> {
 	let mut ctx = OutCtx { out: Vec::new(), label: 0 };
-	compile_block(&mut ctx, stmts, None, None, nargs)?;
+	compile_block(&mut ctx, stmts, None, None, nargs, None)?;
 	crate::labels::normalize(&mut ctx.out, 0)?;
 	Ok(ctx.out)
 }
@@ -326,6 +326,7 @@ fn compile_block(
 	brk: Option<(usize, Label)>,
 	cont: Option<(usize, Label)>,
 	mut depth: usize,
+	then: Option<Label>,
 ) -> Result<(), CompileError> {
 	let depth0 = depth;
 	for stmt in stmts {
@@ -338,14 +339,14 @@ fn compile_block(
 			Stmt::If(l, expr, stmts, stmts1) => {
 				let label = ctx.label();
 				ctx.push(FlatStmt::If(*l, expr.clone(), label));
-				compile_block(ctx, stmts, brk, cont, depth)?;
 				if let Some(stmts1) = stmts1 {
 					let label2 = ctx.label();
-					ctx.push(FlatStmt::Goto(label2));
+					compile_block(ctx, stmts, brk, cont, depth, Some(label2))?;
 					ctx.push(FlatStmt::Label(label));
-					compile_block(ctx, stmts1, brk, cont, depth)?;
+					compile_block(ctx, stmts1, brk, cont, depth, None)?;
 					ctx.push(FlatStmt::Label(label2));
 				} else {
+					compile_block(ctx, stmts, brk, cont, depth, None)?;
 					ctx.push(FlatStmt::Label(label));
 				}
 			}
@@ -354,8 +355,7 @@ fn compile_block(
 				let cont = (depth, ctx.label());
 				ctx.push(FlatStmt::Label(cont.1));
 				ctx.push(FlatStmt::If(*l, expr.clone(), brk.1));
-				compile_block(ctx, stmts, Some(brk), Some(cont), depth)?;
-				ctx.push(FlatStmt::Goto(cont.1));
+				compile_block(ctx, stmts, Some(brk), Some(cont), depth, Some(cont.1))?;
 				ctx.push(FlatStmt::Label(brk.1));
 			}
 			Stmt::Switch(l, expr, cases) => {
@@ -369,31 +369,25 @@ fn compile_block(
 				));
 				for (k, l) in labels {
 					ctx.push(FlatStmt::Label(l));
-					compile_block(ctx, &cases[&k], Some(brk), cont, depth)?;
+					compile_block(ctx, &cases[&k], Some(brk), cont, depth, None)?;
 				}
 				ctx.push(FlatStmt::Label(brk.1));
 			}
 			Stmt::Block(stmts) => {
-				compile_block(ctx, stmts, brk, cont, depth)?;
+				compile_block(ctx, stmts, brk, cont, depth, None)?;
 			}
 			Stmt::Break => {
 				if let Some(brk) = brk {
-					if depth > brk.0 {
-						ctx.push(FlatStmt::PopVar(depth - brk.0));
-					}
+					ctx.push(FlatStmt::Goto(brk.1, depth.saturating_sub(brk.0)));
 					depth = brk.0;
-					ctx.push(FlatStmt::Goto(brk.1));
 				} else {
 					return compile::BadBreak.fail()
 				}
 			}
 			Stmt::Continue => {
 				if let Some(cont) = cont {
-					if depth > cont.0 {
-						ctx.push(FlatStmt::PopVar(depth - cont.0));
-					}
+					ctx.push(FlatStmt::Goto(cont.1, depth.saturating_sub(cont.0)));
 					depth = cont.0;
-					ctx.push(FlatStmt::Goto(cont.1));
 				} else {
 					return compile::BadContinue.fail()
 				}
@@ -404,7 +398,9 @@ fn compile_block(
 			}
 		}
 	}
-	if depth > depth0 {
+	if let Some(then) = then {
+		ctx.push(FlatStmt::Goto(then, depth.saturating_sub(depth0)));
+	} else if depth > depth0 {
 		ctx.push(FlatStmt::PopVar(depth - depth0));
 	}
 	Ok(())

@@ -34,7 +34,7 @@ impl FlatStmt {
 			Self::Set(l, _, _) => Some(*l),
 			Self::Return(l, _, _) => Some(*l),
 			Self::If(l, _, _) => Some(*l),
-			Self::Goto(_) => None,
+			Self::Goto(_, _) => None,
 			Self::Switch(l, _, _, _) => Some(*l),
 			Self::PushVar(l) => Some(*l),
 			Self::PopVar(_) => None,
@@ -50,7 +50,7 @@ impl FlatStmt {
 			Self::Set(l, _, _) => Some(l),
 			Self::Return(l, _, _) => Some(l),
 			Self::If(l, _, _) => Some(l),
-			Self::Goto(_) => None,
+			Self::Goto(_, _) => None,
 			Self::Switch(l, _, _, _) => Some(l),
 			Self::PushVar(l) => Some(l),
 			Self::PopVar(_) => None,
@@ -81,7 +81,7 @@ pub fn sink(stmt: &mut FlatStmt) {
 			sink_expr(expr, lines);
 			lines.push(l);
 		}
-		FlatStmt::Goto(_) => {}
+		FlatStmt::Goto(_, _) => {}
 		FlatStmt::Switch(l, expr, _, _) => {
 			sink_expr(expr, lines);
 			lines.push(l);

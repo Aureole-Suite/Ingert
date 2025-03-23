@@ -31,7 +31,7 @@ impl<F: Visit> Visitor<F> {
 			FlatStmt::If(_, expr, _) => {
 				self.expr(expr)?;
 			}
-			FlatStmt::Goto(_) => {},
+			FlatStmt::Goto(_, _) => {},
 			FlatStmt::Switch(_, expr, _, _) => {
 				self.expr(expr)?;
 			}
