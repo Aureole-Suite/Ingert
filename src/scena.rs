@@ -92,8 +92,7 @@ pub enum CompileError {
 }
 
 pub fn compile(scena: Scena) -> Result<Scp, CompileError> {
-	let mut global_lines = scena.globals.iter().filter_map(|g| g.1.line).collect::<Vec<_>>().into_iter().peekable();
-	let globals = scena.globals.into_iter().map(|(name, g)| crate::scp::Global { name, ty: g.ty }).collect();
+	let mut global_lines = scena.globals.iter().filter_map(|g| g.1.line).peekable();
 	let mut functions = Vec::<crate::scp::Function>::with_capacity(scena.functions.len());
 	let funcsig = scena.functions.iter().map(|(name, f)| (name.clone(), f.args.clone())).collect::<IndexMap<_, _>>();
 	for (name, mut func) in scena.functions {
@@ -130,6 +129,7 @@ pub fn compile(scena: Scena) -> Result<Scp, CompileError> {
 		})
 	}
 
+	let globals = scena.globals.into_iter().map(|(name, g)| crate::scp::Global { name, ty: g.ty }).collect();
 	Ok(Scp {
 		globals,
 		functions,
