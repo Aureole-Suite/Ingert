@@ -16,7 +16,7 @@ impl Ctx {
 		}
 	}
 
-	fn word(&mut self, word: impl Into<Cow<'static, str>>) {
+	fn token(&mut self, word: impl Into<Cow<'static, str>>) {
 		if self.space {
 			self.out.push(' ');
 		}
@@ -24,12 +24,12 @@ impl Ctx {
 		self.space = true;
 	}
 
-	fn ident(&mut self, name: &str) {
-		if self.space {
-			self.out.push(' ');
-		}
-		self.out.push_str(name);
-		self.space = true;
+	fn word(&mut self, word: &'static str) {
+		self.token(word);
+	}
+
+	fn ident(&mut self, name: String) {
+		self.token(name);
 	}
 
 	fn sym(&mut self, sym: &'static str) {
@@ -80,15 +80,15 @@ impl Ctx {
 
 	fn value(&mut self, value: &crate::scena::Value) {
 		match value {
-			crate::scena::Value::Int(v) => self.word(format!("{v}")),
-			crate::scena::Value::Float(v) => self.word(format!("{v:?}")),
-			crate::scena::Value::String(v) => self.word(format!("{v:?}")),
+			crate::scena::Value::Int(v) => self.token(format!("{v}")),
+			crate::scena::Value::Float(v) => self.token(format!("{v:?}")),
+			crate::scena::Value::String(v) => self.token(format!("{v:?}")),
 		}
 	}
 
 	fn line(&mut self, line: Line) {
 		if let Some(line) = line {
-			self.word(format!("{line}"));
+			self.token(format!("{line}"));
 			self.sym("@");
 		}
 	}
@@ -112,10 +112,10 @@ fn print_function(ctx: &mut Ctx, name: &str, f: &Function) {
 		ctx.word("prelude");
 	}
 	ctx.word("fn");
-	ctx.ident(name);
+	ctx.ident(name.to_owned());
 	ctx.arglist(f.args.iter().enumerate(), |ctx, (i, arg)| {
 		ctx.line(arg.line);
-		ctx.ident(&format!("arg{i}"));
+		ctx.ident(format!("arg{i}"));
 		ctx.sym_(":");
 		match arg.ty {
 			ArgType::Number => ctx.word("num"),
@@ -140,7 +140,7 @@ fn print_function(ctx: &mut Ctx, name: &str, f: &Function) {
 						print_name(ctx, name);
 					}
 					CallKind::Syscall(a, b) => {
-						ctx.word(format!("system[{},{}]", a, b));
+						ctx.token(format!("system[{},{}]", a, b));
 					}
 				}
 				ctx.arglist(&call.args, |ctx, arg| {
@@ -160,10 +160,10 @@ fn print_function(ctx: &mut Ctx, name: &str, f: &Function) {
 
 fn print_name(ctx: &mut Ctx, name: &Name) {
 	if let Some(local) = name.as_local() {
-		ctx.ident(local);
+		ctx.ident(local.clone());
 	} else {
-		ctx.ident(&name.0);
+		ctx.ident(name.0.clone());
 		ctx.sym(".");
-		ctx.ident(&name.1);
+		ctx.ident(name.1.clone());
 	}
 }

@@ -64,7 +64,7 @@ pub fn decompile(scena: &mut Scena) {
 			}
 		}
 
-		if let Called::Raw(called) = &f.called {
+		if let Called::Raw(called) = &f.called && false {
 			match &mut f.body {
 				Body::Asm(_) => {},
 				Body::Flat(stmts) => f.called = Called::Merged(called::apply_flat(stmts, called, &mut funcsig).unwrap()),
