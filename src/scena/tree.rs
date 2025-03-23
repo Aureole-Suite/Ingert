@@ -25,6 +25,8 @@ pub enum DecompileError {
 	UnsortedSwitch,
 	#[snafu(display("unexpected jump to {label:?}"))]
 	UnexpectedJump { label: Label },
+	#[snafu(display("pop var"))]
+	PopVar,
 
 	#[snafu(display("while parsing {what} at {start}..{end}"))]
 	Block {
@@ -176,7 +178,16 @@ fn block(ctx: &mut Ctx, goto_allowed: GotoAllowed) -> Result<(Vec<Stmt>, Option<
 			}
 
 			FlatStmt::PushVar(l) => stmts.push(Stmt::PushVar(*l)),
-			FlatStmt::PopVar(_) => {}, // not necessary for decompliation, I hope
+			FlatStmt::PopVar(n) => {
+				if let Some(pos) = stmts.iter()
+					.enumerate()
+					.filter(|(_, s)| matches!(s, Stmt::PushVar(_)))
+					.nth_back(*n - 1)
+				{
+					let body = stmts.split_off(pos.0);
+					stmts.push(Stmt::Block(body));
+				}
+			},
 		}
 	}
 	Ok((stmts, None))
@@ -361,6 +372,9 @@ fn compile_block(
 					compile_block(ctx, &cases[&k], Some(brk), cont, depth)?;
 				}
 				ctx.push(FlatStmt::Label(brk.1));
+			}
+			Stmt::Block(stmts) => {
+				compile_block(ctx, stmts, brk, cont, depth)?;
 			}
 			Stmt::Break => {
 				if let Some(brk) = brk {

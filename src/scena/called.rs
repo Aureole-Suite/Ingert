@@ -87,6 +87,11 @@ impl<F: Visit> Visitor<F> {
 					}
 				}
 			}
+			Stmt::Block(stmts) => {
+				for stmt in stmts {
+					self.stmt(stmt)?;
+				}
+			}
 			Stmt::Break => {}
 			Stmt::Continue => {}
 			Stmt::PushVar(_) => {}
