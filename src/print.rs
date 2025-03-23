@@ -3,25 +3,32 @@ use std::borrow::Cow;
 use crate::scp::{CallArg, CallKind};
 use crate::scena::{ArgType, Called, Function, Line, Scena, Name};
 
-pub struct Ctx {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Space {
+	None,
+	Inline,
+	Block(usize),
+}
+
+struct Ctx {
 	out: String,
-	space: bool,
+	space: Space,
+	indent: usize,
 }
 
 impl Ctx {
 	fn new() -> Self {
 		Self {
 			out: String::new(),
-			space: false,
+			space: Space::None,
+			indent: 0,
 		}
 	}
 
 	fn token(&mut self, word: impl Into<Cow<'static, str>>) {
-		if self.space {
-			self.out.push(' ');
-		}
+		self.do_space(true);
 		self.out.push_str(&word.into());
-		self.space = true;
+		self.set_space(Space::Inline);
 	}
 
 	fn word(&mut self, word: &'static str) {
@@ -33,29 +40,51 @@ impl Ctx {
 	}
 
 	fn sym(&mut self, sym: &'static str) {
+		self.do_space(false);
 		self.out.push_str(sym);
-		self.space = false;
+		self.set_space(Space::None);
 	}
 
 	fn _sym(&mut self, sym: &'static str) {
-		if self.space {
-			self.out.push(' ');
-		}
+		self.do_space(true);
 		self.out.push_str(sym);
-		self.space = false;
+		self.set_space(Space::None);
 	}
 
 	fn sym_(&mut self, sym: &'static str) {
+		self.do_space(false);
 		self.out.push_str(sym);
-		self.space = true;
+		self.set_space(Space::Inline);
 	}
 
 	fn _sym_(&mut self, sym: &'static str) {
-		if self.space {
-			self.out.push(' ');
-		}
+		self.do_space(true);
 		self.out.push_str(sym);
-		self.space = true;
+		self.set_space(Space::Inline);
+	}
+
+	fn do_space(&mut self, inline: bool) {
+		match self.space {
+			Space::None => {}
+			Space::Inline => {
+				if inline {
+					self.out.push(' ');
+				}
+			}
+			Space::Block(n) => {
+				for _ in 0..=n {
+					self.out.push('\n');
+				}
+				for _ in 0..self.indent {
+					self.out.push('\t');
+				}
+			}
+		}
+		self.space = Space::None;
+	}
+
+	fn set_space(&mut self, space: Space) {
+		self.space = self.space.max(space);
 	}
 
 	fn arglist<I: IntoIterator>(&mut self, args: I, mut f: impl FnMut(&mut Self, I::Item)) {
@@ -71,10 +100,13 @@ impl Ctx {
 
 	fn block<I: IntoIterator>(&mut self, block: I, mut f: impl FnMut(&mut Self, I::Item)) {
 		self._sym_("{");
+		self.indent += 1;
 		for stmt in block {
+			self.set_space(Space::Block(0));
 			f(self, stmt);
-			self.sym_(";");
+			self.set_space(Space::Block(0));
 		}
+		self.indent -= 1;
 		self._sym_("}");
 	}
 
@@ -102,6 +134,7 @@ pub fn print(scena: &Scena) -> String {
 
 	for (k, v) in &scena.functions {
 		print_function(&mut ctx, k, v);
+		ctx.set_space(Space::Block(1));
 	}
 
 	ctx.out
@@ -151,6 +184,7 @@ fn print_function(ctx: &mut Ctx, name: &str, f: &Function) {
 						CallArg::Expr => ctx.word("expr"),
 					}
 				});
+				ctx.sym_(";");
 			});
 		},
 		Called::Merged(true) => ctx.word("dup"),
