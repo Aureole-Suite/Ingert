@@ -198,7 +198,7 @@ pub fn write(code: &[Op], number: usize, w: &mut super::WCtx) -> Result<(), Writ
 			}
 			Op::Pop(n) => {
 				f.u8(1);
-				f.u8(n);
+				f.u8(n * 4);
 			}
 			Op::PushNull => {
 				f.u8(0);
