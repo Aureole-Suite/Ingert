@@ -2,7 +2,6 @@ mod flat;
 mod tree;
 mod called;
 
-use std::fmt::Write as _;
 use indexmap::IndexMap;
 
 use crate::scp::{Op, Scp};
@@ -93,11 +92,20 @@ pub enum CompileError {
 }
 
 pub fn compile(scena: Scena) -> Result<Scp, CompileError> {
-	let mut globals = Vec::with_capacity(scena.globals.len());
-	let mut globals_iter = scena.globals.into_iter().peekable();
-	let mut functions = Vec::with_capacity(scena.functions.len());
+	let mut global_lines = scena.globals.iter().filter_map(|g| g.1.line).collect::<Vec<_>>().into_iter().peekable();
+	let globals = scena.globals.into_iter().map(|(name, g)| crate::scp::Global { name, ty: g.ty }).collect();
+	let mut functions = Vec::<crate::scp::Function>::with_capacity(scena.functions.len());
 	let funcsig = scena.functions.iter().map(|(name, f)| (name.clone(), f.args.clone())).collect::<IndexMap<_, _>>();
 	for (name, mut func) in scena.functions {
+		if let Some(func_line) = first_line(&func.body) {
+			while let Some(global_line) = global_lines.next_if(|l| *l <= func_line) {
+				let Some(last_func) = functions.last_mut() else {
+					tracing::warn!("global comes before first function");
+					continue;
+				};
+				last_func.code.push(Op::Line(global_line));
+			}
+		}
 		let _span = tracing::info_span!("function", name = name).entered();
 		let called = match (func.called, &mut func.body) {
 			(Called::Raw(called), _) => called,
@@ -126,6 +134,14 @@ pub fn compile(scena: Scena) -> Result<Scp, CompileError> {
 		globals,
 		functions,
 	})
+}
+
+fn first_line(body: &Body) -> Line {
+	match body {
+		Body::Asm(ops) => ops.iter().find_map(|op| match op { Op::Line(n) => Some(*n), _ => None }),
+		Body::Flat(stmts) => stmts.iter().find_map(|stmt| stmt.line().flatten()),
+		Body::Tree(stmts) => stmts.iter().find_map(|stmt| stmt.line().flatten()),
+	}
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]

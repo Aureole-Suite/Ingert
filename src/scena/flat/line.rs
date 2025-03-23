@@ -1,4 +1,4 @@
-use crate::scena::{Expr, FlatStmt, Line};
+use crate::scena::{Expr, FlatStmt, Stmt, Line};
 
 impl Expr {
 	pub fn line(&self) -> Option<Line> {
@@ -56,6 +56,42 @@ impl FlatStmt {
 			Self::PopVar(_) => None,
 			Self::Debug(l, _) => Some(l),
 			Self::Tailcall(l, _, _, _) => Some(l),
+		}
+	}
+}
+
+impl Stmt {
+	pub fn line(&self) -> Option<Line> {
+		match self {
+			Self::Expr(e) => e.line(),
+			Self::Set(l, _, _) => Some(*l),
+			Self::Return(l, _) => Some(*l),
+			Self::If(l, _, _, _) => Some(*l),
+			Self::While(l, _, _) => Some(*l),
+			Self::Switch(l, _, _) => Some(*l),
+			Self::Block(_) => None,
+			Self::Break => None,
+			Self::Continue => None,
+			Self::PushVar(l) => Some(*l),
+			Self::Debug(l, _) => Some(*l),
+			Self::Tailcall(l, _, _) => Some(*l),
+		}
+	}
+
+	pub fn line_mut(&mut self) -> Option<&mut Line> {
+		match self {
+			Self::Expr(e) => e.line_mut(),
+			Self::Set(l, _, _) => Some(l),
+			Self::Return(l, _) => Some(l),
+			Self::If(l, _, _, _) => Some(l),
+			Self::While(l, _, _) => Some(l),
+			Self::Switch(l, _, _) => Some(l),
+			Self::Block(_) => None,
+			Self::Break => None,
+			Self::Continue => None,
+			Self::PushVar(l) => Some(l),
+			Self::Debug(l, _) => Some(l),
+			Self::Tailcall(l, _, _) => Some(l),
 		}
 	}
 }
