@@ -53,7 +53,13 @@ pub fn decompile(scena: &mut Scena) {
 		if let Body::Asm(ops) = &f.body {
 			match flat::decompile(ops) {
 				Ok(stmts) => {
-					similar_asserts::assert_eq!(*ops, flat::compile(&stmts).unwrap());
+					let recomp = flat::compile(&stmts).unwrap();
+					if *ops != recomp {
+						let orig = format!("{ops:#?}");
+						let recomp = format!("{recomp:#?}");
+						let diff = similar_asserts::SimpleDiff::from_str(&orig, &recomp, "original", "recompiled");
+						tracing::error!("decompile error on {name}\n{stmts:#?}\n{diff}");
+					}
 					f.body = Body::Flat(stmts);
 				}
 				Err(e) => {
@@ -65,7 +71,13 @@ pub fn decompile(scena: &mut Scena) {
 		if let Body::Flat(fstmts) = &f.body {
 			match tree::decompile(fstmts) {
 				Ok(stmts) => {
-					similar_asserts::assert_eq!(*fstmts, tree::compile(&stmts, f.args.len()).unwrap());
+					let recomp = tree::compile(&stmts, f.args.len()).unwrap();
+					if *fstmts != recomp {
+						let orig = format!("{fstmts:#?}");
+						let recomp = format!("{recomp:#?}");
+						let diff = similar_asserts::SimpleDiff::from_str(&orig, &recomp, "original", "recompiled");
+						tracing::error!("decompile error on {name}\n{stmts:#?}\n{diff}");
+					}
 					f.body = Body::Tree(stmts);
 				}
 				Err(e) => {
