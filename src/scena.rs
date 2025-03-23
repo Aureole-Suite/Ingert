@@ -38,6 +38,7 @@ pub fn from_scp(scp: Scp) -> Scena {
 				line: None,
 			}).collect(),
 			called: Called::Raw(f.called),
+			is_prelude: f.is_prelude,
 			body: Body::Asm(f.code),
 		});
 	}
@@ -52,75 +53,23 @@ pub fn decompile(scena: &mut Scena) {
 
 		if let Body::Asm(ops) = &f.body {
 			match flat::decompile(ops) {
-				Ok(stmts) => {
-					let recomp = flat::compile(&stmts).unwrap();
-					if *ops != recomp {
-						let orig = format!("{ops:#?}");
-						let recomp = format!("{recomp:#?}");
-						let diff = similar_asserts::SimpleDiff::from_str(&orig, &recomp, "original", "recompiled");
-						tracing::error!("decompile error on {name}\n{stmts:#?}\n{diff}");
-					}
-					f.body = Body::Flat(stmts);
-				}
-				Err(e) => {
-					tracing::error!("decompile error: {e} for {ops:#?}");
-				}
+				Ok(stmts) => f.body = Body::Flat(stmts),
+				Err(e) => tracing::error!("decompile error: {e}"),
 			}
 		}
 
 		if let Body::Flat(fstmts) = &f.body {
 			match tree::decompile(fstmts) {
-				Ok(stmts) => {
-					let recomp = tree::compile(&stmts, f.args.len()).unwrap();
-					if *fstmts != recomp {
-						let orig = format!("{fstmts:#?}");
-						let recomp = format!("{recomp:#?}");
-						let diff = similar_asserts::SimpleDiff::from_str(&orig, &recomp, "original", "recompiled");
-						tracing::error!("decompile error on {name}\n{stmts:#?}\n{diff}");
-					}
-					f.body = Body::Tree(stmts);
-				}
-				Err(e) => {
-					tracing::error!("decompile error");
-					for error in snafu::ErrorCompat::iter_chain(&e) {
-						tracing::error!("- {error}");
-					}
-					let mut str = "code:".to_string();
-					for (i, stmt) in fstmts.iter().enumerate() {
-						write!(str, "\n{i}: {stmt:?}");
-					}
-					tracing::error!("{str}");
-				}
+				Ok(stmts) => f.body = Body::Tree(stmts),
+				Err(e) => tracing::error!("decompile error: {e}"),
 			}
 		}
 
 		if let Called::Raw(called) = &f.called {
 			match &mut f.body {
 				Body::Asm(_) => {},
-				Body::Flat(stmts) => {
-					let mut new = stmts.clone();
-					let dup = called::apply_flat(&mut new, called, &mut funcsig).unwrap();
-
-					let mut stmts2 = new.clone();
-					let called2 = called::infer_flat(&mut stmts2, dup, &funcsig).unwrap();
-					similar_asserts::assert_eq!(*called, called2);
-					similar_asserts::assert_eq!(*stmts, stmts2);
-
-					*stmts = new;
-					f.called = Called::Merged(dup);
-				}
-				Body::Tree(stmts) => {
-					let mut new = stmts.clone();
-					let dup = called::apply_tree(&mut new, called, &mut funcsig).unwrap();
-
-					let mut stmts2 = new.clone();
-					let called2 = called::infer_tree(&mut stmts2, dup, &funcsig).unwrap();
-					similar_asserts::assert_eq!(*called, called2);
-					similar_asserts::assert_eq!(*stmts, stmts2);
-
-					*stmts = new;
-					f.called = Called::Merged(dup);
-				}
+				Body::Flat(stmts) => f.called = Called::Merged(called::apply_flat(stmts, called, &mut funcsig).unwrap()),
+				Body::Tree(stmts) => f.called = Called::Merged(called::apply_tree(stmts, called, &mut funcsig).unwrap()),
 			}
 		}
 	}
@@ -128,6 +77,55 @@ pub fn decompile(scena: &mut Scena) {
 	for (k, v) in funcsig {
 		scena.functions[&k].args = v;
 	}
+}
+
+#[derive(Debug, snafu::Snafu)]
+#[snafu(module(compile), context(suffix(false)))]
+pub enum CompileError {
+	#[snafu(context(false))]
+	Flat { source: flat::CompileError },
+	#[snafu(context(false))]
+	Tree { source: tree::CompileError },
+	#[snafu(context(false))]
+	Called { source: called::InferError },
+	#[snafu(display("can't infer calls for asm function"))]
+	CalledAsm,
+}
+
+pub fn compile(scena: Scena) -> Result<Scp, CompileError> {
+	let mut globals = Vec::with_capacity(scena.globals.len());
+	let mut globals_iter = scena.globals.into_iter().peekable();
+	let mut functions = Vec::with_capacity(scena.functions.len());
+	let funcsig = scena.functions.iter().map(|(name, f)| (name.clone(), f.args.clone())).collect::<IndexMap<_, _>>();
+	for (name, mut func) in scena.functions {
+		let _span = tracing::info_span!("function", name = name).entered();
+		let called = match (func.called, &mut func.body) {
+			(Called::Raw(called), _) => called,
+			(Called::Merged(dup), Body::Flat(stmts)) => called::infer_flat(stmts, dup, &funcsig)?,
+			(Called::Merged(dup), Body::Tree(stmts)) => called::infer_tree(stmts, dup, &funcsig)?,
+			(Called::Merged(_), Body::Asm(_)) => return compile::CalledAsm.fail(),
+		};
+		let code = match func.body {
+			Body::Asm(ops) => ops,
+			Body::Flat(stmts) => flat::compile(&stmts)?,
+			Body::Tree(stmts) => flat::compile(&tree::compile(&stmts, func.args.len())?)?,
+		};
+		functions.push(crate::scp::Function {
+			name,
+			args: func.args.into_iter().map(|a| crate::scp::Arg {
+				ty: a.ty,
+				default: a.default,
+			}).collect(),
+			called,
+			is_prelude: func.is_prelude,
+			code,
+		})
+	}
+
+	Ok(Scp {
+		globals,
+		functions,
+	})
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -146,6 +144,7 @@ pub struct Global {
 pub struct Function {
 	pub args: Vec<Arg>,
 	pub called: Called,
+	pub is_prelude: bool,
 	pub body: Body,
 }
 
