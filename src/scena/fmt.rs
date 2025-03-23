@@ -75,7 +75,11 @@ impl Debug for Stmt {
 				tup.field(e);
 				tup.field(then);
 				if let Some(els) = els {
-					tup.field(els);
+					if let [stmt@Stmt::If(..)] = els.as_slice() {
+						tup.field(stmt);
+					} else {
+						tup.field(els);
+					}
 				}
 				tup.finish()
 			},
