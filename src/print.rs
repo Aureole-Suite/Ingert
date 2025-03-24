@@ -26,47 +26,42 @@ impl Ctx {
 		}
 	}
 
-	fn token(&mut self, word: impl Into<Cow<'static, str>>) -> &mut Self {
+	fn token(&mut self, word: impl Into<Cow<'static, str>>) {
 		self.do_space(true);
 		self.out.push_str(&word.into());
 		self.set_space(Space::Inline);
-		self
 	}
 
-	fn word(&mut self, word: &'static str) -> &mut Self {
+	fn word(&mut self, word: &'static str) {
 		self.token(word)
 	}
 
-	fn ident(&mut self, name: String) -> &mut Self {
+	fn ident(&mut self, name: String) {
 		self.token(name)
 	}
 
-	fn sym(&mut self, sym: &'static str) -> &mut Self {
+	fn sym(&mut self, sym: &'static str) {
 		self.do_space(false);
 		self.out.push_str(sym);
 		self.set_space(Space::None);
-		self
 	}
 
-	fn _sym(&mut self, sym: &'static str) -> &mut Self {
+	fn _sym(&mut self, sym: &'static str) {
 		self.do_space(true);
 		self.out.push_str(sym);
 		self.set_space(Space::None);
-		self
 	}
 
-	fn sym_(&mut self, sym: &'static str) -> &mut Self {
+	fn sym_(&mut self, sym: &'static str) {
 		self.do_space(false);
 		self.out.push_str(sym);
 		self.set_space(Space::Inline);
-		self
 	}
 
-	fn _sym_(&mut self, sym: &'static str) -> &mut Self {
+	fn _sym_(&mut self, sym: &'static str) {
 		self.do_space(true);
 		self.out.push_str(sym);
 		self.set_space(Space::Inline);
-		self
 	}
 
 	fn do_space(&mut self, inline: bool) {
@@ -116,7 +111,7 @@ impl Ctx {
 		self._sym_("}");
 	}
 
-	fn value(&mut self, value: &crate::scena::Value) -> &mut Self {
+	fn value(&mut self, value: &crate::scena::Value) {
 		match value {
 			crate::scena::Value::Int(v) => self.token(format!("{v}")),
 			crate::scena::Value::Float(v) => self.token(format!("{v:?}")),
@@ -124,16 +119,19 @@ impl Ctx {
 		}
 	}
 
-	fn name(&mut self, name: &Name) -> &mut Self {
+	fn name(&mut self, name: &Name) {
 		if let Some(local) = name.as_local() {
-			self.ident(local.clone())
+			self.ident(local.clone());
 		} else {
-			self.ident(name.0.clone()).sym(".").ident(name.1.clone())
+			self.ident(name.0.clone());
+			self.sym(".");
+			self.ident(name.1.clone());
 		}
 	}
 
-	fn label(&mut self, label: &Label) -> &mut Self {
-		self._sym("$").ident(format!("L{}", label.0))
+	fn label(&mut self, label: &Label) {
+		self._sym("$");
+		self.ident(format!("L{}", label.0));
 	}
 
 
@@ -172,7 +170,10 @@ fn print_function(ctx: &mut Ctx, name: &str, f: &Function) {
 		match arg.ty {
 			ArgType::Number => ctx.word("num"),
 			ArgType::String => ctx.word("str"),
-			ArgType::NumberRef => ctx._sym("&").word("num"),
+			ArgType::NumberRef => {
+				ctx._sym("&");
+				ctx.word("num")
+			}
 		};
 
 		if let Some(default) = &arg.default {
@@ -186,9 +187,16 @@ fn print_function(ctx: &mut Ctx, name: &str, f: &Function) {
 			ctx.word("calls");
 			ctx.block(calls, |ctx, call| {
 				match &call.kind {
-					CallKind::Normal(name) => ctx.name(name),
-					CallKind::Tailcall(name) => ctx.word("become").name(name),
-					CallKind::Syscall(a, b) => ctx.token(format!("system[{},{}]", a, b)),
+					CallKind::Normal(name) => {
+						ctx.name(name);
+					}
+					CallKind::Tailcall(name) => {
+						ctx.word("become");
+						ctx.name(name);
+					}
+					CallKind::Syscall(a, b) => {
+						ctx.token(format!("system[{},{}]", a, b));
+					}
 				};
 				ctx.arglist(&call.args, |ctx, arg| {
 					match arg {
@@ -200,10 +208,10 @@ fn print_function(ctx: &mut Ctx, name: &str, f: &Function) {
 				});
 				ctx.sym_(";");
 			});
-		},
+		}
 		Called::Merged(true) => {
 			ctx.word("dup");
-		},
+		}
 		Called::Merged(false) => {}
 	}
 
@@ -224,56 +232,135 @@ fn print_op(ctx: &mut Ctx, op: &Op) {
 	match op {
 		Op::Label(label) => {
 			ctx.indent -= 1;
-			ctx.label(label).sym_(":");
+			ctx.label(label);
+			ctx.sym_(":");
 			ctx.indent += 1;
 			return;
 		}
-		Op::Push(value) => ctx.word("push").value(value),
-		Op::Pop(n) => ctx.word("pop").token(n.to_string()),
-		Op::PushNull => ctx.word("push_null"),
-		Op::GetVar(slot) => ctx.word("get_var").token(slot.0.to_string()),
-		Op::GetRef(slot) => ctx.word("get_ref").token(slot.0.to_string()),
-		Op::PushRef(slot) => ctx.word("push_ref").token(slot.0.to_string()),
-		Op::SetVar(slot) => ctx.word("set_var").token(slot.0.to_string()),
-		Op::SetRef(slot) => ctx.word("set_ref").token(slot.0.to_string()),
-		Op::GetGlobal(name) => ctx.word("get_global").ident(name.clone()),
-		Op::SetGlobal(name) => ctx.word("set_global").ident(name.clone()),
-		Op::GetTemp(n) => ctx.word("get_temp").token(n.to_string()),
-		Op::SetTemp(n) => ctx.word("set_temp").token(n.to_string()),
-		Op::Binop(binop) => ctx.word(match binop {
-			Binop::Add => "add",
-			Binop::Sub => "sub",
-			Binop::Mul => "mul",
-			Binop::Div => "div",
-			Binop::Mod => "mod",
-			Binop::Eq => "eq",
-			Binop::Ne => "ne",
-			Binop::Gt => "gt",
-			Binop::Ge => "ge",
-			Binop::Lt => "lt",
-			Binop::Le => "le",
-			Binop::BitAnd => "bit_and",
-			Binop::BitOr => "bit_or",
-			Binop::BoolAnd => "bool_and",
-			Binop::BoolOr => "bool_or",
-		}),
-		Op::Unop(unop) => ctx.word(match unop {
-			Unop::Neg => "neg",
-			Unop::BoolNot => "bool_not",
-			Unop::BitNot => "bit_not",
-		}),
-		Op::Jnz(label) => ctx.word("jnz").label(label),
-		Op::Jz(label) => ctx.word("jz").label(label),
-		Op::Goto(label) => ctx.word("goto").label(label),
-		Op::CallLocal(b) => ctx.word("call_local").ident(b.clone()),
-		Op::CallExtern(name, n) => ctx.word("call_extern").name(name).token(n.to_string()),
-		Op::CallTail(name, b) => ctx.word("call_tail").name(name).token(b.to_string()),
-		Op::CallSystem(a, b, n) => ctx.word("call_system").token(a.to_string()).token(b.to_string()).token(n.to_string()),
-		Op::PrepareCallLocal(label) => ctx.word("prepare_call_local").label(label),
-		Op::PrepareCallExtern(label) => ctx.word("prepare_call_extern").label(label),
-		Op::Return => ctx.word("return"),
-		Op::Line(l) => ctx.word("line").token(l.to_string()),
-		Op::Debug(n) => ctx.word("debug").token(n.to_string()),
+		Op::Push(value) => {
+			ctx.word("push");
+			ctx.value(value);
+		}
+		Op::Pop(n) => {
+			ctx.word("pop");
+			ctx.token(n.to_string());
+		}
+		Op::PushNull => {
+			ctx.word("push_null");
+		}
+		Op::GetVar(slot) => {
+			ctx.word("get_var");
+			ctx.token(slot.0.to_string());
+		}
+		Op::GetRef(slot) => {
+			ctx.word("get_ref");
+			ctx.token(slot.0.to_string());
+		}
+		Op::PushRef(slot) => {
+			ctx.word("push_ref");
+			ctx.token(slot.0.to_string());
+		}
+		Op::SetVar(slot) => {
+			ctx.word("set_var");
+			ctx.token(slot.0.to_string());
+		}
+		Op::SetRef(slot) => {
+			ctx.word("set_ref");
+			ctx.token(slot.0.to_string());
+		}
+		Op::GetGlobal(name) => {
+			ctx.word("get_global");
+			ctx.ident(name.clone());
+		}
+		Op::SetGlobal(name) => {
+			ctx.word("set_global");
+			ctx.ident(name.clone());
+		}
+		Op::GetTemp(n) => {
+			ctx.word("get_temp");
+			ctx.token(n.to_string());
+		}
+		Op::SetTemp(n) => {
+			ctx.word("set_temp");
+			ctx.token(n.to_string());
+		}
+		Op::Binop(binop) => {
+			ctx.word(match binop {
+				Binop::Add => "add",
+				Binop::Sub => "sub",
+				Binop::Mul => "mul",
+				Binop::Div => "div",
+				Binop::Mod => "mod",
+				Binop::Eq => "eq",
+				Binop::Ne => "ne",
+				Binop::Gt => "gt",
+				Binop::Ge => "ge",
+				Binop::Lt => "lt",
+				Binop::Le => "le",
+				Binop::BitAnd => "bit_and",
+				Binop::BitOr => "bit_or",
+				Binop::BoolAnd => "bool_and",
+				Binop::BoolOr => "bool_or",
+			});
+		}
+		Op::Unop(unop) => {
+			ctx.word(match unop {
+				Unop::Neg => "neg",
+				Unop::BoolNot => "bool_not",
+				Unop::BitNot => "bit_not",
+			});
+		}
+		Op::Jnz(label) => {
+			ctx.word("jnz");
+			ctx.label(label);
+		}
+		Op::Jz(label) => {
+			ctx.word("jz");
+			ctx.label(label);
+		}
+		Op::Goto(label) => {
+			ctx.word("goto");
+			ctx.label(label);
+		}
+		Op::CallLocal(b) => {
+			ctx.word("call_local");
+			ctx.ident(b.clone());
+		}
+		Op::CallExtern(name, n) => {
+			ctx.word("call_extern");
+			ctx.name(name);
+			ctx.token(n.to_string());
+		}
+		Op::CallTail(name, b) => {
+			ctx.word("call_tail");
+			ctx.name(name);
+			ctx.token(b.to_string());
+		}
+		Op::CallSystem(a, b, n) => {
+			ctx.word("call_system");
+			ctx.token(a.to_string());
+			ctx.token(b.to_string());
+			ctx.token(n.to_string());
+		}
+		Op::PrepareCallLocal(label) => {
+			ctx.word("prepare_call_local");
+			ctx.label(label);
+		}
+		Op::PrepareCallExtern(label) => {
+			ctx.word("prepare_call_extern");
+			ctx.label(label);
+		}
+		Op::Return => {
+			ctx.word("return");
+		}
+		Op::Line(l) => {
+			ctx.word("line");
+			ctx.token(l.to_string());
+		}
+		Op::Debug(n) => {
+			ctx.word("debug");
+			ctx.token(n.to_string());
+		}
 	};
 }
 
@@ -281,7 +368,8 @@ fn print_flat_stmt(ctx: &mut Ctx, stmt: &FlatStmt) {
 	match stmt {
 		FlatStmt::Label(label) => {
 			ctx.indent -= 1;
-			ctx.label(label).sym_(":");
+			ctx.label(label);
+			ctx.sym_(":");
 			ctx.indent += 1;
 			return;
 		}
@@ -397,9 +485,16 @@ fn print_stmt(ctx: &mut Ctx, stmt: &Stmt) {
 			print_expr(ctx, expr);
 			ctx.block(cases, |ctx, (value, body)| {
 				match value {
-					Some(value) => ctx.word("case").token(value.to_string()),
-					None => ctx.word("default"),
-				}.sym_(":");
+					Some(value) => {
+						ctx.word("case");
+						ctx.token(value.to_string());
+						ctx.sym_(":")
+					}
+					None => {
+						ctx.word("default");
+						ctx.sym_(":")
+					}
+				};
 				ctx.indent += 1;
 				for stmt in body {
 					ctx.set_space(Space::Block(0));
@@ -445,9 +540,16 @@ fn print_place(ctx: &mut Ctx, place: &Place) {
 		format!("var{v}")
 	}
 	match place {
-		Place::Var(n) => ctx.ident(var(*n)),
-		Place::Deref(n) => ctx._sym("*").ident(var(*n)),
-		Place::Global(name) => ctx.ident(name.clone()),
+		Place::Var(n) => {
+			ctx.ident(var(*n));
+		}
+		Place::Deref(n) => {
+			ctx._sym("*");
+			ctx.ident(var(*n));
+		}
+		Place::Global(name) => {
+			ctx.ident(name.clone())
+		}
 	};
 }
 
