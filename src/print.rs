@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 
 use crate::scp::{CallArg, CallKind, Label, Op};
-use crate::scena::{ArgType, Binop, Body, Called, Expr, FlatStmt, Function, Line, Name, Place, Scena, Stmt, Unop};
+use crate::scena::{ArgType, Binop, Body, Called, Expr, FlatStmt, Function, Line, Name, Place, Scena, Stmt, Unop, Value};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
 enum Space {
@@ -111,11 +111,11 @@ impl Ctx {
 		self._sym_("}");
 	}
 
-	fn value(&mut self, value: &crate::scena::Value) {
+	fn value(&mut self, value: &Value) {
 		match value {
-			crate::scena::Value::Int(v) => self.token(format!("{v}")),
-			crate::scena::Value::Float(v) => self.token(format!("{v:?}")),
-			crate::scena::Value::String(v) => self.token(format!("{v:?}")),
+			Value::Int(v) => self.token(format!("{v}")),
+			Value::Float(v) => self.token(format!("{v:?}")),
+			Value::String(v) => self.token(format!("{v:?}")),
 		}
 	}
 
