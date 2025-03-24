@@ -172,7 +172,7 @@ fn print_function(ctx: &mut Ctx, name: &str, f: &Function) {
 		match arg.ty {
 			ArgType::Number => ctx.word("num"),
 			ArgType::String => ctx.word("str"),
-			ArgType::NumberRef => ctx.word("&num"), // not a word but whatever
+			ArgType::NumberRef => ctx._sym("&").word("num"),
 		};
 
 		if let Some(default) = &arg.default {
@@ -352,10 +352,94 @@ fn print_block(ctx: &mut Ctx, stmts: &[Stmt]) {
 }
 
 fn print_place(ctx: &mut Ctx, place: &Place) {
-	ctx.token(format!("{place:?}"));
+	fn var(v: u32) -> String {
+		format!("var{v}")
+	}
+	match place {
+		Place::Var(n) => ctx.ident(var(*n)),
+		Place::Deref(n) => ctx._sym("*").ident(var(*n)),
+		Place::Global(name) => ctx.ident(name.clone()),
+	};
 }
 
 fn print_expr(ctx: &mut Ctx, expr: &Expr) {
-	ctx.token(format!("{expr:?}"));
+	print_expr_prec(ctx, expr, 0);
+
+	fn print_expr_prec(ctx: &mut Ctx, expr: &Expr, prec: u32) {
+		match expr {
+			Expr::Value(l, value) => {
+				ctx.line(l);
+				ctx.value(value);
+			}
+			Expr::Var(l, place) => {
+				ctx.line(l);
+				print_place(ctx, place);
+			}
+			Expr::Ref(l, n) => {
+				ctx.line(l);
+				ctx._sym("&");
+				print_place(ctx, &Place::Var(*n));
+			}
+			Expr::Call(l, name, exprs) => {
+				ctx.line(l);
+				ctx.name(name);
+				ctx.arglist(exprs, print_expr);
+			}
+			Expr::Syscall(l, a, b, exprs) => {
+				ctx.line(l);
+				ctx.token(format!("system[{a},{b}]"));
+				ctx.arglist(exprs, print_expr);
+			}
+			Expr::Unop(l, unop, expr) => {
+				ctx.line(l);
+				if *unop == Unop::Neg && matches!(**expr, Expr::Value(..)) {
+					ctx.sym("(");
+					print_expr_prec(ctx, expr, 10);
+					ctx.sym_(")");
+				} else {
+					let op = match unop {
+						Unop::Neg => "-",
+						Unop::BoolNot => "!",
+						Unop::BitNot => "~",
+					};
+					ctx._sym(op);
+					print_expr_prec(ctx, expr, 10);
+				}
+			}
+			Expr::Binop(l, binop, expr, expr1) => {
+				let (op, op_prio) = binop_prio(*binop);
+				if op_prio < prec {
+					ctx._sym("(");
+				}
+				print_expr_prec(ctx, expr, op_prio);
+				ctx.line(l);
+				ctx._sym_(op);
+				print_expr_prec(ctx, expr1, op_prio + 1);
+				if op_prio < prec {
+					ctx.sym_(")");
+				}
+			}
+		}
+	}
 }
 
+fn binop_prio(op: Binop) -> (&'static str, u32) {
+	use Binop::*;
+	match op {
+		Mul => ("*", 7),
+		Div => ("/", 7),
+		Mod => ("%", 7),
+		Add => ("+", 6),
+		Sub => ("-", 6),
+		BitAnd => ("&", 5),
+		BitOr => ("|", 4),
+		Eq => ("==", 3),
+		Ne => ("!=", 3),
+		Gt => (">", 3),
+		Ge => (">=", 3),
+		Lt => ("<", 3),
+		Le => ("<=", 3),
+		BoolAnd => ("&&", 2),
+		BoolOr => ("||", 1),
+	}
+}
