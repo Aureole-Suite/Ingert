@@ -110,8 +110,8 @@ impl Ctx {
 		for stmt in block {
 			self.set_space(Space::Block(0));
 			f(self, stmt);
-			self.set_space(Space::Block(0));
 		}
+		self.set_space(Space::Block(0));
 		self.indent -= 1;
 		self._sym_("}");
 	}
