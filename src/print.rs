@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 
-use crate::scp::{CallArg, CallKind, Op};
-use crate::scena::{Binop, Unop, ArgType, Body, Called, FlatStmt, Function, Line, Name, Scena, Stmt};
+use crate::scp::{CallArg, CallKind, Label, Op};
+use crate::scena::{ArgType, Binop, Body, Called, Expr, FlatStmt, Function, Line, Name, Place, Scena, Stmt, Unop};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
 enum Space {
@@ -132,8 +132,12 @@ impl Ctx {
 		}
 	}
 
+	fn label(&mut self, label: &Label) -> &mut Self {
+		self._sym("$").ident(format!("L{}", label.0))
+	}
 
-	fn line(&mut self, line: Line) {
+
+	fn line(&mut self, line: &Line) {
 		if let Some(line) = line {
 			self.token(format!("{line}"));
 			self.sym("@");
@@ -162,7 +166,7 @@ fn print_function(ctx: &mut Ctx, name: &str, f: &Function) {
 	ctx.word("fn");
 	ctx.ident(name.to_owned());
 	ctx.arglist(f.args.iter().enumerate(), |ctx, (i, arg)| {
-		ctx.line(arg.line);
+		ctx.line(&arg.line);
 		ctx.ident(format!("arg{i}"));
 		ctx.sym_(":");
 		match arg.ty {
@@ -220,7 +224,7 @@ fn print_op(ctx: &mut Ctx, op: &Op) {
 	match op {
 		Op::Label(label) => {
 			ctx.indent -= 1;
-			ctx._sym("$").ident(format!("L{}", label.0)).sym_(":");
+			ctx.label(label).sym_(":");
 			ctx.indent += 1;
 			return;
 		}
@@ -258,26 +262,100 @@ fn print_op(ctx: &mut Ctx, op: &Op) {
 			Unop::BoolNot => "bool_not",
 			Unop::BitNot => "bit_not",
 		}),
-		Op::Jnz(label) => ctx.word("jnz")._sym("$").ident(format!("L{}", label.0)),
-		Op::Jz(label) => ctx.word("jz")._sym("$").ident(format!("L{}", label.0)),
-		Op::Goto(label) => ctx.word("goto")._sym("$").ident(format!("L{}", label.0)),
+		Op::Jnz(label) => ctx.word("jnz").label(label),
+		Op::Jz(label) => ctx.word("jz").label(label),
+		Op::Goto(label) => ctx.word("goto").label(label),
 		Op::CallLocal(b) => ctx.word("call_local").ident(b.clone()),
 		Op::CallExtern(name, n) => ctx.word("call_extern").name(name).token(n.to_string()),
 		Op::CallTail(name, b) => ctx.word("call_tail").name(name).token(b.to_string()),
 		Op::CallSystem(a, b, n) => ctx.word("call_system").token(a.to_string()).token(b.to_string()).token(n.to_string()),
-		Op::PrepareCallLocal(label) => ctx.word("prepare_call_local")._sym("$").ident(format!("L{}", label.0)),
-		Op::PrepareCallExtern(label) => ctx.word("prepare_call_extern")._sym("$").ident(format!("L{}", label.0)),
+		Op::PrepareCallLocal(label) => ctx.word("prepare_call_local").label(label),
+		Op::PrepareCallExtern(label) => ctx.word("prepare_call_extern").label(label),
 		Op::Return => ctx.word("return"),
 		Op::Line(l) => ctx.word("line").token(l.to_string()),
 		Op::Debug(n) => ctx.word("debug").token(n.to_string()),
 	};
 }
 
+fn print_flat_stmt(ctx: &mut Ctx, stmt: &FlatStmt) {
+	match stmt {
+		FlatStmt::Label(label) => {
+			ctx.indent -= 1;
+			ctx.label(label).sym_(":");
+			ctx.indent += 1;
+			return;
+		}
+		FlatStmt::Expr(expr) => print_expr(ctx, expr),
+		FlatStmt::Set(l, place, expr) => {
+			ctx.line(l);
+			print_place(ctx, place);
+			ctx._sym_("=");
+			print_expr(ctx, expr);
+		}
+		FlatStmt::Return(l, expr, pop) => {
+			ctx.line(l);
+			ctx.token(format!("return[{pop}]"));
+			if let Some(expr) = expr {
+				print_expr(ctx, expr);
+			}
+		}
+		FlatStmt::If(l, expr, label) => {
+			ctx.line(l);
+			ctx.word("if");
+			print_expr(ctx, expr);
+			ctx.label(label);
+		}
+		FlatStmt::Goto(label, pop) => {
+			if *pop != 0 {
+				ctx.token(format!("goto[{pop}]"));
+			} else {
+				ctx.word("goto");
+			}
+			ctx.label(label);
+		}
+		FlatStmt::Switch(l, expr, items, label) => {
+			ctx.line(l);
+			ctx.word("switch");
+			print_expr(ctx, expr);
+			ctx.block(items, |ctx, (value, label)| {
+				ctx.token(value.to_string());
+				ctx._sym_("=>");
+				ctx.label(label);
+				ctx.sym_(";");
+			});
+			ctx.label(label);
+		}
+		FlatStmt::PushVar(l) => {
+			ctx.line(l);
+			ctx.word("push_var");
+		}
+		FlatStmt::PopVar(n) => {
+			ctx.token(format!("pop_var[{n}]"));
+		}
+		FlatStmt::Debug(l, exprs) => {
+			ctx.line(l);
+			ctx.word("debug");
+			ctx.arglist(exprs, print_expr);
+		}
+		FlatStmt::Tailcall(l, name, exprs, pop) => {
+			ctx.line(l);
+			ctx.token(format!("tailcall[{pop}]"));
+			ctx.name(name);
+			ctx.arglist(exprs, print_expr);
+		}
+	}
+	ctx.sym_(";");
+}
+
 fn print_block(ctx: &mut Ctx, stmts: &[Stmt]) {
     todo!()
 }
 
-fn print_flat_stmt(ctx: &mut Ctx, stmt: &FlatStmt) {
-    todo!()
+fn print_place(ctx: &mut Ctx, place: &Place) {
+	ctx.token(format!("{place:?}"));
+}
+
+fn print_expr(ctx: &mut Ctx, expr: &Expr) {
+	ctx.token(format!("{expr:?}"));
 }
 

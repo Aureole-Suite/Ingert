@@ -50,7 +50,7 @@ pub fn decompile(scena: &mut Scena) {
 	for (name, f) in &mut scena.functions {
 		let _span = tracing::info_span!("function", name = name).entered();
 
-		if let Body::Asm(ops) = &f.body && false {
+		if let Body::Asm(ops) = &f.body {
 			match flat::decompile(ops) {
 				Ok(stmts) => f.body = Body::Flat(stmts),
 				Err(e) => tracing::error!("decompile error: {e}"),
