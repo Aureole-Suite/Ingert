@@ -355,12 +355,14 @@ fn print_stmt(ctx: &mut Ctx, stmt: &Stmt) {
 	match stmt {
 		Stmt::Expr(expr) => {
 			print_expr(ctx, expr);
+			ctx.sym_(";");
 		}
 		Stmt::Set(l, place, expr) => {
 			ctx.line(l);
 			print_place(ctx, place);
 			ctx._sym_("=");
 			print_expr(ctx, expr);
+			ctx.sym_(";");
 		}
 		Stmt::Return(l, expr) => {
 			ctx.line(l);
@@ -397,7 +399,7 @@ fn print_stmt(ctx: &mut Ctx, stmt: &Stmt) {
 				match value {
 					Some(value) => ctx.word("case").token(value.to_string()),
 					None => ctx.word("default"),
-				}.sym(":");
+				}.sym_(":");
 				ctx.indent += 1;
 				for stmt in body {
 					ctx.set_space(Space::Block(0));
@@ -411,24 +413,29 @@ fn print_stmt(ctx: &mut Ctx, stmt: &Stmt) {
 		}
 		Stmt::Break => {
 			ctx.word("break");
+			ctx.sym_(";");
 		}
 		Stmt::Continue => {
 			ctx.word("continue");
+			ctx.sym_(";");
 		}
 		Stmt::PushVar(l) => {
 			ctx.line(l);
 			ctx.word("var");
+			ctx.sym_(";");
 		}
 		Stmt::Debug(l, exprs) => {
 			ctx.line(l);
 			ctx.word("debug");
 			ctx.arglist(exprs, print_expr);
+			ctx.sym_(";");
 		}
 		Stmt::Tailcall(l, name, exprs) => {
 			ctx.line(l);
 			ctx.word("tailcall");
 			ctx.name(name);
 			ctx.arglist(exprs, print_expr);
+			ctx.sym_(";");
 		}
 	}
 }
