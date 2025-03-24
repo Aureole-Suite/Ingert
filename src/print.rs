@@ -348,7 +348,85 @@ fn print_flat_stmt(ctx: &mut Ctx, stmt: &FlatStmt) {
 }
 
 fn print_block(ctx: &mut Ctx, stmts: &[Stmt]) {
-    todo!()
+	ctx.block(stmts, print_stmt);
+}
+
+fn print_stmt(ctx: &mut Ctx, stmt: &Stmt) {
+	match stmt {
+		Stmt::Expr(expr) => {
+			print_expr(ctx, expr);
+		}
+		Stmt::Set(l, place, expr) => {
+			ctx.line(l);
+			print_place(ctx, place);
+			ctx._sym_("=");
+			print_expr(ctx, expr);
+		}
+		Stmt::Return(l, expr) => {
+			ctx.line(l);
+			ctx.word("return");
+			if let Some(expr) = expr {
+				print_expr(ctx, expr);
+			}
+		}
+		Stmt::If(l, expr, then, els) => {
+			ctx.line(l);
+			ctx.word("if");
+			print_expr(ctx, expr);
+			print_block(ctx, then);
+			if let Some(els) = els {
+				ctx.word("else");
+				print_block(ctx, els);
+			}
+		}
+		Stmt::While(l, expr, body) => {
+			ctx.line(l);
+			ctx.word("while");
+			print_expr(ctx, expr);
+			print_block(ctx, body);
+		}
+		Stmt::Switch(l, expr, cases) => {
+			ctx.line(l);
+			ctx.word("switch");
+			print_expr(ctx, expr);
+			ctx.block(cases, |ctx, (value, body)| {
+				match value {
+					Some(value) => ctx.word("case").token(value.to_string()),
+					None => ctx.word("default"),
+				}.sym(":");
+				ctx.indent += 1;
+				for stmt in body {
+					ctx.set_space(Space::Block(0));
+					print_stmt(ctx, stmt);
+				}
+				ctx.indent -= 1;
+			});
+		}
+		Stmt::Block(stmts) => {
+			print_block(ctx, stmts);
+		}
+		Stmt::Break => {
+			ctx.word("break");
+		}
+		Stmt::Continue => {
+			ctx.word("continue");
+		}
+		Stmt::PushVar(l) => {
+			ctx.line(l);
+			ctx.word("var");
+		}
+		Stmt::Debug(l, exprs) => {
+			ctx.line(l);
+			ctx.word("debug");
+			ctx.arglist(exprs, print_expr);
+		}
+		Stmt::Tailcall(l, name, exprs) => {
+			ctx.line(l);
+			ctx.word("tailcall");
+			ctx.name(name);
+			ctx.arglist(exprs, print_expr);
+		}
+	}
 }
 
 fn print_place(ctx: &mut Ctx, place: &Place) {

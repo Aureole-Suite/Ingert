@@ -33,7 +33,7 @@ fn main() {
 		ingert::scena::decompile(&mut scena);
 
 		let str = ingert::print::print(&scena);
-		println!("{}", str);
+		std::fs::write("system.ing", &str).unwrap();
 
 		let scp2 = ingert::scena::compile(scena).unwrap();
 		similar_asserts::assert_eq!(scp, scp2);
