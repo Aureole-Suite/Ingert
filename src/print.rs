@@ -376,7 +376,11 @@ fn print_stmt(ctx: &mut Ctx, stmt: &Stmt) {
 			print_block(ctx, then);
 			if let Some(els) = els {
 				ctx.word("else");
-				print_block(ctx, els);
+				if let [Stmt::If(..)] = els.as_slice() {
+					print_stmt(ctx, &els[0]);
+				} else {
+					print_block(ctx, els);
+				}
 			}
 		}
 		Stmt::While(l, expr, body) => {
