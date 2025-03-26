@@ -458,6 +458,7 @@ fn print_stmt(ctx: &mut Ctx, stmt: &Stmt) {
 			if let Some(expr) = expr {
 				print_expr(ctx, expr);
 			}
+			ctx.sym_(";");
 		}
 		Stmt::If(l, expr, then, els) => {
 			ctx.line(l);
