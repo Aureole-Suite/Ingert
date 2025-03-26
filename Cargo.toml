@@ -14,6 +14,7 @@ strum = { version = "0.26", features = ["derive"] }
 compact-debug = "0.1.2"
 similar-asserts = "1.6.0"
 indexmap = "2.8.0"
+unicode-ident = "1.0.18"
 
 [profile.dev.package."*"]
 opt-level = 3
