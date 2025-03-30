@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use crate::scp::{CallArg, CallKind, Label, Op};
+use crate::scp::{Call, CallArg, CallKind, Label, Op};
 use crate::scena::{ArgType, Binop, Body, Called, Expr, FlatStmt, FlatVar, Function, Line, Name, Place, Scena, Stmt, Unop, Value, Var};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
@@ -88,23 +88,23 @@ impl Ctx {
 		self.space = self.space.max(space);
 	}
 
-	fn arglist<I: IntoIterator>(&mut self, args: I, mut f: impl FnMut(&mut Self, I::Item)) {
+	fn arglist<I: IntoIterator>(&mut self, args: I, mut f: impl FnMut(I::Item, &mut Self)) {
 		self.sym("(");
 		for (i, arg) in args.into_iter().enumerate() {
 			if i != 0 {
 				self.sym_(",");
 			}
-			f(self, arg);
+			f(arg, self);
 		}
 		self.sym_(")");
 	}
 
-	fn block<I: IntoIterator>(&mut self, block: I, mut f: impl FnMut(&mut Self, I::Item)) {
+	fn block<I: IntoIterator>(&mut self, block: I, mut f: impl FnMut(I::Item, &mut Self)) {
 		self._sym_("{");
 		self.indent += 1;
 		for stmt in block {
 			self.set_space(Space::Block(0));
-			f(self, stmt);
+			f(stmt, self);
 		}
 		self.set_space(Space::Block(0));
 		self.indent -= 1;
@@ -133,7 +133,6 @@ impl Ctx {
 		self._sym("$");
 		self.ident(format!("L{}", label.0));
 	}
-
 
 	fn line(&mut self, line: &Line) {
 		if let Some(line) = line {
@@ -167,18 +166,11 @@ fn print_function(ctx: &mut Ctx, name: &str, f: &Function) {
 	}
 	ctx.word("fn");
 	ctx.ident(name.to_owned());
-	ctx.arglist(f.args.iter().enumerate(), |ctx, (i, arg)| {
+	ctx.arglist(f.args.iter().enumerate(), |(i, arg), ctx| {
 		ctx.line(&arg.line);
 		ctx.ident(format!("arg{i}"));
 		ctx.sym_(":");
-		match arg.ty {
-			ArgType::Number => ctx.word("num"),
-			ArgType::String => ctx.word("str"),
-			ArgType::NumberRef => {
-				ctx._sym("&");
-				ctx.word("num")
-			}
-		};
+		arg.ty.print(ctx);
 
 		if let Some(default) = &arg.default {
 			ctx._sym_("=");
@@ -189,29 +181,7 @@ fn print_function(ctx: &mut Ctx, name: &str, f: &Function) {
 	match &f.called {
 		Called::Raw(calls) => {
 			ctx.word("calls");
-			ctx.block(calls, |ctx, call| {
-				match &call.kind {
-					CallKind::Normal(name) => {
-						ctx.name(name);
-					}
-					CallKind::Tailcall(name) => {
-						ctx.word("become");
-						ctx.name(name);
-					}
-					CallKind::Syscall(a, b) => {
-						ctx.token(format!("system[{},{}]", a, b));
-					}
-				};
-				ctx.arglist(&call.args, |ctx, arg| {
-					match arg {
-						CallArg::Value(value) => ctx.value(value),
-						CallArg::Call => ctx.word("call"),
-						CallArg::Var => ctx.word("var"),
-						CallArg::Expr => ctx.word("expr"),
-					};
-				});
-				ctx.sym_(";");
-			});
+			ctx.block(calls, Call::print);
 		}
 		Called::Merged(true) => {
 			ctx.word("dup");
@@ -222,13 +192,15 @@ fn print_function(ctx: &mut Ctx, name: &str, f: &Function) {
 	match &f.body {
 		Body::Asm(ops) => {
 			ctx.word("asm");
-			ctx.block(ops, print_op);
+			ctx.block(ops, Op::print);
 		}
 		Body::Flat(stmts) => {
 			ctx.word("flat");
-			ctx.block(stmts, print_flat_stmt);
+			ctx.block(stmts, FlatStmt::print);
 		}
-		Body::Tree(stmts) => print_block(ctx, stmts)
+		Body::Tree(stmts) => {
+			ctx.block(stmts, Stmt::print);
+		}
 	}
 }
 
@@ -236,347 +208,406 @@ trait Print {
 	fn print(&self, ctx: &mut Ctx);
 }
 
-fn print_op(ctx: &mut Ctx, op: &Op) {
-	match op {
-		Op::Label(label) => {
-			ctx.indent -= 1;
-			ctx.label(label);
-			ctx.sym_(":");
-			ctx.indent += 1;
-			return;
+impl Print for ArgType {
+    fn print(&self, ctx: &mut Ctx) {
+		match self {
+			ArgType::Number => ctx.word("num"),
+			ArgType::String => ctx.word("str"),
+			ArgType::NumberRef => {
+				ctx._sym("&");
+				ctx.word("num");
+			}
 		}
-		Op::Push(value) => {
-			ctx.word("push");
-			ctx.value(value);
-		}
-		Op::Pop(n) => {
-			ctx.word("pop");
-			ctx.token(n.to_string());
-		}
-		Op::PushNull => {
-			ctx.word("push_null");
-		}
-		Op::GetVar(slot) => {
-			ctx.word("get_var");
-			ctx.token(slot.0.to_string());
-		}
-		Op::GetRef(slot) => {
-			ctx.word("get_ref");
-			ctx.token(slot.0.to_string());
-		}
-		Op::PushRef(slot) => {
-			ctx.word("push_ref");
-			ctx.token(slot.0.to_string());
-		}
-		Op::SetVar(slot) => {
-			ctx.word("set_var");
-			ctx.token(slot.0.to_string());
-		}
-		Op::SetRef(slot) => {
-			ctx.word("set_ref");
-			ctx.token(slot.0.to_string());
-		}
-		Op::GetGlobal(name) => {
-			ctx.word("get_global");
-			ctx.ident(name.clone());
-		}
-		Op::SetGlobal(name) => {
-			ctx.word("set_global");
-			ctx.ident(name.clone());
-		}
-		Op::GetTemp(n) => {
-			ctx.word("get_temp");
-			ctx.token(n.to_string());
-		}
-		Op::SetTemp(n) => {
-			ctx.word("set_temp");
-			ctx.token(n.to_string());
-		}
-		Op::Binop(binop) => {
-			ctx.word(match binop {
-				Binop::Add => "add",
-				Binop::Sub => "sub",
-				Binop::Mul => "mul",
-				Binop::Div => "div",
-				Binop::Mod => "mod",
-				Binop::Eq => "eq",
-				Binop::Ne => "ne",
-				Binop::Gt => "gt",
-				Binop::Ge => "ge",
-				Binop::Lt => "lt",
-				Binop::Le => "le",
-				Binop::BitAnd => "bit_and",
-				Binop::BitOr => "bit_or",
-				Binop::BoolAnd => "bool_and",
-				Binop::BoolOr => "bool_or",
-			});
-		}
-		Op::Unop(unop) => {
-			ctx.word(match unop {
-				Unop::Neg => "neg",
-				Unop::BoolNot => "bool_not",
-				Unop::BitNot => "bit_not",
-			});
-		}
-		Op::Jnz(label) => {
-			ctx.word("jnz");
-			ctx.label(label);
-		}
-		Op::Jz(label) => {
-			ctx.word("jz");
-			ctx.label(label);
-		}
-		Op::Goto(label) => {
-			ctx.word("goto");
-			ctx.label(label);
-		}
-		Op::CallLocal(b) => {
-			ctx.word("call_local");
-			ctx.ident(b.clone());
-		}
-		Op::CallExtern(name, n) => {
-			ctx.word("call_extern");
-			ctx.name(name);
-			ctx.token(n.to_string());
-		}
-		Op::CallTail(name, b) => {
-			ctx.word("call_tail");
-			ctx.name(name);
-			ctx.token(b.to_string());
-		}
-		Op::CallSystem(a, b, n) => {
-			ctx.word("call_system");
-			ctx.token(a.to_string());
-			ctx.token(b.to_string());
-			ctx.token(n.to_string());
-		}
-		Op::PrepareCallLocal(label) => {
-			ctx.word("prepare_call_local");
-			ctx.label(label);
-		}
-		Op::PrepareCallExtern(label) => {
-			ctx.word("prepare_call_extern");
-			ctx.label(label);
-		}
-		Op::Return => {
-			ctx.word("return");
-		}
-		Op::Line(l) => {
-			ctx.word("line");
-			ctx.token(l.to_string());
-		}
-		Op::Debug(n) => {
-			ctx.word("debug");
-			ctx.token(n.to_string());
-		}
-	};
-	ctx.sym_(";");
+    }
 }
 
-fn print_flat_stmt(ctx: &mut Ctx, stmt: &FlatStmt) {
-	match stmt {
-		FlatStmt::Label(label) => {
-			ctx.indent -= 1;
-			ctx.label(label);
-			ctx.sym_(":");
-			ctx.indent += 1;
-			return;
-		}
-		FlatStmt::Expr(expr) => print_expr(ctx, expr),
-		FlatStmt::Set(l, place, expr) => {
-			ctx.line(l);
-			print_place(ctx, place);
-			ctx._sym_("=");
-			print_expr(ctx, expr);
-		}
-		FlatStmt::Return(l, expr, pop) => {
-			ctx.line(l);
-			ctx.token(format!("return[{pop}]"));
-			if let Some(expr) = expr {
-				print_expr(ctx, expr);
+impl Print for Call {
+	fn print(&self, ctx: &mut Ctx) {
+		match &self.kind {
+			CallKind::Normal(name) => {
+				ctx.name(name);
 			}
-		}
-		FlatStmt::If(l, expr, label) => {
-			ctx.line(l);
-			ctx.word("if");
-			print_expr(ctx, expr);
-			ctx.label(label);
-		}
-		FlatStmt::Goto(label, pop) => {
-			if *pop != 0 {
-				ctx.token(format!("goto[{pop}]"));
-			} else {
-				ctx.word("goto");
+			CallKind::Tailcall(name) => {
+				ctx.word("become");
+				ctx.name(name);
 			}
-			ctx.label(label);
-		}
-		FlatStmt::Switch(l, expr, items, label) => {
-			ctx.line(l);
-			ctx.word("switch");
-			print_expr(ctx, expr);
-			ctx.block(items, |ctx, (value, label)| {
-				ctx.token(value.to_string());
-				ctx._sym_("=>");
-				ctx.label(label);
-				ctx.sym_(";");
-			});
-			ctx.label(label);
-		}
-		FlatStmt::PushVar(l) => {
-			ctx.line(l);
-			ctx.word("push_var");
-		}
-		FlatStmt::PopVar(n) => {
-			ctx.token(format!("pop_var[{n}]"));
-		}
-		FlatStmt::Debug(l, exprs) => {
-			ctx.line(l);
-			ctx.word("debug");
-			ctx.arglist(exprs, print_expr);
-		}
-		FlatStmt::Tailcall(l, name, exprs, pop) => {
-			ctx.line(l);
-			ctx.token(format!("tailcall[{pop}]"));
-			ctx.name(name);
-			ctx.arglist(exprs, print_expr);
-		}
+			CallKind::Syscall(a, b) => {
+				ctx.token(format!("system[{},{}]", a, b));
+			}
+		};
+		ctx.arglist(&self.args, CallArg::print);
+		ctx.sym_(";");
 	}
-	ctx.sym_(";");
 }
 
-fn print_block(ctx: &mut Ctx, stmts: &[Stmt]) {
-	ctx.block(stmts, print_stmt);
+impl Print for CallArg {
+    fn print(&self, ctx: &mut Ctx) {
+		match self {
+			CallArg::Value(value) => ctx.value(value),
+			CallArg::Call => ctx.word("call"),
+			CallArg::Var => ctx.word("var"),
+			CallArg::Expr => ctx.word("expr"),
+		}
+    }
 }
 
-fn print_stmt(ctx: &mut Ctx, stmt: &Stmt) {
-	match stmt {
-		Stmt::Expr(expr) => {
-			print_expr(ctx, expr);
-			ctx.sym_(";");
-		}
-		Stmt::Set(l, place, expr) => {
-			ctx.line(l);
-			print_place(ctx, place);
-			ctx._sym_("=");
-			print_expr(ctx, expr);
-			ctx.sym_(";");
-		}
-		Stmt::Return(l, expr) => {
-			ctx.line(l);
-			ctx.word("return");
-			if let Some(expr) = expr {
-				print_expr(ctx, expr);
-			}
-			ctx.sym_(";");
-		}
-		Stmt::If(l, expr, then, els) => {
-			ctx.line(l);
-			ctx.word("if");
-			print_expr(ctx, expr);
-			print_block(ctx, then);
-			if let Some(els) = els {
-				ctx.word("else");
-				if let [Stmt::If(..)] = els.as_slice() {
-					print_stmt(ctx, &els[0]);
-				} else {
-					print_block(ctx, els);
-				}
-			}
-		}
-		Stmt::While(l, expr, body) => {
-			ctx.line(l);
-			ctx.word("while");
-			print_expr(ctx, expr);
-			print_block(ctx, body);
-		}
-		Stmt::Switch(l, expr, cases) => {
-			ctx.line(l);
-			ctx.word("switch");
-			print_expr(ctx, expr);
-			ctx.block(cases, |ctx, (value, body)| {
-				match value {
-					Some(value) => {
-						ctx.word("case");
-						ctx.token(value.to_string());
-						ctx.sym_(":")
-					}
-					None => {
-						ctx.word("default");
-						ctx.sym_(":")
-					}
-				};
-				ctx.indent += 1;
-				for stmt in body {
-					ctx.set_space(Space::Block(0));
-					print_stmt(ctx, stmt);
-				}
+impl Print for Op {
+	fn print(&self, ctx: &mut Ctx) {
+		match self {
+			Op::Label(label) => {
 				ctx.indent -= 1;
-			});
-		}
-		Stmt::Block(stmts) => {
-			print_block(ctx, stmts);
-		}
-		Stmt::Break => {
-			ctx.word("break");
-			ctx.sym_(";");
-		}
-		Stmt::Continue => {
-			ctx.word("continue");
-			ctx.sym_(";");
-		}
-		Stmt::PushVar(l, d, e) => {
-			ctx.line(l);
-			ctx.word("var");
-			print_place(ctx, &Place::Var(*d));
-			if let Some(e) = e {
-				ctx._sym_("=");
-				print_expr(ctx, e);
+				ctx.label(label);
+				ctx.sym_(":");
+				ctx.indent += 1;
+				return;
 			}
-			ctx.sym_(";");
+			Op::Push(value) => {
+				ctx.word("push");
+				ctx.value(value);
+			}
+			Op::Pop(n) => {
+				ctx.word("pop");
+				ctx.token(n.to_string());
+			}
+			Op::PushNull => {
+				ctx.word("push_null");
+			}
+			Op::GetVar(slot) => {
+				ctx.word("get_var");
+				ctx.token(slot.0.to_string());
+			}
+			Op::GetRef(slot) => {
+				ctx.word("get_ref");
+				ctx.token(slot.0.to_string());
+			}
+			Op::PushRef(slot) => {
+				ctx.word("push_ref");
+				ctx.token(slot.0.to_string());
+			}
+			Op::SetVar(slot) => {
+				ctx.word("set_var");
+				ctx.token(slot.0.to_string());
+			}
+			Op::SetRef(slot) => {
+				ctx.word("set_ref");
+				ctx.token(slot.0.to_string());
+			}
+			Op::GetGlobal(name) => {
+				ctx.word("get_global");
+				ctx.ident(name.clone());
+			}
+			Op::SetGlobal(name) => {
+				ctx.word("set_global");
+				ctx.ident(name.clone());
+			}
+			Op::GetTemp(n) => {
+				ctx.word("get_temp");
+				ctx.token(n.to_string());
+			}
+			Op::SetTemp(n) => {
+				ctx.word("set_temp");
+				ctx.token(n.to_string());
+			}
+			Op::Binop(binop) => {
+				ctx.word(match binop {
+					Binop::Add => "add",
+					Binop::Sub => "sub",
+					Binop::Mul => "mul",
+					Binop::Div => "div",
+					Binop::Mod => "mod",
+					Binop::Eq => "eq",
+					Binop::Ne => "ne",
+					Binop::Gt => "gt",
+					Binop::Ge => "ge",
+					Binop::Lt => "lt",
+					Binop::Le => "le",
+					Binop::BitAnd => "bit_and",
+					Binop::BitOr => "bit_or",
+					Binop::BoolAnd => "bool_and",
+					Binop::BoolOr => "bool_or",
+				});
+			}
+			Op::Unop(unop) => {
+				ctx.word(match unop {
+					Unop::Neg => "neg",
+					Unop::BoolNot => "bool_not",
+					Unop::BitNot => "bit_not",
+				});
+			}
+			Op::Jnz(label) => {
+				ctx.word("jnz");
+				ctx.label(label);
+			}
+			Op::Jz(label) => {
+				ctx.word("jz");
+				ctx.label(label);
+			}
+			Op::Goto(label) => {
+				ctx.word("goto");
+				ctx.label(label);
+			}
+			Op::CallLocal(b) => {
+				ctx.word("call_local");
+				ctx.ident(b.clone());
+			}
+			Op::CallExtern(name, n) => {
+				ctx.word("call_extern");
+				ctx.name(name);
+				ctx.token(n.to_string());
+			}
+			Op::CallTail(name, b) => {
+				ctx.word("call_tail");
+				ctx.name(name);
+				ctx.token(b.to_string());
+			}
+			Op::CallSystem(a, b, n) => {
+				ctx.word("call_system");
+				ctx.token(a.to_string());
+				ctx.token(b.to_string());
+				ctx.token(n.to_string());
+			}
+			Op::PrepareCallLocal(label) => {
+				ctx.word("prepare_call_local");
+				ctx.label(label);
+			}
+			Op::PrepareCallExtern(label) => {
+				ctx.word("prepare_call_extern");
+				ctx.label(label);
+			}
+			Op::Return => {
+				ctx.word("return");
+			}
+			Op::Line(l) => {
+				ctx.word("line");
+				ctx.token(l.to_string());
+			}
+			Op::Debug(n) => {
+				ctx.word("debug");
+				ctx.token(n.to_string());
+			}
+		};
+		ctx.sym_(";");
+	}
+}
+
+impl Print for FlatStmt {
+	fn print(&self, ctx: &mut Ctx) {
+		match self {
+			FlatStmt::Label(label) => {
+				ctx.indent -= 1;
+				ctx.label(label);
+				ctx.sym_(":");
+				ctx.indent += 1;
+				return;
+			}
+			FlatStmt::Expr(expr) => {
+				expr.print(ctx);
+			}
+			FlatStmt::Set(l, place, expr) => {
+				ctx.line(l);
+				place.print(ctx);
+				ctx._sym_("=");
+				expr.print(ctx);
+			}
+			FlatStmt::Return(l, expr, pop) => {
+				ctx.line(l);
+				ctx.token(format!("return[{pop}]"));
+				if let Some(expr) = expr {
+					expr.print(ctx);
+				}
+			}
+			FlatStmt::If(l, expr, label) => {
+				ctx.line(l);
+				ctx.word("if");
+				expr.print(ctx);
+				ctx.label(label);
+			}
+			FlatStmt::Goto(label, pop) => {
+				if *pop != 0 {
+					ctx.token(format!("goto[{pop}]"));
+				} else {
+					ctx.word("goto");
+				}
+				ctx.label(label);
+			}
+			FlatStmt::Switch(l, expr, items, label) => {
+				ctx.line(l);
+				ctx.word("switch");
+				expr.print(ctx);
+				ctx.block(items, |(value, label), ctx| {
+					ctx.token(value.to_string());
+					ctx._sym_("=>");
+					ctx.label(label);
+					ctx.sym_(";");
+				});
+				ctx.label(label);
+			}
+			FlatStmt::PushVar(l) => {
+				ctx.line(l);
+				ctx.word("push_var");
+			}
+			FlatStmt::PopVar(n) => {
+				ctx.token(format!("pop_var[{n}]"));
+			}
+			FlatStmt::Debug(l, exprs) => {
+				ctx.line(l);
+				ctx.word("debug");
+				exprs.print(ctx);
+			}
+			FlatStmt::Tailcall(l, name, exprs, pop) => {
+				ctx.line(l);
+				ctx.token(format!("tailcall[{pop}]"));
+				ctx.name(name);
+				exprs.print(ctx);
+			}
 		}
-		Stmt::Debug(l, exprs) => {
-			ctx.line(l);
-			ctx.word("debug");
-			ctx.arglist(exprs, print_expr);
-			ctx.sym_(";");
-		}
-		Stmt::Tailcall(l, name, exprs) => {
-			ctx.line(l);
-			ctx.word("tailcall");
-			ctx.name(name);
-			ctx.arglist(exprs, print_expr);
-			ctx.sym_(";");
+		ctx.sym_(";");
+	}
+}
+
+impl Print for Vec<Stmt> {
+	fn print(&self, ctx: &mut Ctx) {
+		ctx.block(self, Stmt::print);
+	}
+}
+
+impl Print for Stmt {
+	fn print(&self, ctx: &mut Ctx) {
+		match self {
+			Stmt::Expr(expr) => {
+				expr.print(ctx);
+				ctx.sym_(";");
+			}
+			Stmt::Set(l, place, expr) => {
+				ctx.line(l);
+				place.print(ctx);
+				ctx._sym_("=");
+				expr.print(ctx);
+				ctx.sym_(";");
+			}
+			Stmt::Return(l, expr) => {
+				ctx.line(l);
+				ctx.word("return");
+				if let Some(expr) = expr {
+					expr.print(ctx);
+				}
+				ctx.sym_(";");
+			}
+			Stmt::If(l, expr, then, els) => {
+				ctx.line(l);
+				ctx.word("if");
+				expr.print(ctx);
+				then.print(ctx);
+				if let Some(els) = els {
+					ctx.word("else");
+					if let [Stmt::If(..)] = els.as_slice() {
+						els[0].print(ctx);
+					} else {
+						els.print(ctx);
+					}
+				}
+			}
+			Stmt::While(l, expr, body) => {
+				ctx.line(l);
+				ctx.word("while");
+				expr.print(ctx);
+				body.print(ctx);
+			}
+			Stmt::Switch(l, expr, cases) => {
+				ctx.line(l);
+				ctx.word("switch");
+				expr.print(ctx);
+				ctx.block(cases, |(value, body), ctx| {
+					match value {
+						Some(value) => {
+							ctx.word("case");
+							ctx.token(value.to_string());
+							ctx.sym_(":")
+						}
+						None => {
+							ctx.word("default");
+							ctx.sym_(":")
+						}
+					};
+					ctx.indent += 1;
+					for stmt in body {
+						ctx.set_space(Space::Block(0));
+						stmt.print(ctx);
+					}
+					ctx.indent -= 1;
+				});
+			}
+			Stmt::Block(stmts) => {
+				stmts.print(ctx);
+			}
+			Stmt::Break => {
+				ctx.word("break");
+				ctx.sym_(";");
+			}
+			Stmt::Continue => {
+				ctx.word("continue");
+				ctx.sym_(";");
+			}
+			Stmt::PushVar(l, d, e) => {
+				ctx.line(l);
+				ctx.word("var");
+				d.print(ctx);
+				if let Some(e) = e {
+					ctx._sym_("=");
+					e.print(ctx);
+				}
+				ctx.sym_(";");
+			}
+			Stmt::Debug(l, exprs) => {
+				ctx.line(l);
+				ctx.word("debug");
+				exprs.print(ctx);
+				ctx.sym_(";");
+			}
+			Stmt::Tailcall(l, name, exprs) => {
+				ctx.line(l);
+				ctx.word("tailcall");
+				ctx.name(name);
+				exprs.print(ctx);
+				ctx.sym_(";");
+			}
 		}
 	}
 }
 
-fn print_place<V: Print>(ctx: &mut Ctx, place: &Place<V>) {
-	match place {
-		Place::Var(n) => {
-			n.print(ctx);
+impl<V: Print> Print for Place<V> {
+	fn print(&self, ctx: &mut Ctx) {
+		match self {
+			Place::Var(n) => {
+				n.print(ctx);
+			}
+			Place::Deref(n) => {
+				ctx._sym("*");
+				n.print(ctx);
+			}
+			Place::Global(name) => {
+				ctx.ident(name.clone());
+			}
 		}
-		Place::Deref(n) => {
-			ctx._sym("*");
-			n.print(ctx);
-		}
-		Place::Global(name) => {
-			ctx.ident(name.clone())
-		}
-	};
+	}
 }
 
-fn print_expr<V: Print>(ctx: &mut Ctx, expr: &Expr<V>) {
-	print_expr_prec(ctx, expr, 0);
+impl<V: Print> Print for Expr<V> {
+	fn print(&self, ctx: &mut Ctx) {
+		self.print_prec(ctx, 0);
+	}
+}
 
-	fn print_expr_prec<V: Print>(ctx: &mut Ctx, expr: &Expr<V>, prec: u32) {
-		match expr {
+impl<V: Print> Expr<V> {
+	fn print_prec(&self, ctx: &mut Ctx, prec: u32) {
+		match self {
 			Expr::Value(l, value) => {
 				ctx.line(l);
 				ctx.value(value);
 			}
 			Expr::Var(l, place) => {
 				ctx.line(l);
-				print_place(ctx, place);
+				place.print(ctx);
 			}
 			Expr::Ref(l, n) => {
 				ctx.line(l);
@@ -586,18 +617,19 @@ fn print_expr<V: Print>(ctx: &mut Ctx, expr: &Expr<V>) {
 			Expr::Call(l, name, exprs) => {
 				ctx.line(l);
 				ctx.name(name);
-				ctx.arglist(exprs, print_expr);
+				exprs.print(ctx);
 			}
 			Expr::Syscall(l, a, b, exprs) => {
 				ctx.line(l);
 				ctx.token(format!("system[{a},{b}]"));
-				ctx.arglist(exprs, print_expr);
+				exprs.print(ctx);
 			}
 			Expr::Unop(l, unop, expr) => {
 				ctx.line(l);
 				if *unop == Unop::Neg && matches!(**expr, Expr::Value(..)) {
+					ctx._sym("-");
 					ctx.sym("(");
-					print_expr_prec(ctx, expr, 10);
+					expr.print_prec(ctx, 0);
 					ctx.sym_(")");
 				} else {
 					let op = match unop {
@@ -606,23 +638,29 @@ fn print_expr<V: Print>(ctx: &mut Ctx, expr: &Expr<V>) {
 						Unop::BitNot => "~",
 					};
 					ctx._sym(op);
-					print_expr_prec(ctx, expr, 10);
+					expr.print_prec(ctx, 10);
 				}
 			}
-			Expr::Binop(l, binop, expr, expr1) => {
+			Expr::Binop(l, binop, left, right) => {
 				let (op, op_prio) = binop_prio(*binop);
 				if op_prio < prec {
 					ctx._sym("(");
 				}
-				print_expr_prec(ctx, expr, op_prio);
+				left.print_prec(ctx, op_prio);
 				ctx.line(l);
 				ctx._sym_(op);
-				print_expr_prec(ctx, expr1, op_prio + 1);
+				right.print_prec(ctx, op_prio + 1);
 				if op_prio < prec {
 					ctx.sym_(")");
 				}
 			}
 		}
+	}
+}
+
+impl<V: Print> Print for Vec<Expr<V>> {
+	fn print(&self, ctx: &mut Ctx) {
+		ctx.arglist(self, Expr::print);
 	}
 }
 
