@@ -1,4 +1,7 @@
+mod cursor;
+
 use super::error::Errors;
+pub use cursor::Cursor;
 
 #[derive(Debug, Clone)]
 pub struct Tokens(Vec<RawToken>);
@@ -44,9 +47,18 @@ pub enum TokenKind {
 pub fn lex(src: &str) -> (Tokens, Errors) {
 	let mut lexer = Lex::new(src);
 	let mut tokens = Vec::new();
+	let dummy = RawToken {
+		start: 0,
+		end: 0,
+		line: None,
+		token: TokenKind::Punct('\0'),
+		matched: 0,
+	};
+	tokens.push(dummy.clone());
 	while let Some(token) = lexer.lex() {
 		tokens.push(token);
 	}
+	tokens.push(RawToken { start: lexer.pos as u32, end: lexer.pos as u32, ..dummy });
 	let mut errors = lexer.errors;
 
 	match_delims(&mut tokens, &mut errors);
