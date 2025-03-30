@@ -154,6 +154,10 @@ pub fn print(scena: &Scena) -> String {
 		ctx.set_space(Space::Block(1));
 	}
 
+	if !ctx.out.is_empty() {
+		ctx.out.push('\n');
+	}
+
 	ctx.out
 }
 
