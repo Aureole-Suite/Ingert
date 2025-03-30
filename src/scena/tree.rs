@@ -200,10 +200,13 @@ fn block(ctx: &mut Ctx, goto_allowed: GotoAllowed, mut depth: usize) -> Result<(
 }
 
 fn push_diverging(ctx: &mut Ctx, stmts: &mut Vec<Stmt>, stmt: Stmt) {
-	if ctx.pos < ctx.end && !matches!(ctx.gctx.stmts[ctx.pos], FlatStmt::Label(..)) {
-		stmts.push(Stmt::Block(vec![stmt]));
-	} else {
+	#[allow(clippy::if_same_then_else)]
+	if ctx.pos == ctx.end {
 		stmts.push(stmt);
+	} else if matches!(ctx.gctx.stmts[ctx.pos], FlatStmt::Label(..)) {
+		stmts.push(stmt);
+	} else {
+		stmts.push(Stmt::Block(vec![stmt]));
 	}
 }
 
