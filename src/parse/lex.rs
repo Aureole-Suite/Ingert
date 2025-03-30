@@ -57,6 +57,12 @@ pub fn lex(src: &str) -> (Tokens, Errors) {
 	}
 	let mut errors = lexer.errors;
 
+	match_delims(&mut tokens, &mut errors);
+
+	(Tokens(tokens), errors)
+}
+
+fn match_delims(tokens: &mut [RawToken], errors: &mut Errors) {
 	let mut stack = Vec::new();
 	for (i, token) in tokens.iter_mut().enumerate() {
 		match token.token {
@@ -86,8 +92,6 @@ pub fn lex(src: &str) -> (Tokens, Errors) {
 	for (_, _, open) in stack {
 		errors.fatal("unclosed delimiter", open.span());
 	}
-
-	(Tokens(tokens), errors)
 }
 
 struct Lex<'a> {
