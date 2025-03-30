@@ -7,6 +7,7 @@ pub struct Tokens(Vec<RawToken>);
 struct RawToken {
 	start: u32,
 	end: u32,
+	line: Option<u32>,
 	spacing: Spacing,
 	token: TokenKind,
 	matched: u32,
@@ -21,7 +22,11 @@ impl RawToken {
 impl std::fmt::Debug for RawToken {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		let space = match self.spacing { Spacing::Alone => "+", Spacing::Joined => "" };
-		f.write_fmt(format_args!("{}..{}@{:?}{}", self.start, self.end, self.token, space))?;
+		f.write_fmt(format_args!("{}..{}:", self.start, self.end))?;
+		if let Some(line) = self.line {
+			f.write_fmt(format_args!("{}@", line))?;
+		}
+		f.write_fmt(format_args!("{:?}{}", self.token, space))?;
 		if self.matched > 0 {
 			f.write_fmt(format_args!("~{}", self.matched))?;
 		}
@@ -150,10 +155,23 @@ impl Lex<'_> {
 
 	fn lex(&mut self) -> Option<RawToken> {
 		let start = self.pos as u32;
+		let line = self.lex_line();
 		let token = self.lex_token()?;
 		let end = self.pos as u32;
 		let spacing = self.skip_whitespace();
-		Some(RawToken { start, end, spacing, token, matched: 0 })
+		Some(RawToken { start, end, line, spacing, token, matched: 0 })
+	}
+
+	fn lex_line(&mut self) -> Option<u32> {
+		let start = self.pos;
+		while self.consume_if(|c| c.is_ascii_digit()) {}
+		if self.pos != start && self.consume("@") {
+			let line = self.src[start..self.pos - 1].parse().expect("valid line number");
+			Some(line)
+		} else {
+			self.pos = start;
+			None
+		}
 	}
 
 	fn lex_token(&mut self) -> Option<TokenKind> {

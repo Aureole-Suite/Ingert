@@ -35,6 +35,9 @@ fn main() {
 		let str = ingert::print::print(&scena);
 		std::fs::write("system.ing", &str).unwrap();
 
+		let tokens = ingert::parse::lex::lex(&str);
+		dbg!(tokens);
+
 		let scp2 = ingert::scena::compile(scena).unwrap();
 		similar_asserts::assert_eq!(scp, scp2);
 	}
