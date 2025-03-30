@@ -366,6 +366,7 @@ fn print_op(ctx: &mut Ctx, op: &Op) {
 			ctx.token(n.to_string());
 		}
 	};
+	ctx.sym_(";");
 }
 
 fn print_flat_stmt(ctx: &mut Ctx, stmt: &FlatStmt) {
