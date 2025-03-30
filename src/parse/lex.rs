@@ -58,9 +58,9 @@ pub fn lex(src: &str) -> (Tokens, Errors) {
 	let mut errors = lexer.errors;
 
 	let mut stack = Vec::new();
-	for token in &mut tokens {
+	for (i, token) in tokens.iter_mut().enumerate() {
 		match token.token {
-			TokenKind::Punct(o@('('|'['|'{')) => stack.push((o, token)),
+			TokenKind::Punct(o@('('|'['|'{')) => stack.push((i, o, token)),
 			TokenKind::Punct(c@(')'|']'|'}')) => {
 				let open_delim = match c {
 					')' => '(',
@@ -68,12 +68,12 @@ pub fn lex(src: &str) -> (Tokens, Errors) {
 					'}' => '{',
 					_ => unreachable!(),
 				};
-				if let Some((o, open)) = stack.pop() {
+				if let Some((j, o, open)) = stack.pop() {
 					if o != open_delim {
 						errors.fatal("mismatched delimiter", token.span())
 							.note("doesn't match", open.span());
 					}
-					let diff = token.start - open.start;
+					let diff = (i - j) as u32;
 					open.matched = diff;
 					token.matched = diff;
 				} else {
@@ -83,7 +83,7 @@ pub fn lex(src: &str) -> (Tokens, Errors) {
 			_ => {}
 		}
 	}
-	for (_, open) in stack {
+	for (_, _, open) in stack {
 		errors.fatal("unclosed delimiter", open.span());
 	}
 
