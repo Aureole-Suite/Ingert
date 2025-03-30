@@ -1,3 +1,5 @@
+use super::error::Errors;
+
 #[derive(Debug, Clone)]
 pub struct Tokens(Vec<RawToken>);
 
@@ -10,10 +12,20 @@ struct RawToken {
 	matched: u32,
 }
 
+impl RawToken {
+	fn span(&self) -> std::ops::Range<usize> {
+		self.start as usize..self.end as usize
+	}
+}
+
 impl std::fmt::Debug for RawToken {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		let space = match self.spacing { Spacing::Alone => "+", Spacing::Joined => "" };
-		f.write_fmt(format_args!("{}..{}@{:?}{}", self.start, self.end, self.token, space))
+		f.write_fmt(format_args!("{}..{}@{:?}{}", self.start, self.end, self.token, space))?;
+		if self.matched > 0 {
+			f.write_fmt(format_args!("~{}", self.matched))?;
+		}
+		Ok(())
     }
 }
 
@@ -39,40 +51,56 @@ pub enum TokenKind {
 	Punct(char),
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct Error {
-	kind: ErrorKind,
-	start: u32,
-	end: u32,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum ErrorKind {
-	InvalidIntLiteral,
-	InvalidFloatLiteral,
-	InvalidHexLiteral,
-	UnterminatedString,
-	BadEscape,
-}
-
-pub fn lex(src: &str) -> (Tokens, Vec<Error>) {
+pub fn lex(src: &str) -> (Tokens, Errors) {
 	let mut lexer = Lex::new(src);
 	let mut tokens = Vec::new();
 	while let Some(token) = lexer.lex() {
 		tokens.push(token);
 	}
-	(Tokens(tokens), lexer.errors)
+	let mut errors = lexer.errors;
+
+	let mut stack = Vec::new();
+	for token in &mut tokens {
+		match token.token {
+			TokenKind::Punct(o@('('|'['|'{')) => stack.push((o, token)),
+			TokenKind::Punct(c@(')'|']'|'}')) => {
+				let open_delim = match c {
+					')' => '(',
+					']' => '[',
+					'}' => '{',
+					_ => unreachable!(),
+				};
+				if let Some((o, open)) = stack.pop() {
+					if o != open_delim {
+						errors.fatal("mismatched delimiter", token.span())
+							.note("doesn't match", open.span());
+					}
+					let diff = token.start - open.start;
+					open.matched = diff;
+					token.matched = diff;
+				} else {
+					errors.fatal("unmatched delimiter", token.span());
+				}
+			}
+			_ => {}
+		}
+	}
+	for (_, open) in stack {
+		errors.fatal("unclosed delimiter", open.span());
+	}
+
+	(Tokens(tokens), errors)
 }
 
 struct Lex<'a> {
 	src: &'a str,
 	pos: usize,
-	errors: Vec<Error>,
+	errors: Errors,
 }
 
 impl Lex<'_> {
 	fn new(src: &str) -> Lex<'_> {
-		let mut lex = Lex { src, pos: 0, errors: Vec::new() };
+		let mut lex = Lex { src, pos: 0, errors: Errors::new() };
 		lex.skip_whitespace();
 		lex
 	}
@@ -127,10 +155,6 @@ impl Lex<'_> {
 		}
 	}
 
-	fn error(&mut self, start: usize, kind: ErrorKind) {
-		self.errors.push(Error { kind, start: start as u32, end: self.pos as u32 });
-	}
-
 	fn lex(&mut self) -> Option<RawToken> {
 		let start = self.pos as u32;
 		let token = self.lex_token()?;
@@ -151,7 +175,7 @@ impl Lex<'_> {
 			let numstart = self.pos;
 			while self.consume_if(|c| c.is_ascii_hexdigit()) {}
 			let n = if self.pos == numstart {
-				self.error(start, ErrorKind::InvalidHexLiteral);
+				self.errors.error("invalid hex literal", start..self.pos);
 				0
 			} else {
 				i64::from_str_radix(&self.src[numstart..self.pos], 16).expect("valid hex literal")
@@ -174,7 +198,7 @@ impl Lex<'_> {
 				match self.src[start..self.pos].parse() {
 					Ok(f) => return Some(TokenKind::Float(f)),
 					Err(_) => {
-						self.error(start, ErrorKind::InvalidFloatLiteral);
+						self.errors.error("invalid float literal", start..self.pos);
 						return Some(TokenKind::Float(0.0))
 					}
 				}
@@ -182,7 +206,7 @@ impl Lex<'_> {
 				match self.src[start..self.pos].parse() {
 					Ok(n) => return Some(TokenKind::Int(n)),
 					Err(_) => {
-						self.error(start, ErrorKind::InvalidIntLiteral);
+						self.errors.error("invalid int literal", start..self.pos);
 						return Some(TokenKind::Int(0))
 					}
 				}
@@ -220,12 +244,12 @@ impl Lex<'_> {
 					if let Some(c) = self.lex_escape() {
 						s.push(c);
 					} else {
-						self.error(escstart, ErrorKind::BadEscape);
+						self.errors.error("invalid escape sequence", escstart..self.pos);
 					}
 				}
 				Some(c) => s.push(c),
 				None => {
-					self.error(start, ErrorKind::UnterminatedString);
+					self.errors.error("unterminated string", start..self.pos);
 					break;
 				}
 			}
@@ -257,8 +281,16 @@ impl Lex<'_> {
 mod test {
 	#[test]
 	fn test() {
+		unsafe { compact_debug::enable(true) };
 		dbg!(super::lex(r#"foo bar _おはよう　123 0x123 -123 1.23 -1.23 "foo\nbar" (`foo\`bar`)"#));
-		dbg!(super::lex(r#"- "#));
+		dbg!(super::lex(r#"-.0"#));
+		let delims_str = "(()[]{})";
+		dbg!(super::lex(delims_str));
+		for i in 0..delims_str.len() {
+			let mut s = delims_str.to_owned();
+			s.replace_range(i..i+1, "");
+			dbg!(super::lex(&s));
+		}
 		panic!();
 	}
 }

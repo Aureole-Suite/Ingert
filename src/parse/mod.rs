@@ -1,1 +1,2 @@
 mod lex;
+mod error;
