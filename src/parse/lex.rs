@@ -156,6 +156,9 @@ impl Lex<'_> {
 	fn lex(&mut self) -> Option<RawToken> {
 		let start = self.pos as u32;
 		let line = self.lex_line();
+		if line.is_some() {
+			self.skip_whitespace();
+		}
 		let token = self.lex_token()?;
 		let end = self.pos as u32;
 		let spacing = self.skip_whitespace();
@@ -302,6 +305,7 @@ mod test {
 			s.replace_range(i..i+1, "");
 			dbg!(super::lex(&s));
 		}
+		dbg!(super::lex(r#"123@ 123"#));
 		panic!();
 	}
 }
