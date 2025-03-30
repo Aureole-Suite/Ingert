@@ -146,9 +146,9 @@ fn block(ctx: &mut Ctx, goto_allowed: GotoAllowed, mut depth: usize) -> Result<(
 			FlatStmt::Label(_) => {}
 			FlatStmt::Expr(e) => stmts.push(Stmt::Expr(e.add(depth))),
 			FlatStmt::Set(l, v, e) => stmts.push(Stmt::Set(*l, v.add(depth), e.add(depth))),
-			FlatStmt::Return(l, e, _) => push_diverging(ctx, &mut stmts, Stmt::Return(*l, e.add(depth))),
+			FlatStmt::Return(l, e, _) => push_diverging(ctx, &mut stmts, Stmt::Return(*l, e.add(depth)), goto_allowed),
 			FlatStmt::Debug(l, e) => stmts.push(Stmt::Debug(*l, e.add(depth))),
-			FlatStmt::Tailcall(l, n, e, _) => push_diverging(ctx, &mut stmts, Stmt::Tailcall(*l, n.clone(), e.add(depth))),
+			FlatStmt::Tailcall(l, n, e, _) => push_diverging(ctx, &mut stmts, Stmt::Tailcall(*l, n.clone(), e.add(depth)), goto_allowed),
 
 			FlatStmt::If(l, e, label) => {
 				let start = ctx.pos - 1;
@@ -163,8 +163,8 @@ fn block(ctx: &mut Ctx, goto_allowed: GotoAllowed, mut depth: usize) -> Result<(
 					.context(decompile::Block { what: "switch", start, end })?
 			},
 
-			FlatStmt::Goto(l, _) if Some(*l) == ctx.brk => push_diverging(ctx, &mut stmts, Stmt::Break),
-			FlatStmt::Goto(l, _) if Some(*l) == ctx.cont => push_diverging(ctx, &mut stmts, Stmt::Continue),
+			FlatStmt::Goto(l, _) if Some(*l) == ctx.brk => push_diverging(ctx, &mut stmts, Stmt::Break, goto_allowed),
+			FlatStmt::Goto(l, _) if Some(*l) == ctx.cont => push_diverging(ctx, &mut stmts, Stmt::Continue, goto_allowed),
 			FlatStmt::Goto(l, _) => {
 				let ok = match goto_allowed {
 					GotoAllowed::Anywhere => true,
@@ -199,15 +199,29 @@ fn block(ctx: &mut Ctx, goto_allowed: GotoAllowed, mut depth: usize) -> Result<(
 	Ok((stmts, None))
 }
 
-fn push_diverging(ctx: &mut Ctx, stmts: &mut Vec<Stmt>, stmt: Stmt) {
-	#[allow(clippy::if_same_then_else)]
-	if ctx.pos == ctx.end {
-		stmts.push(stmt);
-	} else if matches!(ctx.gctx.stmts[ctx.pos], FlatStmt::Label(..)) {
-		stmts.push(stmt);
-	} else {
+fn push_diverging(ctx: &Ctx, stmts: &mut Vec<Stmt>, stmt: Stmt, goto_allowed: GotoAllowed) {
+	if needs_wrap(ctx, goto_allowed) {
 		stmts.push(Stmt::Block(vec![stmt]));
+	} else {
+		stmts.push(stmt);
 	}
+}
+
+fn needs_wrap(ctx: &Ctx, goto_allowed: GotoAllowed) -> bool {
+	if ctx.pos == ctx.end {
+		return false
+	}
+	if matches!(ctx.gctx.stmts[ctx.pos], FlatStmt::Goto(..)) {
+		match goto_allowed {
+			GotoAllowed::Anywhere => return false,
+			GotoAllowed::Yes if ctx.pos + 1 == ctx.end => return false,
+			_ => {}
+		}
+	}
+	if matches!(ctx.gctx.stmts[ctx.pos], FlatStmt::Label(..)) {
+		return false
+	}
+	true
 }
 
 fn parse_if(
