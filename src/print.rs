@@ -111,29 +111,6 @@ impl Ctx {
 		self._sym_("}");
 	}
 
-	fn value(&mut self, value: &Value) {
-		match value {
-			Value::Int(v) => self.token(format!("{v}")),
-			Value::Float(v) => self.token(format!("{v:?}")),
-			Value::String(v) => self.token(format!("{v:?}")),
-		}
-	}
-
-	fn name(&mut self, name: &Name) {
-		if let Some(local) = name.as_local() {
-			self.ident(local.clone());
-		} else {
-			self.ident(name.0.clone());
-			self.sym(".");
-			self.ident(name.1.clone());
-		}
-	}
-
-	fn label(&mut self, label: &Label) {
-		self._sym("$");
-		self.ident(format!("L{}", label.0));
-	}
-
 	fn line(&mut self, line: &Line) {
 		if let Some(line) = line {
 			self.token(format!("{line}"));
@@ -174,7 +151,7 @@ fn print_function(ctx: &mut Ctx, name: &str, f: &Function) {
 
 		if let Some(default) = &arg.default {
 			ctx._sym_("=");
-			ctx.value(default);
+			default.print(ctx);
 		}
 	});
 
@@ -225,11 +202,11 @@ impl Print for Call {
 	fn print(&self, ctx: &mut Ctx) {
 		match &self.kind {
 			CallKind::Normal(name) => {
-				ctx.name(name);
+				name.print(ctx);
 			}
 			CallKind::Tailcall(name) => {
 				ctx.word("become");
-				ctx.name(name);
+				name.print(ctx);
 			}
 			CallKind::Syscall(a, b) => {
 				ctx.token(format!("system[{},{}]", a, b));
@@ -243,7 +220,7 @@ impl Print for Call {
 impl Print for CallArg {
     fn print(&self, ctx: &mut Ctx) {
 		match self {
-			CallArg::Value(value) => ctx.value(value),
+			CallArg::Value(value) => value.print(ctx),
 			CallArg::Call => ctx.word("call"),
 			CallArg::Var => ctx.word("var"),
 			CallArg::Expr => ctx.word("expr"),
@@ -256,14 +233,14 @@ impl Print for Op {
 		match self {
 			Op::Label(label) => {
 				ctx.indent -= 1;
-				ctx.label(label);
+				label.print(ctx);
 				ctx.sym_(":");
 				ctx.indent += 1;
 				return;
 			}
 			Op::Push(value) => {
 				ctx.word("push");
-				ctx.value(value);
+				value.print(ctx);
 			}
 			Op::Pop(n) => {
 				ctx.word("pop");
@@ -336,15 +313,15 @@ impl Print for Op {
 			}
 			Op::Jnz(label) => {
 				ctx.word("jnz");
-				ctx.label(label);
+				label.print(ctx);
 			}
 			Op::Jz(label) => {
 				ctx.word("jz");
-				ctx.label(label);
+				label.print(ctx);
 			}
 			Op::Goto(label) => {
 				ctx.word("goto");
-				ctx.label(label);
+				label.print(ctx);
 			}
 			Op::CallLocal(b) => {
 				ctx.word("call_local");
@@ -352,12 +329,12 @@ impl Print for Op {
 			}
 			Op::CallExtern(name, n) => {
 				ctx.word("call_extern");
-				ctx.name(name);
+				name.print(ctx);
 				ctx.token(n.to_string());
 			}
 			Op::CallTail(name, b) => {
 				ctx.word("call_tail");
-				ctx.name(name);
+				name.print(ctx);
 				ctx.token(b.to_string());
 			}
 			Op::CallSystem(a, b, n) => {
@@ -368,11 +345,11 @@ impl Print for Op {
 			}
 			Op::PrepareCallLocal(label) => {
 				ctx.word("prepare_call_local");
-				ctx.label(label);
+				label.print(ctx);
 			}
 			Op::PrepareCallExtern(label) => {
 				ctx.word("prepare_call_extern");
-				ctx.label(label);
+				label.print(ctx);
 			}
 			Op::Return => {
 				ctx.word("return");
@@ -395,7 +372,7 @@ impl Print for FlatStmt {
 		match self {
 			FlatStmt::Label(label) => {
 				ctx.indent -= 1;
-				ctx.label(label);
+				label.print(ctx);
 				ctx.sym_(":");
 				ctx.indent += 1;
 				return;
@@ -420,7 +397,7 @@ impl Print for FlatStmt {
 				ctx.line(l);
 				ctx.word("if");
 				expr.print(ctx);
-				ctx.label(label);
+				label.print(ctx);
 			}
 			FlatStmt::Goto(label, pop) => {
 				if *pop != 0 {
@@ -428,7 +405,7 @@ impl Print for FlatStmt {
 				} else {
 					ctx.word("goto");
 				}
-				ctx.label(label);
+				label.print(ctx);
 			}
 			FlatStmt::Switch(l, expr, items, label) => {
 				ctx.line(l);
@@ -437,10 +414,10 @@ impl Print for FlatStmt {
 				ctx.block(items, |(value, label), ctx| {
 					ctx.token(value.to_string());
 					ctx._sym_("=>");
-					ctx.label(label);
+					label.print(ctx);
 					ctx.sym_(";");
 				});
-				ctx.label(label);
+				label.print(ctx);
 			}
 			FlatStmt::PushVar(l) => {
 				ctx.line(l);
@@ -457,7 +434,7 @@ impl Print for FlatStmt {
 			FlatStmt::Tailcall(l, name, exprs, pop) => {
 				ctx.line(l);
 				ctx.token(format!("tailcall[{pop}]"));
-				ctx.name(name);
+				name.print(ctx);
 				exprs.print(ctx);
 			}
 		}
@@ -567,7 +544,7 @@ impl Print for Stmt {
 			Stmt::Tailcall(l, name, exprs) => {
 				ctx.line(l);
 				ctx.word("tailcall");
-				ctx.name(name);
+				name.print(ctx);
 				exprs.print(ctx);
 				ctx.sym_(";");
 			}
@@ -603,7 +580,7 @@ impl<V: Print> Expr<V> {
 		match self {
 			Expr::Value(l, value) => {
 				ctx.line(l);
-				ctx.value(value);
+				value.print(ctx);
 			}
 			Expr::Var(l, place) => {
 				ctx.line(l);
@@ -616,7 +593,7 @@ impl<V: Print> Expr<V> {
 			}
 			Expr::Call(l, name, exprs) => {
 				ctx.line(l);
-				ctx.name(name);
+				name.print(ctx);
 				exprs.print(ctx);
 			}
 			Expr::Syscall(l, a, b, exprs) => {
@@ -694,5 +671,34 @@ impl Print for Var {
 impl Print for FlatVar {
 	fn print(&self, ctx: &mut Ctx) {
 		ctx.ident(format!("var{}", self.0));
+	}
+}
+
+impl Print for Value {
+	fn print(&self, ctx: &mut Ctx) {
+		match self {
+			Value::Int(v) => ctx.token(format!("{v}")),
+			Value::Float(v) => ctx.token(format!("{v:?}")),
+			Value::String(v) => ctx.token(format!("{v:?}")),
+		}
+	}
+}
+
+impl Print for Name {
+	fn print(&self, ctx: &mut Ctx) {
+		if let Some(local) = self.as_local() {
+			ctx.ident(local.clone());
+		} else {
+			ctx.ident(self.0.clone());
+			ctx.sym(".");
+			ctx.ident(self.1.clone());
+		}
+	}
+}
+
+impl Print for Label {
+	fn print(&self, ctx: &mut Ctx) {
+		ctx._sym("$");
+		ctx.ident(format!("L{}", self.0));
 	}
 }
