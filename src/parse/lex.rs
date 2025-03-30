@@ -154,15 +154,15 @@ impl Lex<'_> {
 	}
 
 	fn lex(&mut self) -> Option<RawToken> {
-		let start = self.pos as u32;
+		let start = self.pos;
 		let line = self.lex_line();
-		if line.is_some() {
-			self.skip_whitespace();
+		if line.is_some() && self.skip_whitespace() == Spacing::Alone {
+			self.errors.warning("line number should not be followed by whitespace", start..self.pos);
 		}
 		let token = self.lex_token()?;
-		let end = self.pos as u32;
+		let end = self.pos;
 		let spacing = self.skip_whitespace();
-		Some(RawToken { start, end, line, spacing, token, matched: 0 })
+		Some(RawToken { start: start as u32, end: end as u32, line, spacing, token, matched: 0 })
 	}
 
 	fn lex_line(&mut self) -> Option<u32> {
