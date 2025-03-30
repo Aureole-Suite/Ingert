@@ -3,10 +3,13 @@ mod line;
 
 use std::collections::HashMap;
 
-use crate::scp::{Binop, Value, Label, Op};
-use super::{Expr, FlatStmt, Name, Place};
+use crate::scp::{Binop, Label, Op, StackSlot, Value};
+use super::{FlatStmt, Name};
 use ctx::{Ctx, StackVal};
 use snafu::OptionExt as _;
+
+type Expr = super::Expr<super::FlatVar>;
+type Place = super::Place<super::FlatVar>;
 
 impl From<Expr> for StackVal {
 	fn from(e: Expr) -> Self {
@@ -326,8 +329,8 @@ pub fn compile(stmts: &[FlatStmt]) -> Result<Vec<Op>, CompileError> {
 				ctx.line(*l);
 				compile_expr(&mut ctx, expr, 0);
 				match place {
-					Place::Var(n) => ctx.out.push(Op::SetVar(crate::scp::StackSlot(*n))),
-					Place::Deref(n) => ctx.out.push(Op::SetRef(crate::scp::StackSlot(*n))),
+					Place::Var(n) => ctx.out.push(Op::SetVar(StackSlot(n.0))),
+					Place::Deref(n) => ctx.out.push(Op::SetRef(StackSlot(n.0))),
 					Place::Global(n) => ctx.out.push(Op::SetGlobal(n.clone())),
 				}
 			}
@@ -420,14 +423,14 @@ fn compile_expr(ctx: &mut OutCtx, expr: &Expr, depth: u32) {
 		Expr::Var(l, place) => {
 			ctx.line(*l);
 			match place {
-				Place::Var(n) => ctx.out.push(Op::GetVar(crate::scp::StackSlot(*n + depth))),
-				Place::Deref(n) => ctx.out.push(Op::GetRef(crate::scp::StackSlot(*n + depth))),
+				Place::Var(n) => ctx.out.push(Op::GetVar(StackSlot(n.0 + depth))),
+				Place::Deref(n) => ctx.out.push(Op::GetRef(StackSlot(n.0 + depth))),
 				Place::Global(n) => ctx.out.push(Op::GetGlobal(n.clone())),
 			}
 		}
 		Expr::Ref(l, n) => {
 			ctx.line(*l);
-			ctx.out.push(Op::PushRef(crate::scp::StackSlot(*n + depth)));
+			ctx.out.push(Op::PushRef(StackSlot(n.0 + depth)));
 		}
 		Expr::Call(l, name, exprs) => {
 			ctx.line(*l);

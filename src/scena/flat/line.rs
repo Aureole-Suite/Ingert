@@ -1,6 +1,6 @@
-use crate::scena::{Expr, FlatStmt, Stmt, Line};
+use crate::scena::{FlatStmt, Stmt, Expr, Line, FlatVar};
 
-impl Expr {
+impl<V> Expr<V> {
 	pub fn line(&self) -> Option<Line> {
 		match self {
 			Self::Value(l, _) => Some(*l),
@@ -138,7 +138,7 @@ pub fn sink(stmt: &mut FlatStmt) {
 	sink_lines(lines);
 }
 
-fn sink_expr<'a>(expr: &'a mut Expr, lines: &mut Vec<&'a mut Line>) {
+fn sink_expr<'a>(expr: &'a mut Expr<FlatVar>, lines: &mut Vec<&'a mut Line>) {
 	match expr {
 		Expr::Value(l, _) => {
 			lines.push(l);
@@ -167,7 +167,7 @@ fn sink_expr<'a>(expr: &'a mut Expr, lines: &mut Vec<&'a mut Line>) {
 	}
 }
 
-fn sink_exprs<'a>(exprs: &'a mut [Expr], lines: &mut Vec<&'a mut Line>) {
+fn sink_exprs<'a>(exprs: &'a mut [Expr<FlatVar>], lines: &mut Vec<&'a mut Line>) {
 	for expr in exprs.iter_mut().rev() {
 		sink_lines(lines);
 		sink_expr(expr, lines);

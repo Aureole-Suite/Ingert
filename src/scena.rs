@@ -187,37 +187,40 @@ pub enum Body {
 pub type Line = Option<u16>;
 
 #[derive(Clone, PartialEq)]
-pub enum Expr {
+pub enum Expr<V=Var> {
 	Value(Line, Value),
-	Var(Line, Place),
-	Ref(Line, u32),
-	Call(Line, Name, Vec<Expr>),
-	Syscall(Line, u8, u8, Vec<Expr>),
-	Unop(Line, Unop, Box<Expr>),
-	Binop(Line, Binop, Box<Expr>, Box<Expr>),
+	Var(Line, Place<V>),
+	Ref(Line, V),
+	Call(Line, Name, Vec<Expr<V>>),
+	Syscall(Line, u8, u8, Vec<Expr<V>>),
+	Unop(Line, Unop, Box<Expr<V>>),
+	Binop(Line, Binop, Box<Expr<V>>, Box<Expr<V>>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum Place {
-	Var(u32),
-	Deref(u32),
+pub enum Place<V=Var> {
+	Var(V),
+	Deref(V),
 	Global(String),
 }
 
 #[derive(Clone, PartialEq)]
 pub enum FlatStmt {
 	Label(Label),
-	Expr(Expr),
-	Set(Line, Place, Expr),
-	Return(Line, Option<Expr>, usize),
-	If(Line, Expr, Label),
+	Expr(Expr<FlatVar>),
+	Set(Line, Place<FlatVar>, Expr<FlatVar>),
+	Return(Line, Option<Expr<FlatVar>>, usize),
+	If(Line, Expr<FlatVar>, Label),
 	Goto(Label, usize),
-	Switch(Line, Expr, Vec<(i32, Label)>, Label),
+	Switch(Line, Expr<FlatVar>, Vec<(i32, Label)>, Label),
 	PushVar(Line),
 	PopVar(usize),
-	Debug(Line, Vec<Expr>),
-	Tailcall(Line, Name, Vec<Expr>, usize),
+	Debug(Line, Vec<Expr<FlatVar>>),
+	Tailcall(Line, Name, Vec<Expr<FlatVar>>, usize),
 }
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct FlatVar(pub u32);
 
 #[derive(Clone, PartialEq)]
 pub enum Stmt {
@@ -230,10 +233,13 @@ pub enum Stmt {
 	Block(Vec<Stmt>),
 	Break,
 	Continue,
-	PushVar(Line, u32, Option<Expr>),
+	PushVar(Line, Var, Option<Expr>),
 	Debug(Line, Vec<Expr>),
 	Tailcall(Line, Name, Vec<Expr>),
 }
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Var(pub u32);
 
 mod fmt;
 

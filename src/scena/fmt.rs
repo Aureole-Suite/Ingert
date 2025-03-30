@@ -8,7 +8,7 @@ fn line<'a, 'b>(f: &'a mut Formatter<'b>, l: &Option<u16>) -> std::result::Resul
 	Ok(f)
 }
 
-fn write_args(f: &mut Formatter<'_>, name: &str, args: &[Expr]) -> Result {
+fn write_args<V: Debug>(f: &mut Formatter<'_>, name: &str, args: &[Expr<V>]) -> Result {
 	let mut t = f.debug_tuple(name);
 	for arg in args {
 		t.field(arg);
@@ -16,7 +16,7 @@ fn write_args(f: &mut Formatter<'_>, name: &str, args: &[Expr]) -> Result {
 	t.finish()
 }
 
-impl Debug for Expr {
+impl<V: Debug> Debug for Expr<V> {
 	fn fmt(&self, f: &mut Formatter<'_>) -> Result {
 		match self {
 			Self::Value(l, v) => {
@@ -100,3 +100,16 @@ impl Debug for Stmt {
 		}
 	}
 }
+
+impl Debug for FlatVar {
+	fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+		f.write_fmt(format_args!("var{}", self.0))
+	}
+}
+
+impl Debug for Var {
+	fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+		f.write_fmt(format_args!("var{}", self.0))
+	}
+}
+

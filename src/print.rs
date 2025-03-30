@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 
 use crate::scp::{CallArg, CallKind, Label, Op};
-use crate::scena::{ArgType, Binop, Body, Called, Expr, FlatStmt, Function, Line, Name, Place, Scena, Stmt, Unop, Value};
+use crate::scena::{ArgType, Binop, Body, Called, Expr, FlatStmt, FlatVar, Function, Line, Name, Place, Scena, Stmt, Unop, Value, Var};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
 enum Space {
@@ -230,6 +230,10 @@ fn print_function(ctx: &mut Ctx, name: &str, f: &Function) {
 		}
 		Body::Tree(stmts) => print_block(ctx, stmts)
 	}
+}
+
+trait Print {
+	fn print(&self, ctx: &mut Ctx);
 }
 
 fn print_op(ctx: &mut Ctx, op: &Op) {
@@ -546,17 +550,14 @@ fn print_stmt(ctx: &mut Ctx, stmt: &Stmt) {
 	}
 }
 
-fn print_place(ctx: &mut Ctx, place: &Place) {
-	fn var(v: u32) -> String {
-		format!("var{v}")
-	}
+fn print_place<V: Print>(ctx: &mut Ctx, place: &Place<V>) {
 	match place {
 		Place::Var(n) => {
-			ctx.ident(var(*n));
+			n.print(ctx);
 		}
 		Place::Deref(n) => {
 			ctx._sym("*");
-			ctx.ident(var(*n));
+			n.print(ctx);
 		}
 		Place::Global(name) => {
 			ctx.ident(name.clone())
@@ -564,10 +565,10 @@ fn print_place(ctx: &mut Ctx, place: &Place) {
 	};
 }
 
-fn print_expr(ctx: &mut Ctx, expr: &Expr) {
+fn print_expr<V: Print>(ctx: &mut Ctx, expr: &Expr<V>) {
 	print_expr_prec(ctx, expr, 0);
 
-	fn print_expr_prec(ctx: &mut Ctx, expr: &Expr, prec: u32) {
+	fn print_expr_prec<V: Print>(ctx: &mut Ctx, expr: &Expr<V>, prec: u32) {
 		match expr {
 			Expr::Value(l, value) => {
 				ctx.line(l);
@@ -580,7 +581,7 @@ fn print_expr(ctx: &mut Ctx, expr: &Expr) {
 			Expr::Ref(l, n) => {
 				ctx.line(l);
 				ctx._sym("&");
-				print_place(ctx, &Place::Var(*n));
+				n.print(ctx);
 			}
 			Expr::Call(l, name, exprs) => {
 				ctx.line(l);
@@ -643,5 +644,17 @@ fn binop_prio(op: Binop) -> (&'static str, u32) {
 		Le => ("<=", 3),
 		BoolAnd => ("&&", 2),
 		BoolOr => ("||", 1),
+	}
+}
+
+impl Print for Var {
+	fn print(&self, ctx: &mut Ctx) {
+		ctx.ident(format!("var{}", self.0));
+	}
+}
+
+impl Print for FlatVar {
+	fn print(&self, ctx: &mut Ctx) {
+		ctx.ident(format!("var{}", self.0));
 	}
 }

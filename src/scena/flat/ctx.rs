@@ -1,6 +1,6 @@
 use snafu::OptionExt as _;
 
-use crate::scp::{Op, StackSlot, Label};
+use crate::{scena::FlatVar, scp::{Label, Op, StackSlot}};
 use super::{DecompileError, error, Expr, FlatStmt};
 
 #[derive(Debug, PartialEq)]
@@ -46,12 +46,12 @@ impl<'a> Ctx<'a> {
 		&self.code[pos..]
 	}
 
-	pub fn var(&self, s: StackSlot) -> Result<u32, DecompileError> {
+	pub fn var(&self, s: StackSlot) -> Result<FlatVar, DecompileError> {
 		let len = self.stack.len() as u32;
 		if s.0 <= len {
 			return error::ReadStack { slot: s.0, len }.fail();
 		};
-		Ok(s.0 - len)
+		Ok(FlatVar(s.0 - len))
 	}
 
 	pub fn push(&mut self, val: impl Into<StackVal>) -> Result<(), DecompileError> {

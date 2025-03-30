@@ -1,10 +1,10 @@
 use indexmap::IndexMap;
 use snafu::{OptionExt as _, ResultExt as _};
 
-use super::{Expr, FlatStmt, Label, Line, Place, Stmt};
+use super::{Expr, FlatStmt, FlatVar, Label, Line, Place, Stmt, Var};
 
 mod depth;
-use depth::Adjust as _;
+use depth::{MapToFlat, MapToTree};
 
 #[derive(Debug, snafu::Snafu)]
 #[snafu(module(decompile), context(suffix(false)))]
@@ -181,14 +181,14 @@ fn block(ctx: &mut Ctx, goto_allowed: GotoAllowed, mut depth: usize) -> Result<(
 			FlatStmt::PushVar(l) => {
 				let e = if 
 					ctx.pos < ctx.end
-					&& let FlatStmt::Set(None, Place::Var(1), e) = &ctx.gctx.stmts[ctx.pos]
+					&& let FlatStmt::Set(None, Place::Var(FlatVar(1)), e) = &ctx.gctx.stmts[ctx.pos]
 				{
 					ctx.next();
 					Some(e.add(depth + 1))
 				} else {
 					None
 				};
-				stmts.push(Stmt::PushVar(*l, depth as u32, e));
+				stmts.push(Stmt::PushVar(*l, Var(depth as u32), e));
 				depth += 1;
 			}
 			FlatStmt::PopVar(n) => {
@@ -450,11 +450,11 @@ fn compile_block(
 				}
 			}
 			Stmt::PushVar(l, d, e) => {
-				snafu::ensure!(depth == *d as usize, compile::VarDepth { depth, declared: *d });
+				snafu::ensure!(depth == d.0 as usize, compile::VarDepth { depth, declared: d.0 });
 				ctx.push(FlatStmt::PushVar(*l));
 				depth += 1;
 				if let Some(e) = e {
-					ctx.push(FlatStmt::Set(None, Place::Var(1), e.sub(depth)));
+					ctx.push(FlatStmt::Set(None, Place::Var(FlatVar(1)), e.sub(depth)));
 				}
 			}
 		}

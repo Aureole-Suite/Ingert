@@ -8,7 +8,7 @@ type Functions = indexmap::IndexMap<String, Vec<Arg>>;
 
 trait Visit {
 	type Error;
-	fn call(&mut self, kind: CallKind, args: &mut Vec<Expr>) -> Result<(), Self::Error>;
+	fn call<V>(&mut self, kind: CallKind, args: &mut Vec<Expr<V>>) -> Result<(), Self::Error>;
 }
 
 struct Visitor<F>(F);
@@ -111,7 +111,7 @@ impl<F: Visit> Visitor<F> {
 		Ok(())
 	}
 
-	fn expr(&mut self, expr: &mut Expr) -> Result<(), F::Error> {
+	fn expr<V>(&mut self, expr: &mut Expr<V>) -> Result<(), F::Error> {
 		match expr {
 			Expr::Value(_, _) => {}
 			Expr::Var(_, _) => {}
@@ -133,7 +133,7 @@ impl<F: Visit> Visitor<F> {
 		Ok(())
 	}
 
-	fn call(&mut self, kind: CallKind, args: &mut Vec<Expr>) -> Result<(), F::Error> {
+	fn call<V>(&mut self, kind: CallKind, args: &mut Vec<Expr<V>>) -> Result<(), F::Error> {
 		self.0.call(kind, args)?;
 		for expr in args {
 			self.expr(expr)?;
@@ -142,7 +142,7 @@ impl<F: Visit> Visitor<F> {
 	}
 }
 
-fn code_args<'a>(kind: &'a CallKind, args: &[Expr]) -> (Option<&'a str>, Vec<CallArg>) {
+fn code_args<'a, V>(kind: &'a CallKind, args: &[Expr<V>]) -> (Option<&'a str>, Vec<CallArg>) {
 	let name = if let CallKind::Normal(name) = kind  {
 		name.as_local().map(|s| s.as_str())
 	} else {
@@ -217,7 +217,7 @@ impl Apply<'_> {
 impl Visit for Apply<'_> {
 	type Error = ApplyError;
 
-	fn call(&mut self, kind: CallKind, args: &mut Vec<Expr>) -> Result<(), ApplyError> {
+	fn call<V>(&mut self, kind: CallKind, args: &mut Vec<Expr<V>>) -> Result<(), ApplyError> {
 		self.pos += 1;
 		let Some(called) = self.called.get(self.pos - 1) else { return Ok(()) }; // it'll error on finish
 
@@ -322,7 +322,7 @@ impl Infer<'_> {
 impl Visit for Infer<'_> {
 	type Error = InferError;
 
-	fn call(&mut self, kind: CallKind, args: &mut Vec<Expr>) -> Result<(), InferError> {
+	fn call<V>(&mut self, kind: CallKind, args: &mut Vec<Expr<V>>) -> Result<(), InferError> {
 		let (name, code_args) = code_args(&kind, args);
 
 		if let Some(name) = name {
