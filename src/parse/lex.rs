@@ -35,13 +35,6 @@ pub enum Spacing {
 	Joined,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Delimiter {
-	Paren,
-	Brace,
-	Bracket,
-}
-
 #[derive(Debug, Clone)]
 pub enum TokenKind {
 	Ident(Box<str>),
