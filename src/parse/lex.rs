@@ -29,15 +29,15 @@ impl std::fmt::Debug for RawToken {
 			f.write_fmt(format_args!("~{}", self.matched))?;
 		}
 		Ok(())
-    }
+	}
 }
 
 #[derive(Debug, Clone)]
 pub enum TokenKind {
 	Ident(Box<str>),
 	String(Box<str>),
-	Int(i64),
-	Float(f64),
+	Int(i32),
+	Float(f32),
 	Punct(char),
 }
 
@@ -180,13 +180,13 @@ impl Lex<'_> {
 		if self.consume("0x") {
 			let numstart = self.pos;
 			while self.consume_if(|c| c.is_ascii_hexdigit()) {}
-			let n = if self.pos == numstart {
-				self.errors.error("invalid hex literal", start..self.pos);
-				0
-			} else {
-				i64::from_str_radix(&self.src[numstart..self.pos], 16).expect("valid hex literal")
-			};
-			return Some(TokenKind::Int(n))
+			match i32::from_str_radix(&self.src[numstart..self.pos], 16) {
+				Ok(n) => return Some(TokenKind::Int(n)),
+				Err(_) => {
+					self.errors.error("invalid hex literal", start..self.pos);
+					return Some(TokenKind::Int(0))
+				}
+			}
 		}
 
 		if matches!(self.peek_char(), Some('-' | '0'..='9')) {
