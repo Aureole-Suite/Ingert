@@ -3,7 +3,7 @@ use snafu::OptionExt as _;
 use crate::scp::{Op, StackSlot, Label};
 use super::{DecompileError, error, Expr, FlatStmt};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum StackVal {
 	RetAddr(Label),
 	RetMisc,

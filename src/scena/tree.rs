@@ -3,6 +3,9 @@ use snafu::{OptionExt as _, ResultExt as _};
 
 use super::{Expr, FlatStmt, Label, Line, Stmt};
 
+mod depth;
+use depth::Adjust as _;
+
 #[derive(Debug, snafu::Snafu)]
 #[snafu(module(decompile), context(suffix(false)))]
 pub enum DecompileError {
@@ -25,8 +28,6 @@ pub enum DecompileError {
 	UnsortedSwitch,
 	#[snafu(display("unexpected jump to {label:?}"))]
 	UnexpectedJump { label: Label },
-	#[snafu(display("pop var"))]
-	PopVar,
 
 	#[snafu(display("while parsing {what} at {start}..{end}"))]
 	Block {
@@ -38,7 +39,7 @@ pub enum DecompileError {
 	},
 }
 
-pub fn decompile(stmts: &[FlatStmt]) -> Result<Vec<Stmt>, DecompileError> {
+pub fn decompile(stmts: &[FlatStmt], nargs: usize) -> Result<Vec<Stmt>, DecompileError> {
 	let mut labels = IndexMap::new();
 	for (i, stmt) in stmts.iter().enumerate() {
 		if let FlatStmt::Label(l) = stmt {
@@ -46,7 +47,7 @@ pub fn decompile(stmts: &[FlatStmt]) -> Result<Vec<Stmt>, DecompileError> {
 		}
 	}
 
-	let (body, _) = Ctx::new(&Gctx { stmts, labels }).block("body", GotoAllowed::No)?;
+	let (body, _) = Ctx::new(&Gctx { stmts, labels }).block("body", GotoAllowed::No, nargs)?;
 	Ok(body)
 }
 
@@ -124,10 +125,10 @@ impl<'a> Ctx<'a> {
 		}
 	}
 
-	fn block(&mut self, what: &'static str, goto_allowed: GotoAllowed) -> Result<(Vec<Stmt>, Option<Label>), DecompileError> {
+	fn block(&mut self, what: &'static str, goto_allowed: GotoAllowed, depth: usize) -> Result<(Vec<Stmt>, Option<Label>), DecompileError> {
 		let start = self.pos;
 		let end = self.end;
-		block(self, goto_allowed).context(decompile::Block { what, start, end })
+		block(self, goto_allowed, depth).context(decompile::Block { what, start, end })
 	}
 }
 
@@ -138,27 +139,27 @@ enum GotoAllowed {
 	No,
 }
 
-fn block(ctx: &mut Ctx, goto_allowed: GotoAllowed) -> Result<(Vec<Stmt>, Option<Label>), DecompileError> {
+fn block(ctx: &mut Ctx, goto_allowed: GotoAllowed, mut depth: usize) -> Result<(Vec<Stmt>, Option<Label>), DecompileError> {
 	let mut stmts = Vec::new();
 	while let Some(stmt) = ctx.next() {
 		match stmt {
 			FlatStmt::Label(_) => {}
-			FlatStmt::Expr(expr) => stmts.push(Stmt::Expr(expr.clone())),
-			FlatStmt::Set(l, v, e) => stmts.push(Stmt::Set(*l, v.clone(), e.clone())),
-			FlatStmt::Return(l, e, _) => push_diverging(ctx, &mut stmts, Stmt::Return(*l, e.clone())),
-			FlatStmt::Debug(l, e) => stmts.push(Stmt::Debug(*l, e.clone())),
-			FlatStmt::Tailcall(l, n, e, _) => push_diverging(ctx, &mut stmts, Stmt::Tailcall(*l, n.clone(), e.clone())),
+			FlatStmt::Expr(e) => stmts.push(Stmt::Expr(e.add(depth))),
+			FlatStmt::Set(l, v, e) => stmts.push(Stmt::Set(*l, v.add(depth), e.add(depth))),
+			FlatStmt::Return(l, e, _) => push_diverging(ctx, &mut stmts, Stmt::Return(*l, e.add(depth))),
+			FlatStmt::Debug(l, e) => stmts.push(Stmt::Debug(*l, e.add(depth))),
+			FlatStmt::Tailcall(l, n, e, _) => push_diverging(ctx, &mut stmts, Stmt::Tailcall(*l, n.clone(), e.add(depth))),
 
 			FlatStmt::If(l, e, label) => {
 				let start = ctx.pos - 1;
 				let end = ctx.end;
-				parse_if(&mut stmts, ctx, *l, e.clone(), *label)
+				parse_if(&mut stmts, ctx, *l, e.add(depth), *label, depth)
 					.context(decompile::Block { what: "if", start, end })?
 			},
 			FlatStmt::Switch(l, e, cases, default) => {
 				let start = ctx.pos - 1;
 				let end = ctx.end;
-				parse_switch(&mut stmts, ctx, *l, e.clone(), cases, *default)
+				parse_switch(&mut stmts, ctx, *l, e.add(depth), cases, *default, depth)
 					.context(decompile::Block { what: "switch", start, end })?
 			},
 
@@ -177,7 +178,10 @@ fn block(ctx: &mut Ctx, goto_allowed: GotoAllowed) -> Result<(Vec<Stmt>, Option<
 				}
 			}
 
-			FlatStmt::PushVar(l) => stmts.push(Stmt::PushVar(*l)),
+			FlatStmt::PushVar(l) => {
+				stmts.push(Stmt::PushVar(*l));
+				depth += 1;
+			}
 			FlatStmt::PopVar(n) => {
 				if let Some(pos) = stmts.iter()
 					.enumerate()
@@ -187,7 +191,8 @@ fn block(ctx: &mut Ctx, goto_allowed: GotoAllowed) -> Result<(Vec<Stmt>, Option<
 					let body = stmts.split_off(pos.0);
 					stmts.push(Stmt::Block(body));
 				}
-			},
+				depth -= n;
+			}
 		}
 	}
 	Ok((stmts, None))
@@ -201,23 +206,30 @@ fn push_diverging(ctx: &mut Ctx, stmts: &mut Vec<Stmt>, stmt: Stmt) {
 	}
 }
 
-fn parse_if(stmts: &mut Vec<Stmt>, ctx: &mut Ctx, l: Line, e: Expr, label: Label) -> Result<(), DecompileError> {
+fn parse_if(
+	stmts: &mut Vec<Stmt>,
+	ctx: &mut Ctx,
+	l: Line,
+	e: Expr,
+	label: Label,
+	depth: usize,
+) -> Result<(), DecompileError> {
 	if let Some(cont) = ctx.goto_before(label)?
 			&& ctx.pos >= 2
 			&& ctx.gctx.lookup(cont)? == ctx.pos - 2 {
 		let mut sub = ctx.sub(label)?;
 		sub.brk = Some(label);
 		sub.cont = Some(cont);
-		let (mut body, _) = sub.block("while body", GotoAllowed::No)?;
+		let (mut body, _) = sub.block("while body", GotoAllowed::No, depth)?;
 		assert_eq!(body.pop(), Some(Stmt::Continue));
 		stmts.push(Stmt::While(l, e, body));
 		return Ok(())
 	}
 
-	let (body, goto) = ctx.sub(label)?.block("if body", GotoAllowed::Yes)?;
+	let (body, goto) = ctx.sub(label)?.block("if body", GotoAllowed::Yes, depth)?;
 
 	if let Some(goto) = goto {
-		let (no, _) = ctx.sub(goto)?.block("else body", GotoAllowed::No)?;
+		let (no, _) = ctx.sub(goto)?.block("else body", GotoAllowed::No, depth)?;
 		stmts.push(Stmt::If(l, e, body, Some(no)));
 	} else {
 		stmts.push(Stmt::If(l, e, body, None));
@@ -225,7 +237,15 @@ fn parse_if(stmts: &mut Vec<Stmt>, ctx: &mut Ctx, l: Line, e: Expr, label: Label
 	Ok(())
 }
 
-fn parse_switch(stmts: &mut Vec<Stmt>, ctx: &mut Ctx, l: Line, e: Expr, cases: &[(i32, Label)], default: Label) -> Result<(), DecompileError> {
+fn parse_switch(
+	stmts: &mut Vec<Stmt>,
+	ctx: &mut Ctx,
+	l: Line,
+	e: Expr,
+	cases: &[(i32, Label)],
+	default: Label,
+	depth: usize,
+) -> Result<(), DecompileError> {
 	let pos = cases.iter().map(|(_, l)| ctx.lookup(*l)).collect::<Result<Vec<_>, _>>()?;
 	snafu::ensure!(pos.is_sorted(), decompile::UnsortedSwitch);
 	let default_pos = ctx.lookup(default)?;
@@ -253,7 +273,7 @@ fn parse_switch(stmts: &mut Vec<Stmt>, ctx: &mut Ctx, l: Line, e: Expr, cases: &
 		assert_eq!(ctx.pos, target);
 		let mut sub = ctx.sub(end)?;
 		sub.brk = brk;
-		let (body, _) = sub.block("switch body", GotoAllowed::No)?;
+		let (body, _) = sub.block("switch body", GotoAllowed::No, depth)?;
 		cases2.insert(key, body);
 	}
 
@@ -269,7 +289,7 @@ fn parse_switch(stmts: &mut Vec<Stmt>, ctx: &mut Ctx, l: Line, e: Expr, cases: &
 	let last = cases.last().unwrap();
 	assert_eq!(ctx.gctx.lookup(last.1)?, ctx.pos);
 	let prev_brk = ctx.brk.take();
-	let (mut body, goto) = ctx.block("switch last body", GotoAllowed::Anywhere)?;
+	let (mut body, goto) = ctx.block("switch last body", GotoAllowed::Anywhere, depth)?;
 	ctx.brk = prev_brk;
 	if let Some(goto) = goto {
 		if ctx.gctx.lookup(goto)? == ctx.pos {
@@ -339,14 +359,14 @@ fn compile_block(
 	let depth0 = depth;
 	for stmt in stmts {
 		match stmt {
-			Stmt::Expr(expr) => ctx.push(FlatStmt::Expr(expr.clone())),
-			Stmt::Set(l, place, expr) => ctx.push(FlatStmt::Set(*l, place.clone(), expr.clone())),
-			Stmt::Return(l, expr) => ctx.push(FlatStmt::Return(*l, expr.clone(), std::mem::take(&mut depth))),
-			Stmt::Debug(l, exprs) => ctx.push(FlatStmt::Debug(*l, exprs.clone())),
-			Stmt::Tailcall(l, name, exprs) => ctx.push(FlatStmt::Tailcall(*l, name.clone(), exprs.clone(), depth)),
+			Stmt::Expr(expr) => ctx.push(FlatStmt::Expr(expr.sub(depth))),
+			Stmt::Set(l, place, expr) => ctx.push(FlatStmt::Set(*l, place.sub(depth), expr.sub(depth))),
+			Stmt::Return(l, expr) => ctx.push(FlatStmt::Return(*l, expr.sub(depth), std::mem::take(&mut depth))),
+			Stmt::Debug(l, exprs) => ctx.push(FlatStmt::Debug(*l, exprs.sub(depth))),
+			Stmt::Tailcall(l, name, exprs) => ctx.push(FlatStmt::Tailcall(*l, name.clone(), exprs.sub(depth), depth)),
 			Stmt::If(l, expr, stmts, stmts1) => {
 				let label = ctx.label();
-				ctx.push(FlatStmt::If(*l, expr.clone(), label));
+				ctx.push(FlatStmt::If(*l, expr.sub(depth), label));
 				if let Some(stmts1) = stmts1 {
 					let label2 = ctx.label();
 					compile_block(ctx, stmts, brk, cont, depth, Some(label2))?;
@@ -362,7 +382,7 @@ fn compile_block(
 				let brk = (depth, ctx.label());
 				let cont = (depth, ctx.label());
 				ctx.push(FlatStmt::Label(cont.1));
-				ctx.push(FlatStmt::If(*l, expr.clone(), brk.1));
+				ctx.push(FlatStmt::If(*l, expr.sub(depth), brk.1));
 				compile_block(ctx, stmts, Some(brk), Some(cont), depth, Some(cont.1))?;
 				ctx.push(FlatStmt::Label(brk.1));
 			}
@@ -371,7 +391,7 @@ fn compile_block(
 				let labels = cases.iter().map(|(k, _)| (*k, ctx.label())).collect::<IndexMap<_, _>>();
 				ctx.push(FlatStmt::Switch(
 					*l,
-					expr.clone(),
+					expr.sub(depth),
 					labels.iter().filter_map(|(&k, &v)| Some((k?, v))).collect(),
 					labels.get(&None).copied().unwrap_or(brk.1),
 				));

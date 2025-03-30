@@ -58,7 +58,7 @@ pub fn decompile(scena: &mut Scena) {
 		}
 
 		if let Body::Flat(fstmts) = &f.body {
-			match tree::decompile(fstmts) {
+			match tree::decompile(fstmts, f.args.len()) {
 				Ok(stmts) => f.body = Body::Tree(stmts),
 				Err(e) => tracing::error!("decompile error: {e}"),
 			}
