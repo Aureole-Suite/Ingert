@@ -8,7 +8,6 @@ struct RawToken {
 	start: u32,
 	end: u32,
 	line: Option<u32>,
-	spacing: Spacing,
 	token: TokenKind,
 	matched: u32,
 }
@@ -21,23 +20,16 @@ impl RawToken {
 
 impl std::fmt::Debug for RawToken {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		let space = match self.spacing { Spacing::Alone => "+", Spacing::Joined => "" };
 		f.write_fmt(format_args!("{}..{}:", self.start, self.end))?;
 		if let Some(line) = self.line {
 			f.write_fmt(format_args!("{}@", line))?;
 		}
-		f.write_fmt(format_args!("{:?}{}", self.token, space))?;
+		self.token.fmt(f)?;
 		if self.matched > 0 {
 			f.write_fmt(format_args!("~{}", self.matched))?;
 		}
 		Ok(())
     }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Spacing {
-	Alone,
-	Joined,
 }
 
 #[derive(Debug, Clone)]
@@ -136,7 +128,7 @@ impl Lex<'_> {
 		}
 	}
 
-	fn skip_whitespace(&mut self) -> Spacing {
+	fn skip_whitespace(&mut self) -> bool {
 		let start = self.pos;
 		loop {
 			if self.consume(" ") || self.consume("\t") || self.consume("\n") || self.consume("\r") {
@@ -150,23 +142,19 @@ impl Lex<'_> {
 			}
 			break;
 		}
-		if self.pos == start {
-			Spacing::Joined
-		} else {
-			Spacing::Alone
-		}
+		self.pos != start
 	}
 
 	fn lex(&mut self) -> Option<RawToken> {
 		let start = self.pos;
 		let line = self.lex_line();
-		if line.is_some() && self.skip_whitespace() == Spacing::Alone {
+		if line.is_some() && self.skip_whitespace() {
 			self.errors.warning("line number should not be followed by whitespace", start..self.pos);
 		}
 		let token = self.lex_token()?;
 		let end = self.pos;
-		let spacing = self.skip_whitespace();
-		Some(RawToken { start: start as u32, end: end as u32, line, spacing, token, matched: 0 })
+		self.skip_whitespace();
+		Some(RawToken { start: start as u32, end: end as u32, line, token, matched: 0 })
 	}
 
 	fn lex_line(&mut self) -> Option<u32> {
