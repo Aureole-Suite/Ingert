@@ -230,7 +230,7 @@ pub enum Stmt {
 	Block(Vec<Stmt>),
 	Break,
 	Continue,
-	PushVar(Line),
+	PushVar(Line, u32, Option<Expr>),
 	Debug(Line, Vec<Expr>),
 	Tailcall(Line, Name, Vec<Expr>),
 }

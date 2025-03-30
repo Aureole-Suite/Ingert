@@ -88,7 +88,7 @@ impl Debug for Stmt {
 			Self::Block(stmts) => f.debug_tuple("Block").field(stmts).finish(),
 			Self::Break => f.debug_tuple("Break").finish(),
 			Self::Continue => f.debug_tuple("Continue").finish(),
-			Self::PushVar(l) => line(f, l)?.debug_tuple("PushVar").finish(),
+			Self::PushVar(l, depth, expr) => line(f, l)?.debug_tuple("PushVar").field(depth).field(expr).finish(),
 			Self::Debug(l, args) => {
 				line(f, l)?;
 				write_args(f, "Debug", args)

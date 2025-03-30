@@ -519,9 +519,14 @@ fn print_stmt(ctx: &mut Ctx, stmt: &Stmt) {
 			ctx.word("continue");
 			ctx.sym_(";");
 		}
-		Stmt::PushVar(l) => {
+		Stmt::PushVar(l, d, e) => {
 			ctx.line(l);
 			ctx.word("var");
+			print_place(ctx, &Place::Var(*d));
+			if let Some(e) = e {
+				ctx._sym_("=");
+				print_expr(ctx, e);
+			}
 			ctx.sym_(";");
 		}
 		Stmt::Debug(l, exprs) => {

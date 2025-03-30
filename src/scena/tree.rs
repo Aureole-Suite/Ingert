@@ -1,7 +1,7 @@
 use indexmap::IndexMap;
 use snafu::{OptionExt as _, ResultExt as _};
 
-use super::{Expr, FlatStmt, Label, Line, Stmt};
+use super::{Expr, FlatStmt, Label, Line, Place, Stmt};
 
 mod depth;
 use depth::Adjust as _;
@@ -179,14 +179,14 @@ fn block(ctx: &mut Ctx, goto_allowed: GotoAllowed, mut depth: usize) -> Result<(
 			}
 
 			FlatStmt::PushVar(l) => {
-				stmts.push(Stmt::PushVar(*l));
+				stmts.push(Stmt::PushVar(*l, depth as u32, None));
 				depth += 1;
 			}
 			FlatStmt::PopVar(n) => {
 				if needs_wrap(ctx, goto_allowed)
 					&& let Some(pos) = stmts.iter()
 					.enumerate()
-					.filter(|(_, s)| matches!(s, Stmt::PushVar(_)))
+					.filter(|(_, s)| matches!(s, Stmt::PushVar(..)))
 					.nth_back(*n - 1)
 				{
 					let body = stmts.split_off(pos.0);
@@ -338,6 +338,8 @@ pub enum CompileError {
 	BadBreak,
 	#[snafu(display("continue outside while"))]
 	BadContinue,
+	#[snafu(display("variable depth mismatch: declared {declared} but current depth is {depth}"))]
+	VarDepth { depth: usize, declared: u32 },
 	#[snafu(display("could not normalize labels"), context(false))]
 	Labels { source: crate::labels::LabelError },
 }
@@ -438,7 +440,8 @@ fn compile_block(
 					return compile::BadContinue.fail()
 				}
 			}
-			Stmt::PushVar(l) => {
+			Stmt::PushVar(l, d, e) => {
+				snafu::ensure!(depth == *d as usize, compile::VarDepth { depth, declared: *d });
 				ctx.push(FlatStmt::PushVar(*l));
 				depth += 1;
 			}

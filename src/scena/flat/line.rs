@@ -72,7 +72,7 @@ impl Stmt {
 			Self::Block(_) => None,
 			Self::Break => None,
 			Self::Continue => None,
-			Self::PushVar(l) => Some(*l),
+			Self::PushVar(l, _, _) => Some(*l),
 			Self::Debug(l, _) => Some(*l),
 			Self::Tailcall(l, _, _) => Some(*l),
 		}
@@ -89,7 +89,7 @@ impl Stmt {
 			Self::Block(_) => None,
 			Self::Break => None,
 			Self::Continue => None,
-			Self::PushVar(l) => Some(l),
+			Self::PushVar(l, _, _) => Some(l),
 			Self::Debug(l, _) => Some(l),
 			Self::Tailcall(l, _, _) => Some(l),
 		}

@@ -94,7 +94,11 @@ impl<F: Visit> Visitor<F> {
 			}
 			Stmt::Break => {}
 			Stmt::Continue => {}
-			Stmt::PushVar(_) => {}
+			Stmt::PushVar(_, _, e) => {
+				if let Some(e) = e {
+					self.expr(e)?;
+				}
+			}
 			Stmt::Debug(_, exprs) => {
 				for expr in exprs {
 					self.expr(expr)?;
