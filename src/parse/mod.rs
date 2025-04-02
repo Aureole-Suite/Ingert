@@ -1,10 +1,11 @@
 use error::Errors;
-use lex::Cursor;
+use cursor::Cursor;
 
 use crate::{scena::Arg, scp::{ArgType, Value}};
 
 pub mod lex;
 pub mod error;
+mod cursor;
 
 #[derive(Debug, Clone)]
 struct PFunction<'a> {

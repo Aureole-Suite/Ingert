@@ -1,22 +1,19 @@
-mod cursor;
-
 use super::error::Errors;
-pub use cursor::Cursor;
 
 #[derive(Debug, Clone)]
-pub struct Tokens(Vec<RawToken>);
+pub struct Tokens(pub Vec<RawToken>);
 
 #[derive(Clone)]
-struct RawToken {
-	start: u32,
-	end: u32,
-	line: Option<u32>,
-	token: TokenKind,
-	matched: u32,
+pub struct RawToken {
+	pub start: u32,
+	pub end: u32,
+	pub line: Option<u32>,
+	pub token: TokenKind,
+	pub matched: u32,
 }
 
 impl RawToken {
-	fn span(&self) -> std::ops::Range<usize> {
+	pub fn span(&self) -> std::ops::Range<usize> {
 		self.start as usize..self.end as usize
 	}
 }

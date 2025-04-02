@@ -1,6 +1,6 @@
 use std::ops::Range;
 
-use super::{RawToken, TokenKind, Tokens};
+use super::lex::{RawToken, TokenKind, Tokens};
 
 impl Tokens {
 	pub fn cursor(&self) -> Cursor {
