@@ -8,6 +8,7 @@ impl Tokens {
 	}
 }
 
+#[derive(Clone)]
 pub struct Cursor<'a> {
 	tokens: &'a [RawToken],
 	range: Range<usize>,
@@ -31,33 +32,41 @@ impl<'a> Cursor<'a> {
 		self.prev_span().end..self.next_span().start
 	}
 
+	pub fn skip_any(&mut self) {
+		assert!(!self.at_end());
+		if self.tokens[self.pos].matched > 0 {
+			self.pos += self.tokens[self.pos].matched as usize;
+		}
+		self.pos += 1;
+	}
+
 	// End is always a Punct(')}]\0'), so we don't need to check that for most cases
 
-	pub fn ident(&mut self) -> Option<&str> {
+	pub fn ident(&mut self) -> Option<String> {
 		match &self.tokens[self.pos].token {
 			TokenKind::Ident(ident) => {
 				self.pos += 1;
-				Some(&**ident)
+				Some(ident.to_string())
 			}
 			_ => None,
 		}
 	}
 
-	pub fn keyword(&mut self, keyword: &str) -> bool {
+	pub fn keyword(&mut self, keyword: &str) -> Option<()> {
 		match &self.tokens[self.pos].token {
 			TokenKind::Ident(ident) if **ident == *keyword => {
 				self.pos += 1;
-				true
+				Some(())
 			}
-			_ => false,
+			_ => None,
 		}
 	}
 
-	pub fn string(&mut self) -> Option<&str> {
+	pub fn string(&mut self) -> Option<String> {
 		match &self.tokens[self.pos].token {
 			TokenKind::String(string) => {
 				self.pos += 1;
-				Some(&**string)
+				Some(string.to_string())
 			}
 			_ => None,
 		}
@@ -83,26 +92,29 @@ impl<'a> Cursor<'a> {
 		}
 	}
 
-	pub fn punct(&mut self, punct: char) -> bool {
+	pub fn punct(&mut self, punct: char) -> Option<()> {
 		assert!(!"()[]{}\0".contains(punct));
 		match &self.tokens[self.pos].token {
 			TokenKind::Punct(p) if *p == punct => {
 				self.pos += 1;
-				true
+				Some(())
 			}
-			_ => false,
+			_ => None,
 		}
 	}
 
-	pub fn operator(&mut self, operator: &str) -> bool {
+	pub fn operator(&mut self, operator: &str) -> Option<()> {
 		assert!(!operator.is_empty());
 		let start = self.pos;
 		let mut chars = operator.chars();
-		let ok = self.punct(chars.next().unwrap()) && chars.all(|c| self.space_span().is_empty() && self.punct(c));
-		if !ok {
+		let ok = self.punct(chars.next().unwrap()).is_some()
+			&& chars.all(|c| self.space_span().is_empty() && self.punct(c).is_some());
+		if ok {
+			Some(())
+		} else {
 			self.pos = start;
+			None
 		}
-		ok
 	}
 
 	pub fn delim(&mut self, delim: char) -> Option<Cursor<'a>> {
@@ -111,7 +123,7 @@ impl<'a> Cursor<'a> {
 		match &token.token {
 			TokenKind::Punct(c) if *c == delim => {
 				self.pos += 1;
-				let range = self.pos .. self.pos + token.matched as usize;
+				let range = self.pos .. self.pos + token.matched as usize - 1;
 				let sub = Cursor { tokens: self.tokens, range, pos: self.pos };
 				self.pos += token.matched as usize;
 				Some(sub)
