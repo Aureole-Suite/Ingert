@@ -4,7 +4,7 @@ use super::lex::{RawToken, TokenKind, Tokens};
 
 impl Tokens {
 	pub fn cursor(&self) -> Cursor {
-		Cursor { tokens: &self.0, range: 1..self.0.len() - 1, pos: 1 }
+		Cursor { tokens: &self.0, range: 1..self.0.len() - 1, pos: 1, expect: Vec::new() }
 	}
 }
 
@@ -13,6 +13,69 @@ pub struct Cursor<'a> {
 	tokens: &'a [RawToken],
 	range: Range<usize>,
 	pos: usize,
+	expect: Vec<Expect>
+}
+
+#[derive(Debug, Clone)]
+enum Expect {
+	Str(&'static str),
+	Char(char),
+}
+
+impl From<&'static str> for Expect {
+	fn from(s: &'static str) -> Self {
+		Expect::Str(s)
+	}
+}
+
+impl From<char> for Expect {
+	fn from(c: char) -> Self {
+		Expect::Char(c)
+	}
+}
+
+pub struct PendingError<'a>(Cursor<'a>);
+
+type PResult<'a, T> = std::result::Result<T, PendingError<'a>>;
+pub type Result<T, E=Error> = std::result::Result<T, E>;
+
+#[derive(Debug)]
+pub struct Error {
+	pub span: Range<usize>,
+	pub expect: Vec<Expect>,
+}
+
+impl From<PendingError<'_>> for Error {
+	fn from(PendingError(cursor): PendingError) -> Self {
+		Error { span: cursor.next_span(), expect: cursor.expect }
+	}
+}
+
+impl std::fmt::Display for Expect {
+	fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+		match self {
+			Expect::Str(s) => write!(f, "{}", s),
+			Expect::Char(c) => write!(f, "{}", c),
+		}
+	}
+}
+
+impl std::fmt::Display for Error {
+	fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+		write!(f, "expected ")?;
+		if self.expect.len() == 1 {
+			write!(f, "{}", self.expect[0])?;
+		} else {
+			write!(f, "one of ")?;
+			for (i, expect) in self.expect.iter().enumerate() {
+				if i != 0 {
+					write!(f, ", ")?;
+				}
+				write!(f, "{}", expect)?;
+			}
+		}
+		write!(f, " at {:?}", self.span)
+	}
 }
 
 impl<'a> Cursor<'a> {
@@ -42,94 +105,97 @@ impl<'a> Cursor<'a> {
 
 	// End is always a Punct(')}]\0'), so we don't need to check that for most cases
 
-	pub fn ident(&mut self) -> Option<String> {
+	pub fn ident(&mut self) -> PResult<'a, String> {
 		match &self.tokens[self.pos].token {
-			TokenKind::Ident(ident) => {
-				self.pos += 1;
-				Some(ident.to_string())
-			}
-			_ => None,
+			TokenKind::Ident(ident) => self.ok(ident.to_string()),
+			_ => self.err("<ident>"),
 		}
 	}
 
-	pub fn keyword(&mut self, keyword: &str) -> Option<()> {
+	pub fn keyword(&mut self, keyword: &'static str) -> PResult<'a, ()> {
 		match &self.tokens[self.pos].token {
-			TokenKind::Ident(ident) if **ident == *keyword => {
-				self.pos += 1;
-				Some(())
-			}
-			_ => None,
+			TokenKind::Ident(ident) if **ident == *keyword => self.ok(()),
+			_ => self.err(keyword),
 		}
 	}
 
-	pub fn string(&mut self) -> Option<String> {
+	pub fn string(&mut self) -> PResult<'a, String> {
 		match &self.tokens[self.pos].token {
-			TokenKind::String(string) => {
-				self.pos += 1;
-				Some(string.to_string())
-			}
-			_ => None,
+			TokenKind::String(string) => self.ok(string.to_string()),
+			_ => self.err("<string>"),
 		}
 	}
 
-	pub fn int(&mut self) -> Option<i32> {
+	pub fn int(&mut self) -> PResult<'a, i32> {
 		match &self.tokens[self.pos].token {
-			TokenKind::Int(int) => {
-				self.pos += 1;
-				Some(*int)
-			}
-			_ => None,
+			TokenKind::Int(int) => self.ok(*int),
+			_ => self.err("<int>"),
 		}
 	}
 
-	pub fn float(&mut self) -> Option<f32> {
+	pub fn float(&mut self) -> PResult<'a, f32> {
 		match &self.tokens[self.pos].token {
-			TokenKind::Float(float) => {
-				self.pos += 1;
-				Some(*float)
-			}
-			_ => None,
+			TokenKind::Float(float) => self.ok(*float),
+			_ => self.err("<float>"),
 		}
 	}
 
-	pub fn punct(&mut self, punct: char) -> Option<()> {
+	fn punct_inner(&self, punct: char, pos: usize) -> bool {
 		assert!(!"()[]{}\0".contains(punct));
-		match &self.tokens[self.pos].token {
-			TokenKind::Punct(p) if *p == punct => {
-				self.pos += 1;
-				Some(())
-			}
-			_ => None,
-		}
+		matches!(&self.tokens[pos].token, TokenKind::Punct(p) if *p == punct)
 	}
 
-	pub fn operator(&mut self, operator: &str) -> Option<()> {
-		assert!(!operator.is_empty());
-		let start = self.pos;
-		let mut chars = operator.chars();
-		let ok = self.punct(chars.next().unwrap()).is_some()
-			&& chars.all(|c| self.space_span().is_empty() && self.punct(c).is_some());
-		if ok {
-			Some(())
+	pub fn punct(&mut self, punct: char) -> PResult<'a, ()> {
+		if self.punct_inner(punct, self.pos) {
+			self.ok(())
 		} else {
-			self.pos = start;
-			None
+			self.err(punct)
 		}
 	}
 
-	pub fn delim(&mut self, delim: char) -> Option<Cursor<'a>> {
+	pub fn operator(&mut self, operator: &'static str) -> PResult<'a, ()> {
+		assert!(!operator.is_empty());
+		let mut pos = self.pos;
+		for c in operator.chars() {
+			if pos != self.pos && !self.space_span().is_empty() {
+				return self.err(operator);
+			}
+			if !self.punct_inner(c, pos) {
+				return self.err(operator);
+			}
+			pos += 1;
+		}
+		self.pos = pos;
+		self.expect.clear();
+		Ok(())
+	}
+
+	pub fn delim(&mut self, delim: char) -> PResult<'a, Cursor<'a>> {
 		assert!("([{".contains(delim));
 		let token = &self.tokens[self.pos];
 		match &token.token {
 			TokenKind::Punct(c) if *c == delim => {
-				self.pos += 1;
-				let range = self.pos .. self.pos + token.matched as usize - 1;
-				let sub = Cursor { tokens: self.tokens, range, pos: self.pos };
+				let range = self.pos + 1.. self.pos + token.matched as usize;
 				self.pos += token.matched as usize;
-				Some(sub)
+				self.ok(Cursor { tokens: self.tokens, pos: range.start, range, expect: Vec::new() })
 			}
-			_ => None,
+			_ => self.err(delim),
 		}
+	}
+
+	fn ok<T>(&mut self, value: T) -> PResult<'a, T> {
+		self.pos += 1;
+		self.expect.clear();
+		Ok(value)
+	}
+
+	fn err<T>(&mut self, expect: impl Into<Expect>) -> PResult<'a, T> {
+		self.expect.push(expect.into());
+		Err(PendingError(self.clone()))
+	}
+
+	pub fn fail(&self) -> PResult<'a, !> {
+		Err(PendingError(self.clone()))
 	}
 }
 

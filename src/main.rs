@@ -1,4 +1,3 @@
-#![feature(let_chains)]
 use clap::Parser;
 use std::path::PathBuf;
 use tracing_subscriber::prelude::*;
