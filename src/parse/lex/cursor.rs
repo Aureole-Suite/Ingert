@@ -120,3 +120,26 @@ impl<'a> Cursor<'a> {
 		}
 	}
 }
+
+impl std::fmt::Debug for Cursor<'_> {
+	fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+		f.debug_tuple("Cursor").field(&Draw(self)).finish()
+	}
+}
+
+struct Draw<'a>(&'a Cursor<'a>);
+
+impl std::fmt::Debug for Draw<'_> {
+	fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+		let mut debug = f.debug_list();
+		let mut pos = self.0.pos;
+		while pos < self.0.range.end {
+			debug.entry(&self.0.tokens[pos]);
+			if self.0.tokens[pos].matched > 0 {
+				pos += self.0.tokens[pos].matched as usize;
+			}
+			pos += 1;
+		}
+		debug.finish()
+	}
+}
