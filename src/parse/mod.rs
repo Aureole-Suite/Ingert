@@ -1,11 +1,13 @@
 use error::Errors;
 use cursor::Cursor;
+use indexmap::IndexMap;
 
 use crate::scena::{ArgType, Value};
 
 pub mod lex;
 pub mod error;
 mod cursor;
+mod inner;
 
 #[derive(Debug, Clone)]
 struct PFunction<'a> {
@@ -62,6 +64,14 @@ pub fn parse(tokens: &lex::Tokens) -> ((), Errors) {
 	}
 
 	dbg!(&errors);
+
+	let signatures = functions.iter().map(|f| (f.name.as_str(), f.args.as_slice())).collect::<IndexMap<_, _>>();
+
+	let functions = functions.iter()
+		.take(4)
+		.map(|f| (f.name.clone(), inner::parse_fn(f, &signatures, &mut errors)))
+		.collect::<IndexMap<_, _>>();
+
 	dbg!(&functions);
 
 	((), errors)

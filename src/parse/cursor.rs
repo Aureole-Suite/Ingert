@@ -202,6 +202,33 @@ impl<'a> Cursor<'a> {
 	pub fn fail(&self) -> PResult<'_, !> {
 		Err(PendingError(&self.expect))
 	}
+
+	pub fn line(&self) -> Option<u16> {
+		self.tokens[self.pos].line.map(|l| l as u16)
+	}
+
+	pub fn test<T>(&mut self, f: impl FnOnce(&mut Self) -> Result<T>) -> Option<Result<T>> {
+		let mut clone = self.clone();
+		match f(&mut clone) {
+			Ok(v) => {
+				self.pos = clone.pos;
+				self.expect.clear();
+				Some(Ok(v))
+			}
+			Err(e) if clone.pos > self.pos => {
+				self.pos = clone.pos;
+				self.expect.clear();
+				self.expect.extend(e.expect);
+				Some(Err(Error {
+					expect: self.expect.clone()
+				}))
+			}
+			Err(e) => {
+				self.expect.extend(e.expect);
+				None
+			}
+		}
+	}
 }
 
 impl std::fmt::Debug for Cursor<'_> {
