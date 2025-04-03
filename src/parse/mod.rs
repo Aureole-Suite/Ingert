@@ -73,6 +73,7 @@ pub fn parse(tokens: &lex::Tokens) -> ((), Errors) {
 		.collect::<IndexMap<_, _>>();
 
 	dbg!(&functions);
+	dbg!(&errors);
 
 	((), errors)
 }

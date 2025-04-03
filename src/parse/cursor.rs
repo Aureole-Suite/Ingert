@@ -8,7 +8,6 @@ impl Tokens {
 	}
 }
 
-#[derive(Clone)]
 pub struct Cursor<'a> {
 	tokens: &'a [RawToken],
 	range: Range<usize>,
@@ -41,7 +40,7 @@ pub type Result<T, E=Error> = std::result::Result<T, E>;
 
 #[derive(Debug)]
 pub struct Error {
-	pub expect: Vec<Expect>,
+	expect: Vec<Expect>,
 }
 
 impl From<PendingError<'_>> for Error {
@@ -80,6 +79,17 @@ impl std::fmt::Display for PendingError<'_> {
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		PendingError(&self.expect).fmt(f)
+    }
+}
+
+impl<'a> Clone for Cursor<'a> {
+    fn clone(&self) -> Self {
+        Self {
+			tokens: self.tokens,
+			range: self.range.clone(),
+			pos: self.pos,
+			expect: Vec::new(),
+		}
     }
 }
 
