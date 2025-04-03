@@ -34,20 +34,19 @@ impl From<char> for Expect {
 	}
 }
 
-pub struct PendingError<'a>(Cursor<'a>);
+pub struct PendingError<'a>(&'a Vec<Expect>);
 
 type PResult<'a, T> = std::result::Result<T, PendingError<'a>>;
 pub type Result<T, E=Error> = std::result::Result<T, E>;
 
 #[derive(Debug)]
 pub struct Error {
-	pub span: Range<usize>,
 	pub expect: Vec<Expect>,
 }
 
 impl From<PendingError<'_>> for Error {
-	fn from(PendingError(cursor): PendingError) -> Self {
-		Error { span: cursor.next_span(), expect: cursor.expect }
+	fn from(PendingError(expect): PendingError) -> Self {
+		Error { expect: expect.clone() }
 	}
 }
 
@@ -60,22 +59,28 @@ impl std::fmt::Display for Expect {
 	}
 }
 
-impl std::fmt::Display for Error {
+impl std::fmt::Display for PendingError<'_> {
 	fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
 		write!(f, "expected ")?;
-		if self.expect.len() == 1 {
-			write!(f, "{}", self.expect[0])?;
+		if self.0.len() == 1 {
+			write!(f, "{}", self.0[0])?;
 		} else {
 			write!(f, "one of ")?;
-			for (i, expect) in self.expect.iter().enumerate() {
+			for (i, expect) in self.0.iter().enumerate() {
 				if i != 0 {
 					write!(f, ", ")?;
 				}
 				write!(f, "{}", expect)?;
 			}
 		}
-		write!(f, " at {:?}", self.span)
+		Ok(())
 	}
+}
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		PendingError(&self.expect).fmt(f)
+    }
 }
 
 impl<'a> Cursor<'a> {
@@ -105,35 +110,35 @@ impl<'a> Cursor<'a> {
 
 	// End is always a Punct(')}]\0'), so we don't need to check that for most cases
 
-	pub fn ident(&mut self) -> PResult<'a, String> {
+	pub fn ident(&mut self) -> PResult<'_, String> {
 		match &self.tokens[self.pos].token {
 			TokenKind::Ident(ident) => self.ok(ident.to_string()),
 			_ => self.err("<ident>"),
 		}
 	}
 
-	pub fn keyword(&mut self, keyword: &'static str) -> PResult<'a, ()> {
+	pub fn keyword(&mut self, keyword: &'static str) -> PResult<'_, ()> {
 		match &self.tokens[self.pos].token {
 			TokenKind::Ident(ident) if **ident == *keyword => self.ok(()),
 			_ => self.err(keyword),
 		}
 	}
 
-	pub fn string(&mut self) -> PResult<'a, String> {
+	pub fn string(&mut self) -> PResult<'_, String> {
 		match &self.tokens[self.pos].token {
 			TokenKind::String(string) => self.ok(string.to_string()),
 			_ => self.err("<string>"),
 		}
 	}
 
-	pub fn int(&mut self) -> PResult<'a, i32> {
+	pub fn int(&mut self) -> PResult<'_, i32> {
 		match &self.tokens[self.pos].token {
 			TokenKind::Int(int) => self.ok(*int),
 			_ => self.err("<int>"),
 		}
 	}
 
-	pub fn float(&mut self) -> PResult<'a, f32> {
+	pub fn float(&mut self) -> PResult<'_, f32> {
 		match &self.tokens[self.pos].token {
 			TokenKind::Float(float) => self.ok(*float),
 			_ => self.err("<float>"),
@@ -145,7 +150,7 @@ impl<'a> Cursor<'a> {
 		matches!(&self.tokens[pos].token, TokenKind::Punct(p) if *p == punct)
 	}
 
-	pub fn punct(&mut self, punct: char) -> PResult<'a, ()> {
+	pub fn punct(&mut self, punct: char) -> PResult<'_, ()> {
 		if self.punct_inner(punct, self.pos) {
 			self.ok(())
 		} else {
@@ -153,7 +158,7 @@ impl<'a> Cursor<'a> {
 		}
 	}
 
-	pub fn operator(&mut self, operator: &'static str) -> PResult<'a, ()> {
+	pub fn operator(&mut self, operator: &'static str) -> PResult<'_, ()> {
 		assert!(!operator.is_empty());
 		let mut pos = self.pos;
 		for c in operator.chars() {
@@ -170,7 +175,7 @@ impl<'a> Cursor<'a> {
 		Ok(())
 	}
 
-	pub fn delim(&mut self, delim: char) -> PResult<'a, Cursor<'a>> {
+	pub fn delim(&mut self, delim: char) -> PResult<'_, Cursor<'a>> {
 		assert!("([{".contains(delim));
 		let token = &self.tokens[self.pos];
 		match &token.token {
@@ -189,13 +194,13 @@ impl<'a> Cursor<'a> {
 		Ok(value)
 	}
 
-	fn err<T>(&mut self, expect: impl Into<Expect>) -> PResult<'a, T> {
+	fn err<T>(&mut self, expect: impl Into<Expect>) -> PResult<'_, T> {
 		self.expect.push(expect.into());
-		Err(PendingError(self.clone()))
+		Err(PendingError(&self.expect))
 	}
 
-	pub fn fail(&self) -> PResult<'a, !> {
-		Err(PendingError(self.clone()))
+	pub fn fail(&self) -> PResult<'_, !> {
+		Err(PendingError(&self.expect))
 	}
 }
 

@@ -51,12 +51,12 @@ pub fn parse(tokens: &lex::Tokens) -> ((), Errors) {
 					functions.push(func);
 				}
 				Err(e) => {
-					errors.error(e.to_string(), e.span);
+					errors.error(e.to_string(), cursor.next_span());
 				}
 			}
 		} else {
 			let e: cursor::Error = clone.fail().unwrap_err().into();
-			errors.error(e.to_string(), e.span);
+			errors.error(e.to_string(), clone.next_span());
 			cursor.skip_any();
 		}
 	}
