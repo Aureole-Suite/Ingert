@@ -117,37 +117,37 @@ fn parse_stmt(
 	ctx: &mut Ctx<'_>,
 ) -> cursor::Result<Stmt> {
 	let l = cursor.line();
-	let v = None
 
-		.or_else(|| cursor.test(|cursor| {
-			cursor.keyword("if")?;
-			let cond = parse_expr(cursor, ctx)?;
-			let then = parse_tree(cursor.delim('{')?, ctx.sub());
-			let els = if cursor.keyword("else").is_ok() {
-				Some(parse_tree(cursor.delim('{')?, ctx.sub()))
-			} else {
-				None
-			};
-			Ok(Stmt::If(l, cond, then, els))
-		}))
+	if let Some(v) = cursor.test(|cursor| {
+		cursor.keyword("if")?;
+		let cond = parse_expr(cursor, ctx)?;
+		let then = parse_tree(cursor.delim('{')?, ctx.sub());
+		let els = if cursor.keyword("else").is_ok() {
+			Some(parse_tree(cursor.delim('{')?, ctx.sub()))
+		} else {
+			None
+		};
+		Ok(Stmt::If(l, cond, then, els))
+	}) { return v; }
 
-		.or_else(|| cursor.test(|cursor| {
-			cursor.keyword("while")?;
-			let cond = parse_expr(cursor, ctx)?;
-			let body = parse_tree(cursor.delim('{')?, ctx.sub().with_brk().with_cont());
-			Ok(Stmt::While(l, cond, body))
-		}))
+	if let Some(v) = cursor.test(|cursor| {
+		cursor.keyword("while")?;
+		let cond = parse_expr(cursor, ctx)?;
+		let body = parse_tree(cursor.delim('{')?, ctx.sub().with_brk().with_cont());
+		Ok(Stmt::While(l, cond, body))
+	}) { return v; }
 
-		.or_else(|| cursor.test(|cursor| {
-			cursor.keyword("return")?;
-			if cursor.punct(';').is_ok() {
-				Ok(Stmt::Return(l, None))
-			} else {
-				let expr = parse_expr(cursor, ctx)?;
-				cursor.punct(';')?;
-				Ok(Stmt::Return(l, Some(expr)))
-			}
-		}));
+	if let Some(v) = cursor.test(|cursor| {
+		cursor.keyword("return")?;
+		let val = if cursor.punct(';').is_ok() {
+			None
+		} else {
+			let expr = parse_expr(cursor, ctx)?;
+			cursor.punct(';')?;
+			Some(expr)
+		};
+		Ok(Stmt::Return(l, val))
+	}) { return v; }
 
 	cursor.fail()?
 }
