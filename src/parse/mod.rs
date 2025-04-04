@@ -104,9 +104,7 @@ fn parse_fn<'a>(cursor: &mut Cursor<'a>) -> cursor::Result<PFunction<'a>> {
 }
 
 fn parse_args(mut cursor: Cursor) -> cursor::Result<Vec<PArg>> {
-	let mut args = Vec::new();
-	loop {
-		if cursor.at_end() { break }
+	parse_comma_sep(&mut cursor, |cursor| {
 		let name = cursor.ident()?;
 		cursor.punct(':')?;
 		let ty = if cursor.keyword("num").is_ok() {
@@ -119,11 +117,19 @@ fn parse_args(mut cursor: Cursor) -> cursor::Result<Vec<PArg>> {
 			cursor.fail()?;
 		};
 		let default = if cursor.punct('=').is_ok() {
-			Some(parse_value(&mut cursor)?)
+			Some(parse_value(cursor)?)
 		} else {
 			None
 		};
-		args.push(PArg { name, ty, default });
+		Ok(PArg { name, ty, default })
+	})
+}
+
+fn parse_comma_sep<T>(cursor: &mut Cursor, mut f: impl FnMut(&mut Cursor) -> cursor::Result<T>) -> cursor::Result<Vec<T>> {
+	let mut args = Vec::new();
+	loop {
+		if cursor.at_end() { break }
+		args.push(f(cursor)?);
 		if cursor.at_end() { break }
 		cursor.punct(',')?;
 	}

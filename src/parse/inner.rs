@@ -149,9 +149,55 @@ fn parse_stmt(
 		Ok(Stmt::Return(l, val))
 	}) { return v; }
 
+	if let Some(v) = cursor.test(|cursor| {
+		let expr = parse_expr(cursor, ctx)?;
+		cursor.punct(';')?;
+		Ok(Stmt::Expr(expr))
+	}) { return v; }
+
 	cursor.fail()?
 }
 
-fn parse_expr(cursor: &mut Cursor<'_>, ctx: &Ctx<'_>) -> cursor::Result<Expr> {
-	cursor.fail()? // TODO
+fn parse_expr(cursor: &mut Cursor<'_>, ctx: &mut Ctx<'_>) -> cursor::Result<Expr> {
+	let l = cursor.line();
+
+	if let Some(v) = cursor.test(|cursor| {
+		cursor.keyword("system")?;
+		let (a, b) = parse_syscall(cursor.delim('[')?, ctx);
+		let args = parse_args(cursor.delim('(')?, ctx).unwrap_or_default();
+		Ok(Expr::Syscall(l, a, b, args))
+	}) { return v; }
+
+	dbg!(&cursor);
+	cursor.keyword("<expr>")?;
+	cursor.fail()?
+}
+
+fn parse_syscall(cursor: Cursor<'_>, ctx: &mut Ctx<'_>) -> (u8, u8) {
+	fn inner(mut cursor: Cursor<'_>, ctx: &mut Ctx<'_>) -> cursor::Result<(u8, u8)> {
+		let a = cursor.int()?;
+		if !(0..=255).contains(&a) {
+			ctx.errors.error("invalid syscall number", cursor.prev_span());
+		}
+		cursor.punct(',')?;
+		let b = cursor.int()?;
+		if !(0..=255).contains(&b) {
+			ctx.errors.error("invalid syscall number", cursor.prev_span());
+		}
+		if !cursor.at_end() {
+			ctx.errors.error("unexpected token", cursor.next_span());
+		}
+		Ok((a as u8, b as u8))
+	}
+	inner(cursor, ctx).unwrap_or((0, 0))
+}
+
+fn parse_args(mut cursor: Cursor<'_>, ctx: &mut Ctx<'_>) -> Option<Vec<Expr>> {
+	match super::parse_comma_sep(&mut cursor, |cursor| parse_expr(cursor, ctx)) {
+		Ok(args) => Some(args),
+		Err(e) => {
+			ctx.errors.error(e.to_string(), cursor.next_span());
+			None
+		}
+	}
 }
