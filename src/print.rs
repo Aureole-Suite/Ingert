@@ -186,7 +186,7 @@ trait Print {
 }
 
 impl Print for ArgType {
-    fn print(&self, ctx: &mut Ctx) {
+	fn print(&self, ctx: &mut Ctx) {
 		match self {
 			ArgType::Number => ctx.word("num"),
 			ArgType::String => ctx.word("str"),
@@ -195,7 +195,7 @@ impl Print for ArgType {
 				ctx.word("num");
 			}
 		}
-    }
+	}
 }
 
 impl Print for Call {
@@ -218,14 +218,14 @@ impl Print for Call {
 }
 
 impl Print for CallArg {
-    fn print(&self, ctx: &mut Ctx) {
+	fn print(&self, ctx: &mut Ctx) {
 		match self {
 			CallArg::Value(value) => value.print(ctx),
 			CallArg::Call => ctx.word("call"),
 			CallArg::Var => ctx.word("var"),
 			CallArg::Expr => ctx.word("expr"),
 		}
-    }
+	}
 }
 
 impl Print for Op {

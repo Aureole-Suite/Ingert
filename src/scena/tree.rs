@@ -58,7 +58,7 @@ struct Gctx<'a> {
 
 impl Gctx<'_> {
 	#[track_caller]
-    fn lookup(&self, label: Label) -> Result<usize, DecompileError> {
+	fn lookup(&self, label: Label) -> Result<usize, DecompileError> {
 		self.labels.get(&label).copied().context(decompile::MissingLabel { label })
 	}
 }

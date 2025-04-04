@@ -77,20 +77,20 @@ impl std::fmt::Display for PendingError<'_> {
 }
 
 impl std::fmt::Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		PendingError(&self.expect).fmt(f)
-    }
+	}
 }
 
 impl<'a> Clone for Cursor<'a> {
-    fn clone(&self) -> Self {
-        Self {
+	fn clone(&self) -> Self {
+		Self {
 			tokens: self.tokens,
 			range: self.range.clone(),
 			pos: self.pos,
 			expect: Vec::new(),
 		}
-    }
+	}
 }
 
 impl<'a> Cursor<'a> {

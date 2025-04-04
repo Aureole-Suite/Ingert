@@ -78,9 +78,9 @@ impl Default for Errors {
 }
 
 impl Debug for Errors {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Errors").field("errors", &self.errors).finish_non_exhaustive()
-    }
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("Errors").field("errors", &self.errors).finish_non_exhaustive()
+	}
 }
 
 impl Debug for Error {

@@ -49,7 +49,7 @@ fn parse_called(
 	signatures: &IndexMap<&str, &[PArg]>,
 	errors: &mut Errors,
 ) -> Vec<crate::scp::Call> {
-    todo!()
+	todo!()
 }
 
 fn parse_asm(
@@ -57,7 +57,7 @@ fn parse_asm(
 	signatures: &IndexMap<&str, &[PArg]>,
 	errors: &mut Errors,
 ) -> Vec<crate::scp::Op> {
-    todo!()
+	todo!()
 }
 
 fn parse_flat(

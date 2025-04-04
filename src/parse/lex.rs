@@ -19,7 +19,7 @@ impl RawToken {
 }
 
 impl std::fmt::Debug for RawToken {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.write_fmt(format_args!("{}..{}:", self.start, self.end))?;
 		if let Some(line) = self.line {
 			f.write_fmt(format_args!("{}@", line))?;
