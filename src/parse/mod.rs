@@ -1,5 +1,4 @@
 use error::Errors;
-use cursor::Cursor;
 use indexmap::IndexMap;
 
 use crate::scena::{ArgType, Value};
@@ -8,6 +7,9 @@ pub mod lex;
 pub mod error;
 mod cursor;
 mod inner;
+mod parser;
+
+use parser::{Error, Parser, Result};
 
 #[derive(Debug, Clone)]
 struct PFunction<'a> {
@@ -27,39 +29,38 @@ struct PArg {
 
 #[derive(Debug, Clone)]
 enum PCalled<'a> {
-	Raw(Cursor<'a>),
+	Raw(Parser<'a>),
 	Merged(bool),
 }
 
 #[derive(Debug, Clone)]
 enum PBody<'a> {
-	Asm(Cursor<'a>),
-	Flat(Cursor<'a>),
-	Tree(Cursor<'a>),
+	Asm(Parser<'a>),
+	Flat(Parser<'a>),
+	Tree(Parser<'a>),
 }
 
 pub fn parse(tokens: &lex::Tokens) -> ((), Errors) {
-	let mut cursor = tokens.cursor();
+	let mut parser = Parser::new(tokens.cursor());
 	let mut errors = Errors::new();
 
 	let mut functions = Vec::new();
 
-	while !cursor.at_end() {
-		let mut clone = cursor.clone();
-		let _ = clone.keyword("prelude");
-		if clone.keyword("fn").is_ok() {
-			match parse_fn(&mut cursor) {
-				Ok(func) => {
-					functions.push(func);
-				}
-				Err(e) => {
-					errors.error(e.to_string(), cursor.next_span());
-				}
+	while !parser.at_end() {
+		let result = Alt::new(&mut parser)
+			.test(|p| {
+				let func = parse_fn(p)?;
+				functions.push(func);
+				Ok(())
+			})
+			.finish();
+
+		if let Err(parser::Error) = result {
+			let (cursor, err) = parser.report();
+			errors.error(err.to_string(), cursor.next_span());
+			while !(cursor.at_end() || cursor.keyword("fn").is_ok()) {
+				cursor.skip_any();
 			}
-		} else {
-			let e: cursor::Error = clone.fail().unwrap_err().into();
-			errors.error(e.to_string(), clone.next_span());
-			cursor.skip_any();
 		}
 	}
 
@@ -78,73 +79,115 @@ pub fn parse(tokens: &lex::Tokens) -> ((), Errors) {
 	((), errors)
 }
 
-fn parse_fn<'a>(cursor: &mut Cursor<'a>) -> cursor::Result<PFunction<'a>> {
-	let is_prelude = cursor.keyword("prelude").is_ok();
-	cursor.keyword("fn")?;
-	let name = cursor.ident()?;
-	let args = parse_args(cursor.delim('(')?)?;
+fn parse_fn<'a>(parser: &mut Parser<'a>) -> Result<PFunction<'a>> {
+	let is_prelude = parser.keyword("prelude").is_ok();
+	parser.keyword("fn")?;
+	let name = parser.ident()?;
+	let args = parse_args(parser.delim('(')?)?;
 
-	let called = if cursor.keyword("calls").is_ok() {
-		PCalled::Raw(cursor.delim('{')?)
-	} else if cursor.keyword("dup").is_ok() {
+	let called = if parser.keyword("calls").is_ok() {
+		PCalled::Raw(parser.delim('{')?)
+	} else if parser.keyword("dup").is_ok() {
 		PCalled::Merged(true)
 	} else {
 		PCalled::Merged(false)
 	};
 
-	let body = if cursor.keyword("asm").is_ok() {
-		PBody::Asm(cursor.delim('{')?)
-	} else if cursor.keyword("flat").is_ok() {
-		PBody::Flat(cursor.delim('{')?)
+	let body = if parser.keyword("asm").is_ok() {
+		PBody::Asm(parser.delim('{')?)
+	} else if parser.keyword("flat").is_ok() {
+		PBody::Flat(parser.delim('{')?)
 	} else {
-		PBody::Tree(cursor.delim('{')?)
+		PBody::Tree(parser.delim('{')?)
 	};
 
-	Ok(PFunction { name, args, called, is_prelude, body })
-}
-
-fn parse_args(mut cursor: Cursor) -> cursor::Result<Vec<PArg>> {
-	parse_comma_sep(&mut cursor, |cursor| {
-		let name = cursor.ident()?;
-		cursor.punct(':')?;
-		let ty = if cursor.keyword("num").is_ok() {
-			ArgType::Number
-		} else if cursor.keyword("str").is_ok() {
-			ArgType::String
-		} else if cursor.punct('&').is_ok() && cursor.keyword("num").is_ok() {
-			ArgType::NumberRef
-		} else {
-			cursor.fail()?;
-		};
-		let default = if cursor.punct('=').is_ok() {
-			Some(parse_value(cursor)?)
-		} else {
-			None
-		};
-		Ok(PArg { name, ty, default })
+	Ok(PFunction {
+		name: name.to_owned(),
+		args,
+		called,
+		is_prelude,
+		body,
 	})
 }
 
-fn parse_comma_sep<T>(cursor: &mut Cursor, mut f: impl FnMut(&mut Cursor) -> cursor::Result<T>) -> cursor::Result<Vec<T>> {
+fn parse_args(mut parser: Parser) -> Result<Vec<PArg>> {
+	parse_comma_sep(&mut parser, |parser| {
+		let name = parser.ident()?;
+		parser.punct(':')?;
+		let ty = parse_ty(parser)?;
+		let default = if parser.punct('=').is_ok() {
+			Some(parse_value(parser)?)
+		} else {
+			None
+		};
+		Ok(PArg {
+			name: name.to_owned(),
+			ty,
+			default,
+		})
+	})
+}
+
+fn parse_ty(parser: &mut Parser) -> Result<ArgType> {
+	Alt::new(parser)
+		.test(|p| {
+			p.keyword("num")?;
+			Ok(ArgType::Number)
+		})
+		.test(|p| {
+			p.keyword("str")?;
+			Ok(ArgType::String)
+		})
+		.test(|p| {
+			p.punct('&')?;
+			p.keyword("num")?;
+			Ok(ArgType::NumberRef)
+		})
+		.finish()
+}
+
+fn parse_comma_sep<T>(parser: &mut Parser, mut f: impl FnMut(&mut Parser) -> Result<T>) -> Result<Vec<T>> {
 	let mut args = Vec::new();
 	loop {
-		if cursor.at_end() { break }
-		args.push(f(cursor)?);
-		if cursor.at_end() { break }
-		cursor.punct(',')?;
+		if parser.at_end() { break }
+		args.push(f(parser)?);
+		if parser.at_end() { break }
+		parser.punct(',')?;
 	}
 	Ok(args)
 }
 
-fn parse_value(cursor: &mut Cursor<'_>) -> cursor::Result<Value> {
-	if let Ok(int) = cursor.int() {
-		return Ok(Value::Int(int));
+fn parse_value(parser: &mut Parser<'_>) -> Result<Value> {
+	Alt::new(parser)
+		.test(|p| p.int().map(Value::Int))
+		.test(|p| p.float().map(Value::Float))
+		.test(|p| p.string().map(|s| Value::String(s.to_owned())))
+		.finish()
+}
+
+pub struct Alt<'a, 'b, T> {
+	parser: &'b mut Parser<'a>,
+	value: Option<T>
+}
+
+impl<'a, 'b, T> Alt<'a, 'b, T> {
+	pub fn new(parser: &'b mut Parser<'a>) -> Self {
+		Self {
+			parser,
+			value: None
+		}
 	}
-	if let Ok(float) = cursor.float() {
-		return Ok(Value::Float(float));
+
+	pub fn test(mut self, f: impl FnOnce(&mut Parser<'a>) -> Result<T>) -> Self {
+		if self.value.is_none() {
+			if let Ok(value) = f(&mut self.parser) {
+				self.value = Some(value);
+			}
+		}
+		self
 	}
-	if let Ok(string) = cursor.string() {
-		return Ok(Value::String(string));
+
+	pub fn finish(self) -> Result<T> {
+		self.value.ok_or(Error)
 	}
-	cursor.fail()?;
 }

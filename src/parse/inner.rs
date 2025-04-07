@@ -2,7 +2,7 @@ use indexmap::IndexMap;
 
 use crate::scena::{Arg, Body, Called, Expr, Function, Stmt};
 
-use super::cursor::{self, Cursor};
+use super::{Alt, Result, Parser};
 use super::error::Errors;
 use super::{PArg, PBody, PCalled};
 
@@ -20,14 +20,14 @@ pub fn parse_fn(f: &super::PFunction, signatures: &Sig, errors: &mut Errors) -> 
 		.collect();
 	
 	let called = match &f.called {
-		PCalled::Raw(cursor) => Called::Raw(parse_called(cursor.clone(), signatures, errors)),
+		PCalled::Raw(parser) => Called::Raw(parse_called(parser.clone(), signatures, errors)),
 		PCalled::Merged(dup) => Called::Merged(*dup),
 	};
 
 	let body = match &f.body {
-		PBody::Asm(cursor) => Body::Asm(parse_asm(cursor.clone(), signatures, errors)),
-		PBody::Flat(cursor) => Body::Flat(parse_flat(cursor.clone(), signatures, errors)),
-		PBody::Tree(cursor) => Body::Tree(parse_tree(cursor.clone(), Ctx {
+		PBody::Asm(parser) => Body::Asm(parse_asm(parser.clone(), signatures, errors)),
+		PBody::Flat(parser) => Body::Flat(parse_flat(parser.clone(), signatures, errors)),
+		PBody::Tree(parser) => Body::Tree(parse_tree(parser.clone(), Ctx {
 			signatures,
 			errors,
 			brk: false,
@@ -45,7 +45,7 @@ pub fn parse_fn(f: &super::PFunction, signatures: &Sig, errors: &mut Errors) -> 
 }
 
 fn parse_called(
-	cursor: Cursor<'_>,
+	parser: Parser<'_>,
 	signatures: &IndexMap<&str, &[PArg]>,
 	errors: &mut Errors,
 ) -> Vec<crate::scp::Call> {
@@ -53,7 +53,7 @@ fn parse_called(
 }
 
 fn parse_asm(
-	cursor: Cursor<'_>,
+	parser: Parser<'_>,
 	signatures: &IndexMap<&str, &[PArg]>,
 	errors: &mut Errors,
 ) -> Vec<crate::scp::Op> {
@@ -61,7 +61,7 @@ fn parse_asm(
 }
 
 fn parse_flat(
-	cursor: Cursor<'_>,
+	parser: Parser<'_>,
 	signatures: &IndexMap<&str, &[PArg]>,
 	errors: &mut Errors,
 ) -> Vec<crate::scena::FlatStmt> {
@@ -98,12 +98,13 @@ impl Ctx<'_> {
 	}
 }
 
-fn parse_tree(mut cursor: Cursor<'_>, mut ctx: Ctx<'_>) -> Vec<Stmt> {
+fn parse_tree(mut parser: Parser<'_>, mut ctx: Ctx<'_>) -> Vec<Stmt> {
 	let mut stmts = Vec::new();
-	while !cursor.at_end() {
-		match parse_stmt(&mut cursor, &mut ctx) {
+	while !parser.at_end() {
+		match parse_stmt(&mut parser, &mut ctx) {
 			Ok(stmt) => stmts.push(stmt),
-			Err(err) => {
+			Err(_) => {
+				let (cursor, err) = parser.report();
 				ctx.errors.error(err.to_string(), cursor.next_span());
 				break;
 			}
@@ -113,91 +114,84 @@ fn parse_tree(mut cursor: Cursor<'_>, mut ctx: Ctx<'_>) -> Vec<Stmt> {
 }
 
 fn parse_stmt(
-	cursor: &mut Cursor<'_>,
+	parser: &mut Parser<'_>,
 	ctx: &mut Ctx<'_>,
-) -> cursor::Result<Stmt> {
-	let l = cursor.line();
-
-	if let Some(v) = cursor.test(|cursor| {
-		cursor.keyword("if")?;
-		let cond = parse_expr(cursor, ctx)?;
-		let then = parse_tree(cursor.delim('{')?, ctx.sub());
-		let els = if cursor.keyword("else").is_ok() {
-			Some(parse_tree(cursor.delim('{')?, ctx.sub()))
-		} else {
-			None
-		};
-		Ok(Stmt::If(l, cond, then, els))
-	}) { return v; }
-
-	if let Some(v) = cursor.test(|cursor| {
-		cursor.keyword("while")?;
-		let cond = parse_expr(cursor, ctx)?;
-		let body = parse_tree(cursor.delim('{')?, ctx.sub().with_brk().with_cont());
-		Ok(Stmt::While(l, cond, body))
-	}) { return v; }
-
-	if let Some(v) = cursor.test(|cursor| {
-		cursor.keyword("return")?;
-		let val = if cursor.punct(';').is_ok() {
-			None
-		} else {
-			let expr = parse_expr(cursor, ctx)?;
-			cursor.punct(';')?;
-			Some(expr)
-		};
-		Ok(Stmt::Return(l, val))
-	}) { return v; }
-
-	if let Some(v) = cursor.test(|cursor| {
-		let expr = parse_expr(cursor, ctx)?;
-		cursor.punct(';')?;
-		Ok(Stmt::Expr(expr))
-	}) { return v; }
-
-	cursor.fail()?
+) -> Result<Stmt> {
+	let l = parser.line();
+	Alt::new(parser)
+		.test(|parser| {
+			parser.keyword("if")?;
+			let cond = parse_expr(parser, ctx)?;
+			let then = parse_tree(parser.delim('{')?, ctx.sub());
+			let els = if parser.keyword("else").is_ok() {
+				Some(parse_tree(parser.delim('{')?, ctx.sub()))
+			} else {
+				None
+			};
+			Ok(Stmt::If(l, cond, then, els))
+		})
+		.test(|parser| {
+			parser.keyword("while")?;
+			let cond = parse_expr(parser, ctx)?;
+			let body = parse_tree(parser.delim('{')?, ctx.sub().with_brk().with_cont());
+			Ok(Stmt::While(l, cond, body))
+		})
+		.test(|parser| {
+			parser.keyword("return")?;
+			let val = if parser.punct(';').is_ok() {
+				None
+			} else {
+				let expr = parse_expr(parser, ctx)?;
+				parser.punct(';')?;
+				Some(expr)
+			};
+			Ok(Stmt::Return(l, val))
+		})
+		.test(|parser| {
+			let expr = parse_expr(parser, ctx)?;
+			parser.punct(';')?;
+			Ok(Stmt::Expr(expr))
+		})
+		.finish()
 }
 
-fn parse_expr(cursor: &mut Cursor<'_>, ctx: &mut Ctx<'_>) -> cursor::Result<Expr> {
-	let l = cursor.line();
-
-	if let Some(v) = cursor.test(|cursor| {
-		cursor.keyword("system")?;
-		let (a, b) = parse_syscall(cursor.delim('[')?, ctx);
-		let args = parse_args(cursor.delim('(')?, ctx).unwrap_or_default();
-		Ok(Expr::Syscall(l, a, b, args))
-	}) { return v; }
-
-	dbg!(&cursor);
-	cursor.keyword("<expr>")?;
-	cursor.fail()?
+fn parse_expr(parser: &mut Parser<'_>, ctx: &mut Ctx<'_>) -> Result<Expr> {
+	let l = parser.line();
+	Alt::new(parser)
+		.test(|parser| {
+			parser.keyword("system")?;
+			let (a, b) = parse_syscall(parser.delim('[')?, ctx);
+			let args = parse_args(parser.delim('(')?, ctx).unwrap_or_default();
+			Ok(Expr::Syscall(l, a, b, args))
+		})
+		.finish()
 }
 
-fn parse_syscall(cursor: Cursor<'_>, ctx: &mut Ctx<'_>) -> (u8, u8) {
-	fn inner(mut cursor: Cursor<'_>, ctx: &mut Ctx<'_>) -> cursor::Result<(u8, u8)> {
-		let a = cursor.int()?;
+fn parse_syscall(parser: Parser<'_>, ctx: &mut Ctx<'_>) -> (u8, u8) {
+	fn inner(mut parser: Parser<'_>, ctx: &mut Ctx<'_>) -> Result<(u8, u8)> {
+		let a = parser.int()?;
 		if !(0..=255).contains(&a) {
-			ctx.errors.error("invalid syscall number", cursor.prev_span());
+			ctx.errors.error("invalid syscall number", parser.report().0.prev_span());
 		}
-		cursor.punct(',')?;
-		let b = cursor.int()?;
+		parser.punct(',')?;
+		let b = parser.int()?;
 		if !(0..=255).contains(&b) {
-			ctx.errors.error("invalid syscall number", cursor.prev_span());
+			ctx.errors.error("invalid syscall number", parser.report().0.prev_span());
 		}
-		if !cursor.at_end() {
-			ctx.errors.error("unexpected token", cursor.next_span());
+		if !parser.at_end() {
+			let (cursor, err) = parser.report();
+			ctx.errors.error(err.to_string(), cursor.next_span());
 		}
 		Ok((a as u8, b as u8))
 	}
-	inner(cursor, ctx).unwrap_or((0, 0))
+	inner(parser, ctx).unwrap_or((0, 0))
 }
 
-fn parse_args(mut cursor: Cursor<'_>, ctx: &mut Ctx<'_>) -> Option<Vec<Expr>> {
-	match super::parse_comma_sep(&mut cursor, |cursor| parse_expr(cursor, ctx)) {
-		Ok(args) => Some(args),
-		Err(e) => {
-			ctx.errors.error(e.to_string(), cursor.next_span());
-			None
-		}
+fn parse_args(mut parser: Parser<'_>, ctx: &mut Ctx<'_>) -> Option<Vec<Expr>> {
+	let result = super::parse_comma_sep(&mut parser, |parser| parse_expr(parser, ctx));
+	if result.is_err() {
+		let (cursor, err) = parser.report();
+		ctx.errors.error(err.to_string(), cursor.next_span());
 	}
+	result.ok()
 }
