@@ -59,10 +59,6 @@ impl<'a> Cursor<'a> {
 		self.tokens[self.pos].span()
 	}
 
-	pub fn space_span(&self) -> Range<usize> {
-		self.prev_span().end..self.next_span().start
-	}
-
 	pub fn skip_any(&mut self) {
 		assert!(!self.at_end());
 		if self.tokens[self.pos].matched > 0 {
@@ -141,7 +137,7 @@ impl<'a> Cursor<'a> {
 		assert!(!operator.is_empty());
 		let mut pos = self.pos;
 		for c in operator.chars() {
-			if pos != self.pos && !self.space_span().is_empty() {
+			if pos != self.pos && self.tokens[pos - 1].end != self.tokens[pos].start {
 				return Err(Error);
 			}
 			if !self.punct_inner(c, pos) {

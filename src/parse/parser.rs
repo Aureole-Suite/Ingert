@@ -107,6 +107,10 @@ impl<'a> Parser<'a> {
 		self.test(punct, |p| Ok(p.cursor.punct(punct)?))
 	}
 
+	pub fn operator(&mut self, op: &'static str) -> Result<()> {
+		self.test(op, |p| Ok(p.cursor.operator(op)?))
+	}
+
 	pub fn delim(&mut self, delim: char) -> Result<Parser<'a>> {
 		self.test(delim, |p| Ok(Parser::new(p.cursor.delim(delim)?)))
 	}

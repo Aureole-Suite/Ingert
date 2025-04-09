@@ -1,7 +1,7 @@
 use indexmap::IndexMap;
 
 use crate::scena::{Arg, Body, Called, Expr, Function, Place, Stmt, Var};
-use crate::scp::Name;
+use crate::scp::{Binop, Name};
 
 use super::{Alt, Result, Parser};
 use super::error::Errors;
@@ -157,7 +157,90 @@ fn parse_stmt(
 		.finish()
 }
 
+struct PrioOp {
+	line: Option<u16>,
+	op: Binop,
+	prio: u32,
+}
+
+pub struct Prio {
+	ops: Vec<PrioOp>,
+	stack: Vec<Expr>,
+}
+
+impl Prio {
+	pub fn new(left: Expr) -> Self {
+		Self {
+			ops: Vec::new(),
+			stack: vec![left],
+		}
+	}
+
+	fn pop(&mut self) {
+		let top = self.ops.pop().unwrap();
+		let right = self.stack.pop().unwrap();
+		let left = self.stack.pop().unwrap();
+		self.stack.push(Expr::Binop(top.line, top.op, Box::new(left), Box::new(right)))
+	}
+
+	fn push(&mut self, op: PrioOp, expr: Expr) {
+		while let Some(top) = self.ops.last() && top.prio >= op.prio {
+			self.pop();
+		}
+		self.ops.push(op);
+		self.stack.push(expr);
+	}
+
+	fn finish(&mut self) -> Expr {
+		while !self.ops.is_empty() {
+			self.pop();
+		}
+		assert_eq!(self.stack.len(), 1);
+		self.stack.pop().unwrap()
+	}
+}
+
 fn parse_expr(parser: &mut Parser<'_>, ctx: &mut Ctx<'_>) -> Result<Expr> {
+	let mut prio = Prio::new(parse_atom(parser, ctx)?);
+	while let Some(op) = parse_binop(parser, ctx)? {
+		prio.push(op, parse_atom(parser, ctx)?);
+	}
+	Ok(prio.finish())
+}
+
+fn parse_binop(parser: &mut Parser<'_>, _ctx: &mut Ctx<'_>) -> Result<Option<PrioOp>> {
+	let line = parser.line();
+	macro_rules! op {
+		($($ident:ident => ($op:literal, $prio:literal),)*) => {
+			$(if parser.operator($op).is_ok() {
+				return Ok(Some(PrioOp {
+					line,
+					op: Binop::$ident,
+					prio: $prio,
+				}));
+			} else )* { Ok(None) }
+		}
+	}
+	op! {
+		BoolOr => ("||", 1),
+		BoolAnd => ("&&", 2),
+		Le => ("<=", 3),
+		Lt => ("<", 3),
+		Ge => (">=", 3),
+		Gt => (">", 3),
+		Ne => ("!=", 3),
+		Eq => ("==", 3),
+		BitOr => ("|", 4),
+		BitAnd => ("&", 5),
+		Sub => ("-", 6),
+		Add => ("+", 6),
+		Mod => ("%", 7),
+		Div => ("/", 7),
+		Mul => ("*", 7),
+	}
+}
+
+fn parse_atom(parser: &mut Parser<'_>, ctx: &mut Ctx<'_>) -> Result<Expr> {
 	let l = parser.line();
 	Alt::new(parser)
 		.test(|parser| parse_call(parser, ctx))
