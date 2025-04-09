@@ -8,16 +8,22 @@ pub struct Errors {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Severity {
-	Info,
-	Warning,
-	Error,
 	Fatal,
+	Error,
+	Warning,
+	Info,
 }
 
 pub struct Error {
 	pub severity: Severity,
 	pub main: Note,
 	pub notes: Vec<Note>,
+}
+
+impl Error {
+	pub fn sort_key(&self) -> impl Ord {
+		(self.main.span.start, self.severity)
+	}
 }
 
 pub struct Note {

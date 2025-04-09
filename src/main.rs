@@ -1,4 +1,7 @@
 use clap::Parser;
+use codespan_reporting::diagnostic::{Diagnostic, Label};
+use codespan_reporting::files::SimpleFile;
+use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
 use std::path::PathBuf;
 use tracing_subscriber::prelude::*;
 
@@ -14,6 +17,9 @@ fn main() {
 		.init();
 	unsafe { compact_debug::enable(true) };
 	let args = Args::parse();
+
+	let writer = StandardStream::stderr(ColorChoice::Always);
+	let config = codespan_reporting::term::Config::default();
 
 	for file in &args.files {
 		let _span = tracing::info_span!("file", path = %file.display()).entered();
@@ -37,6 +43,27 @@ fn main() {
 		let (tokens, errors) = ingert::parse::lex::lex(&str);
 		dbg!(errors);
 		let (_, errors) = ingert::parse::parse(&tokens);
+
+		let mut errors = errors.errors;
+		let file = SimpleFile::new("system.ing", &str);
+		errors.sort_by_key(|e| e.sort_key());
+
+		for error in errors {
+			let severity = match error.severity {
+				ingert::parse::error::Severity::Fatal => codespan_reporting::diagnostic::Severity::Error,
+				ingert::parse::error::Severity::Error => codespan_reporting::diagnostic::Severity::Error,
+				ingert::parse::error::Severity::Warning => codespan_reporting::diagnostic::Severity::Warning,
+				ingert::parse::error::Severity::Info => codespan_reporting::diagnostic::Severity::Note,
+			};
+			let diag = Diagnostic::<()>::new(severity)
+				.with_message(&error.main.desc)
+				.with_label(Label::primary((), error.main.span.clone()).with_message(&error.main.desc))
+				.with_labels_iter(error.notes.iter().map(|note| {
+					Label::secondary((), note.span.clone()).with_message(&note.desc)
+				}));
+			codespan_reporting::term::emit(&mut writer.lock(), &config, &file, &diag).unwrap();
+		}
+
 
 		let scp2 = ingert::scena::compile(scena).unwrap();
 		similar_asserts::assert_eq!(scp, scp2);
