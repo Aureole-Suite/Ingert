@@ -18,7 +18,7 @@ pub fn parse_fn(f: &super::PFunction, signatures: &Sig, errors: &mut Errors) -> 
 		.iter()
 		.map(|arg| {
 			vars.push(arg.name.clone().clone());
-			Arg { ty: arg.ty, default: arg.default.clone(), line: None }
+			Arg { ty: arg.ty, default: arg.default.clone(), line: arg.line }
 		})
 		.collect();
 	vars.reverse();

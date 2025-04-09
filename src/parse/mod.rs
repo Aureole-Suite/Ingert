@@ -1,6 +1,6 @@
 use indexmap::IndexMap;
 
-use crate::scena::{ArgType, Scena, Value};
+use crate::scena::{ArgType, Line, Scena, Value};
 
 pub mod lex;
 pub mod error;
@@ -27,6 +27,7 @@ struct PArg {
 	name: String,
 	ty: ArgType,
 	default: Option<Value>,
+	line: Line,
 }
 
 #[derive(Debug, Clone)]
@@ -113,6 +114,7 @@ fn parse_fn<'a>(parser: &mut Parser<'a>) -> Result<PFunction<'a>> {
 
 fn parse_args(mut parser: Parser) -> Result<Vec<PArg>> {
 	parse_comma_sep(&mut parser, |parser| {
+		let line = parser.line();
 		let name = parser.ident()?;
 		parser.punct(':')?;
 		let ty = parse_ty(parser)?;
@@ -125,6 +127,7 @@ fn parse_args(mut parser: Parser) -> Result<Vec<PArg>> {
 			name: name.to_owned(),
 			ty,
 			default,
+			line,
 		})
 	})
 }
