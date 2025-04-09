@@ -71,9 +71,10 @@ pub fn parse(tokens: &lex::Tokens) -> ((), Errors) {
 	let signatures = functions.iter().map(|f| (f.name.as_str(), f.args.as_slice())).collect::<IndexMap<_, _>>();
 
 	let functions = functions.iter()
-		.take(128)
 		.map(|f| (f.name.clone(), inner::parse_fn(f, &signatures, &mut errors)))
 		.collect::<IndexMap<_, _>>();
+
+	dbg!(&errors);
 
 	((), errors)
 }

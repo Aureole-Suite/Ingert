@@ -123,6 +123,7 @@ fn parse_stmt(
 	Alt::new(parser)
 		.test(|parser| {
 			parser.keyword("if")?;
+			parser.commit();
 			let cond = parse_expr(parser, ctx)?;
 			let then = parse_tree(parser.delim('{')?, ctx.sub());
 			let els = if parser.keyword("else").is_ok() {
@@ -138,12 +139,14 @@ fn parse_stmt(
 		})
 		.test(|parser| {
 			parser.keyword("while")?;
+			parser.commit();
 			let cond = parse_expr(parser, ctx)?;
 			let body = parse_tree(parser.delim('{')?, ctx.sub().with_brk().with_cont());
 			Ok(Stmt::While(l, cond, body))
 		})
 		.test(|parser| {
 			parser.keyword("return")?;
+			parser.commit();
 			let val = if parser.punct(';').is_ok() {
 				None
 			} else {
@@ -280,6 +283,7 @@ fn parse_call(parser: &mut Parser<'_>, ctx: &mut Ctx<'_>) -> Result<Expr> {
 		.test(|parser| {
 			parser.keyword("system")?;
 			let (a, b) = parse_syscall(parser.delim('[')?, ctx);
+			parser.commit();
 			let args = parse_args(parser.delim('(')?, ctx).unwrap_or_default();
 			Ok(Expr::Syscall(l, a, b, args))
 		})
@@ -296,6 +300,7 @@ fn parse_call(parser: &mut Parser<'_>, ctx: &mut Ctx<'_>) -> Result<Expr> {
 		.test(|parser| {
 			let name1 = parser.ident()?;
 			parser.punct('.')?;
+			parser.commit();
 			let name2 = parser.ident()?;
 			let args = parse_args(parser.delim('(')?, ctx).unwrap_or_default();
 			Ok(Expr::Call(l, Name(name1.to_owned(), name2.to_owned()), args))
