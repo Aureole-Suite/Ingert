@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use indexmap::IndexMap;
 
 use crate::scena::{Arg, Body, Called, Expr, Function, Place, Stmt, Var};
@@ -177,7 +179,7 @@ fn parse_stmt(
 			parser.commit();
 			let expr = parse_expr(parser, ctx)?;
 			parser.punct(';')?;
-			Ok(Stmt::Set(l, place, expr))
+			Ok(Stmt::Set(l, place.lookup(ctx), expr))
 		})
 		.test(|parser| {
 			let expr = parse_call(parser, ctx)?;
@@ -304,7 +306,7 @@ fn parse_atom(parser: &mut Parser<'_>, ctx: &mut Ctx<'_>) -> Result<Expr> {
 		.test(|parser| parse_call(parser, ctx))
 		.test(|parser| {
 			let place = parse_place(parser, ctx)?;
-			Ok(Expr::Var(l, place))
+			Ok(Expr::Var(l, place.lookup(ctx)))
 		})
 		.finish()
 }
@@ -340,22 +342,31 @@ fn parse_call(parser: &mut Parser<'_>, ctx: &mut Ctx<'_>) -> Result<Expr> {
 		.finish()
 }
 
-fn parse_place(parser: &mut Parser<'_>, ctx: &mut Ctx<'_>) -> Result<Place> {
+enum PPlace {
+	Var(Range<usize>, String),
+}
+
+fn parse_place(parser: &mut Parser<'_>, _ctx: &mut Ctx<'_>) -> Result<PPlace> {
 	Alt::new(parser)
 		.test(|parser| {
-			let var = parse_var(parser, ctx)?;
-			Ok(Place::Var(var))
+			let name = parser.ident()?;
+			Ok(PPlace::Var(parser.prev_span(), name.to_owned()))
 		})
 		.finish()
 }
 
-fn parse_var(parser: &mut Parser<'_>, ctx: &mut Ctx<'_>) -> Result<Var> {
-	let ident = parser.ident()?;
-	if let Some(num) = ctx.vars.iter().position(|v| v == ident) {
-		Ok(Var(num as u32))
-	} else {
-		ctx.errors.error("unknown variable", parser.prev_span());
-		Ok(Var(0))
+impl PPlace {
+	fn lookup(self, ctx: &mut Ctx<'_>) -> Place {
+		match self {
+			PPlace::Var(span, name) => {
+				if let Some(num) = ctx.vars.iter().rposition(|v| *v == name) {
+					Place::Var(Var(num as u32))
+				} else {
+					ctx.errors.error("unknown variable", span);
+					Place::Var(Var(0))
+				}
+			}
+		}
 	}
 }
 
