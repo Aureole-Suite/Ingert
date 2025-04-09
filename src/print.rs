@@ -16,6 +16,7 @@ struct Ctx {
 	space: Space,
 	indent: usize,
 	vars: Vec<String>,
+	nargs: u32,
 }
 
 impl Ctx {
@@ -25,6 +26,7 @@ impl Ctx {
 			space: Space::None,
 			indent: 0,
 			vars: Vec::new(),
+			nargs: 0,
 		}
 	}
 
@@ -144,6 +146,8 @@ fn print_function(ctx: &mut Ctx, name: &str, f: &Function) {
 	for i in (0..f.args.len()).rev() {
 		ctx.vars.push(format!("arg{i}"));
 	}
+	ctx.nargs = f.args.len() as u32;
+
 	if f.is_prelude {
 		ctx.word("prelude");
 	}
@@ -534,7 +538,7 @@ impl Print for Stmt {
 				ctx.sym_(";");
 			}
 			Stmt::PushVar(l, d, e) => {
-				ctx.vars.push(format!("var{}", ctx.vars.len()));
+				ctx.vars.push(format!("var{}", d.0 - ctx.nargs));
 				ctx.line(l);
 				ctx.word("var");
 				d.print(ctx);
