@@ -150,7 +150,7 @@ fn parse_stmt(
 			Ok(Stmt::Return(l, val))
 		})
 		.test(|parser| {
-			let expr = parse_expr(parser, ctx)?;
+			let expr = parse_call(parser, ctx)?;
 			parser.punct(';')?;
 			Ok(Stmt::Expr(expr))
 		})
@@ -158,6 +158,17 @@ fn parse_stmt(
 }
 
 fn parse_expr(parser: &mut Parser<'_>, ctx: &mut Ctx<'_>) -> Result<Expr> {
+	let l = parser.line();
+	Alt::new(parser)
+		.test(|parser| parse_call(parser, ctx))
+		.test(|parser| {
+			let place = parse_place(parser, ctx)?;
+			Ok(Expr::Var(l, place))
+		})
+		.finish()
+}
+
+fn parse_call(parser: &mut Parser<'_>, ctx: &mut Ctx<'_>) -> Result<Expr> {
 	let l = parser.line();
 	Alt::new(parser)
 		.test(|parser| {
@@ -182,10 +193,6 @@ fn parse_expr(parser: &mut Parser<'_>, ctx: &mut Ctx<'_>) -> Result<Expr> {
 			let name2 = parser.ident()?;
 			let args = parse_args(parser.delim('(')?, ctx).unwrap_or_default();
 			Ok(Expr::Call(l, Name(name1.to_owned(), name2.to_owned()), args))
-		})
-		.test(|parser| {
-			let place = parse_place(parser, ctx)?;
-			Ok(Expr::Var(l, place))
 		})
 		.finish()
 }
