@@ -1,7 +1,7 @@
 use indexmap::IndexMap;
 
 use crate::scena::{Arg, Body, Called, Expr, Function, Place, Stmt, Var};
-use crate::scp::{Binop, Name};
+use crate::scp::{Binop, Name, Unop};
 
 use super::{Alt, Result, Parser};
 use super::error::Errors;
@@ -246,6 +246,21 @@ fn parse_atom(parser: &mut Parser<'_>, ctx: &mut Ctx<'_>) -> Result<Expr> {
 		.test(|parser| {
 			let value = super::parse_value(parser)?;
 			Ok(Expr::Value(l, value))
+		})
+		.test(|parser| {
+			parser.punct('!')?;
+			let expr = parse_atom(parser, ctx)?;
+			Ok(Expr::Unop(l, Unop::BoolNot, Box::new(expr)))
+		})
+		.test(|parser| {
+			parser.punct('-')?;
+			let expr = parse_atom(parser, ctx)?;
+			Ok(Expr::Unop(l, Unop::Neg, Box::new(expr)))
+		})
+		.test(|parser| {
+			parser.punct('~')?;
+			let expr = parse_atom(parser, ctx)?;
+			Ok(Expr::Unop(l, Unop::BitNot, Box::new(expr)))
 		})
 		.test(|parser| parse_call(parser, ctx))
 		.test(|parser| {
