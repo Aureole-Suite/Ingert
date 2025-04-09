@@ -42,7 +42,7 @@ fn main() {
 
 		let (tokens, errors) = ingert::parse::lex::lex(&str);
 		dbg!(errors);
-		let (_, errors) = ingert::parse::parse(&tokens);
+		let (scena2, errors) = ingert::parse::parse(&tokens);
 
 		let mut errors = errors.errors;
 		let file = SimpleFile::new("system.ing", &str);
@@ -63,6 +63,9 @@ fn main() {
 				}));
 			codespan_reporting::term::emit(&mut writer.lock(), &config, &file, &diag).unwrap();
 		}
+
+		std::fs::write("system.dbg", format!("{scena:#?}")).unwrap();
+		std::fs::write("system.dbg2", format!("{scena2:#?}")).unwrap();
 
 
 		let scp2 = ingert::scena::compile(scena).unwrap();

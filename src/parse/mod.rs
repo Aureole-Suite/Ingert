@@ -1,6 +1,6 @@
 use indexmap::IndexMap;
 
-use crate::scena::{ArgType, Value};
+use crate::scena::{ArgType, Scena, Value};
 
 pub mod lex;
 pub mod error;
@@ -42,7 +42,7 @@ enum PBody<'a> {
 	Tree(Parser<'a>),
 }
 
-pub fn parse(tokens: &lex::Tokens) -> ((), Errors) {
+pub fn parse(tokens: &lex::Tokens) -> (Scena, Errors) {
 	let mut parser = Parser::new(tokens.cursor());
 	let mut errors = Errors::new();
 
@@ -74,9 +74,10 @@ pub fn parse(tokens: &lex::Tokens) -> ((), Errors) {
 		.map(|f| (f.name.clone(), inner::parse_fn(f, &signatures, &mut errors)))
 		.collect::<IndexMap<_, _>>();
 
-	dbg!(&errors);
-
-	((), errors)
+	(Scena {
+		globals: IndexMap::new(),
+		functions,
+	}, errors)
 }
 
 fn parse_fn<'a>(parser: &mut Parser<'a>) -> Result<PFunction<'a>> {
