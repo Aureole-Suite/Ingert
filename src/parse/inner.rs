@@ -207,6 +207,13 @@ fn parse_stmt(
 			Ok(Stmt::Set(l, place.lookup(ctx), expr))
 		})
 		.test(|parser| {
+			parser.keyword("debug")?;
+			let args = parse_args(parser.delim('(')?, ctx).unwrap_or_default();
+			parser.commit();
+			parser.punct(';')?;
+			Ok(Stmt::Debug(l, args))
+		})
+		.test(|parser| {
 			let expr = parse_call(parser, ctx)?;
 			parser.punct(';')?;
 			Ok(Stmt::Expr(expr))
