@@ -15,6 +15,7 @@ struct Ctx {
 	out: String,
 	space: Space,
 	indent: usize,
+	vars: Vec<String>,
 }
 
 impl Ctx {
@@ -23,6 +24,7 @@ impl Ctx {
 			out: String::new(),
 			space: Space::None,
 			indent: 0,
+			vars: Vec::new(),
 		}
 	}
 
@@ -138,14 +140,18 @@ pub fn print(scena: &Scena) -> String {
 }
 
 fn print_function(ctx: &mut Ctx, name: &str, f: &Function) {
+	ctx.vars.clear();
+	for i in (0..f.args.len()).rev() {
+		ctx.vars.push(format!("arg{i}"));
+	}
 	if f.is_prelude {
 		ctx.word("prelude");
 	}
 	ctx.word("fn");
 	ctx.ident(name.to_owned());
-	ctx.arglist(f.args.iter().enumerate(), |(i, arg), ctx| {
+	ctx.arglist(f.args.iter().rev().enumerate().rev(), |(i, arg), ctx| {
 		ctx.line(&arg.line);
-		ctx.ident(format!("arg{i}"));
+		Var(i as u32).print(ctx);
 		ctx.sym_(":");
 		arg.ty.print(ctx);
 
@@ -444,7 +450,9 @@ impl Print for FlatStmt {
 
 impl Print for Vec<Stmt> {
 	fn print(&self, ctx: &mut Ctx) {
+		let size = ctx.vars.len();
 		ctx.block(self, Stmt::print);
+		ctx.vars.truncate(size);
 	}
 }
 
@@ -526,6 +534,7 @@ impl Print for Stmt {
 				ctx.sym_(";");
 			}
 			Stmt::PushVar(l, d, e) => {
+				ctx.vars.push(format!("var{}", ctx.vars.len()));
 				ctx.line(l);
 				ctx.word("var");
 				d.print(ctx);
@@ -665,13 +674,18 @@ fn binop_prio(op: Binop) -> (&'static str, u32) {
 
 impl Print for Var {
 	fn print(&self, ctx: &mut Ctx) {
-		ctx.ident(format!("var{}", self.0));
+		if let Some(name) = ctx.vars.get(self.0 as usize) {
+			ctx.ident(name.clone());
+		} else {
+			ctx.ident(format!("unknown_var{}", self.0));
+		}
 	}
 }
 
 impl Print for FlatVar {
 	fn print(&self, ctx: &mut Ctx) {
-		ctx.ident(format!("var{}", self.0));
+		ctx._sym("#");
+		ctx.token(format!("{}", self.0));
 	}
 }
 
