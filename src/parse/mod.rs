@@ -1,4 +1,3 @@
-use error::Errors;
 use indexmap::IndexMap;
 
 use crate::scena::{ArgType, Value};
@@ -8,7 +7,10 @@ pub mod error;
 mod cursor;
 mod inner;
 mod parser;
+mod alt;
 
+use alt::Alt;
+use error::Errors;
 use parser::{Error, Parser, Result};
 
 #[derive(Debug, Clone)]
@@ -160,33 +162,4 @@ fn parse_value(parser: &mut Parser<'_>) -> Result<Value> {
 		.test(|p| p.float().map(Value::Float))
 		.test(|p| p.string().map(|s| Value::String(s.to_owned())))
 		.finish()
-}
-
-pub struct Alt<'a, 'b, T> {
-	parser: &'b mut Parser<'a>,
-	value: Option<T>
-}
-
-impl<'a, 'b, T> Alt<'a, 'b, T> {
-	pub fn new(parser: &'b mut Parser<'a>) -> Self {
-		Self {
-			parser,
-			value: None
-		}
-	}
-
-	pub fn test(mut self, f: impl FnOnce(&mut Parser<'a>) -> Result<T>) -> Self {
-		if self.value.is_none() {
-			let mut clone = self.parser.clone();
-			if let Ok(value) = f(&mut clone) {
-				*self.parser = clone;
-				self.value = Some(value);
-			}
-		}
-		self
-	}
-
-	pub fn finish(self) -> Result<T> {
-		self.value.ok_or(Error)
-	}
 }
