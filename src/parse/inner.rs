@@ -147,6 +147,13 @@ fn parse_stmt(
 			Ok(Stmt::While(l, cond, body))
 		})
 		.test(|parser| {
+			parser.keyword("switch")?;
+			parser.commit();
+			let cond = parse_expr(parser, ctx)?;
+			let body = do_parse(parser.delim('{')?, &mut ctx.sub().with_brk(), parse_switch).unwrap_or_default();
+			Ok(Stmt::Switch(l, cond, body))
+		})
+		.test(|parser| {
 			parser.keyword("return")?;
 			parser.commit();
 			let val = if parser.punct(';').is_ok() {
@@ -205,6 +212,30 @@ fn parse_stmt(
 			Ok(Stmt::Expr(expr))
 		})
 		.finish()
+}
+
+fn parse_switch(parser: &mut Parser<'_>, ctx: &mut Ctx<'_>) -> Result<IndexMap<Option<i32>, Vec<Stmt>>> {
+	// TODO error on duplicate cases
+	let mut cases = IndexMap::new();
+	while !parser.at_end() {
+		if parser.keyword("case").is_ok() {
+			let num = parser.int()?;
+			parser.punct(':')?;
+			cases.insert(Some(num), Vec::new());
+		} else if parser.keyword("default").is_ok() {
+			parser.punct(':')?;
+			cases.insert(None, Vec::new());
+		} else {
+			let span = parser.next_span();
+			let stmt = parse_stmt(parser, ctx)?;
+			if let Some((_, stmts)) = cases.last_mut() {
+				stmts.push(stmt);
+			} else {
+				ctx.errors.error("expected 'case', 'default'", span);
+			}
+		}
+	}
+	Ok(cases)
 }
 
 struct PrioOp {
@@ -298,13 +329,8 @@ fn parse_atom(parser: &mut Parser<'_>, ctx: &mut Ctx<'_>) -> Result<Expr> {
 			Ok(Expr::Value(l, value))
 		})
 		.test(|parser| {
-			let mut paren = parser.delim('(')?;
-			let result = parse_expr(&mut paren, ctx);
-			if result.is_err() {
-				let (cursor, err) = paren.report();
-				ctx.errors.error(err.to_string(), cursor.next_span());
-			}
-			Ok(result.unwrap_or(Expr::Value(l, Value::Int(0))))
+			let paren = parser.delim('(')?;
+			Ok(do_parse(paren, ctx, parse_expr).unwrap_or_else(|| Expr::Value(l, Value::Int(0))))
 		})
 		.test(|parser| {
 			parser.punct('!')?;
@@ -418,8 +444,16 @@ fn parse_syscall(parser: Parser<'_>, ctx: &mut Ctx<'_>) -> (u8, u8) {
 	inner(parser, ctx).unwrap_or((0, 0))
 }
 
-fn parse_args(mut parser: Parser<'_>, ctx: &mut Ctx<'_>) -> Option<Vec<Expr>> {
-	let result = super::parse_comma_sep(&mut parser, |parser| parse_expr(parser, ctx));
+fn parse_args(parser: Parser<'_>, ctx: &mut Ctx<'_>) -> Option<Vec<Expr>> {
+	do_parse(parser, ctx, |p, c| super::parse_comma_sep(p, |p| parse_expr(p, c)))
+}
+
+fn do_parse<T>(
+	mut parser: Parser<'_>,
+	ctx: &mut Ctx<'_>,
+	f: impl FnOnce(&mut Parser<'_>, &mut Ctx<'_>) -> Result<T>,
+) -> Option<T> {
+	let result = f(&mut parser, ctx);
 	if result.is_err() {
 		let (cursor, err) = parser.report();
 		ctx.errors.error(err.to_string(), cursor.next_span());
