@@ -303,6 +303,12 @@ fn parse_atom(parser: &mut Parser<'_>, ctx: &mut Ctx<'_>) -> Result<Expr> {
 			let expr = parse_atom(parser, ctx)?;
 			Ok(Expr::Unop(l, Unop::BitNot, Box::new(expr)))
 		})
+		.test(|parser| {
+			parser.punct('&')?;
+			let name = parser.ident()?;
+			parser.commit();
+			Ok(Expr::Ref(l, lookup_var(ctx, name, parser.prev_span())))
+		})
 		.test(|parser| parse_call(parser, ctx))
 		.test(|parser| {
 			let place = parse_place(parser, ctx)?;
@@ -359,14 +365,18 @@ impl PPlace {
 	fn lookup(self, ctx: &mut Ctx<'_>) -> Place {
 		match self {
 			PPlace::Var(span, name) => {
-				if let Some(num) = ctx.vars.iter().rposition(|v| *v == name) {
-					Place::Var(Var(num as u32))
-				} else {
-					ctx.errors.error("unknown variable", span);
-					Place::Var(Var(0))
-				}
+				Place::Var(lookup_var(ctx, &name, span))
 			}
 		}
+	}
+}
+
+fn lookup_var(ctx: &mut Ctx<'_>, name: &str, span: Range<usize>) -> Var {
+	if let Some(num) = ctx.vars.iter().rposition(|v| *v == name) {
+		Var(num as u32)
+	} else {
+		ctx.errors.error("unknown variable", span);
+		Var(0)
 	}
 }
 
