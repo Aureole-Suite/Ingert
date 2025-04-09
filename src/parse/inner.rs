@@ -157,6 +157,29 @@ fn parse_stmt(
 			Ok(Stmt::Return(l, val))
 		})
 		.test(|parser| {
+			parser.keyword("var")?;
+			parser.commit();
+			let name = parser.ident()?;
+			let var = Var(ctx.vars.len() as u32);
+			ctx.vars.push(name.to_owned());
+			let expr = if parser.punct('=').is_ok() {
+				let expr = parse_expr(parser, ctx)?;
+				Some(expr)
+			} else {
+				None
+			};
+			parser.punct(';')?;
+			Ok(Stmt::PushVar(l, var, expr))
+		})
+		.test(|parser| {
+			let place = parse_place(parser, ctx)?;
+			parser.punct('=')?;
+			parser.commit();
+			let expr = parse_expr(parser, ctx)?;
+			parser.punct(';')?;
+			Ok(Stmt::Set(l, place, expr))
+		})
+		.test(|parser| {
 			let expr = parse_call(parser, ctx)?;
 			parser.punct(';')?;
 			Ok(Stmt::Expr(expr))
