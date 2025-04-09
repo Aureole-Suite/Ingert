@@ -159,6 +159,24 @@ fn parse_stmt(
 			Ok(Stmt::Return(l, val))
 		})
 		.test(|parser| {
+			parser.keyword("break")?;
+			parser.commit();
+			if !ctx.brk {
+				ctx.errors.error("break outside of loop/switch", parser.prev_span());
+			}
+			parser.punct(';')?;
+			Ok(Stmt::Break)
+		})
+		.test(|parser| {
+			parser.keyword("continue")?;
+			parser.commit();
+			if !ctx.cont {
+				ctx.errors.error("continue outside of loop", parser.prev_span());
+			}
+			parser.punct(';')?;
+			Ok(Stmt::Continue)
+		})
+		.test(|parser| {
 			parser.keyword("var")?;
 			parser.commit();
 			let name = parser.ident()?;
