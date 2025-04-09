@@ -155,4 +155,12 @@ impl<'a> Parser<'a> {
 	pub fn line(&self) -> Option<u16> {
 		self.cursor.line()
 	}
+
+	pub fn prev_span(&self) -> std::ops::Range<usize> {
+		self.cursor.prev_span()
+	}
+
+	pub fn next_span(&self) -> std::ops::Range<usize> {
+		self.cursor.next_span()
+	}
 }

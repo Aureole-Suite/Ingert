@@ -204,7 +204,7 @@ fn parse_var(parser: &mut Parser<'_>, ctx: &mut Ctx<'_>) -> Result<Var> {
 	if let Some(num) = ctx.vars.iter().position(|v| v == ident) {
 		Ok(Var(num as u32))
 	} else {
-		ctx.errors.error("unknown variable", parser.report().0.prev_span());
+		ctx.errors.error("unknown variable", parser.prev_span());
 		Ok(Var(0))
 	}
 }
@@ -213,12 +213,12 @@ fn parse_syscall(parser: Parser<'_>, ctx: &mut Ctx<'_>) -> (u8, u8) {
 	fn inner(mut parser: Parser<'_>, ctx: &mut Ctx<'_>) -> Result<(u8, u8)> {
 		let a = parser.int()?;
 		if !(0..=255).contains(&a) {
-			ctx.errors.error("invalid syscall number", parser.report().0.prev_span());
+			ctx.errors.error("invalid syscall number", parser.prev_span());
 		}
 		parser.punct(',')?;
 		let b = parser.int()?;
 		if !(0..=255).contains(&b) {
-			ctx.errors.error("invalid syscall number", parser.report().0.prev_span());
+			ctx.errors.error("invalid syscall number", parser.prev_span());
 		}
 		if !parser.at_end() {
 			let (cursor, err) = parser.report();
