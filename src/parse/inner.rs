@@ -126,7 +126,11 @@ fn parse_stmt(
 			let cond = parse_expr(parser, ctx)?;
 			let then = parse_tree(parser.delim('{')?, ctx.sub());
 			let els = if parser.keyword("else").is_ok() {
-				Some(parse_tree(parser.delim('{')?, ctx.sub()))
+				if parser.clone().keyword("if").is_ok() {
+					Some(vec![parse_stmt(parser, ctx)?])
+				} else {
+					Some(parse_tree(parser.delim('{')?, ctx.sub()))
+				}
 			} else {
 				None
 			};
