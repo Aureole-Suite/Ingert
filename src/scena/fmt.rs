@@ -103,13 +103,14 @@ impl Debug for Stmt {
 
 impl Debug for FlatVar {
 	fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-		f.write_fmt(format_args!("var{}", self.0))
+		f.write_str("#")?;
+		self.0.fmt(f)
 	}
 }
 
 impl Debug for Var {
 	fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-		f.write_fmt(format_args!("var{}", self.0))
+		self.0.fmt(f)
 	}
 }
 

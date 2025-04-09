@@ -1,6 +1,6 @@
 use indexmap::IndexMap;
 
-use crate::scena::{Arg, Body, Called, Expr, Function, Stmt};
+use crate::scena::{Arg, Body, Called, Expr, Function, Place, Stmt, Var};
 
 use super::{Alt, Result, Parser};
 use super::error::Errors;
@@ -18,6 +18,7 @@ pub fn parse_fn(f: &super::PFunction, signatures: &Sig, errors: &mut Errors) -> 
 			Arg { ty: arg.ty, default: arg.default.clone(), line: None }
 		})
 		.collect();
+	vars.reverse();
 	
 	let called = match &f.called {
 		PCalled::Raw(parser) => Called::Raw(parse_called(parser.clone(), signatures, errors)),
@@ -79,8 +80,8 @@ struct Ctx<'a> {
 impl Ctx<'_> {
 	fn sub(&mut self) -> Ctx<'_> {
 		Ctx {
-			signatures: &self.signatures,
-			errors: &mut self.errors,
+			signatures: self.signatures,
+			errors: self.errors,
 			brk: self.brk,
 			cont: self.cont,
 			vars: self.vars.clone(),
@@ -164,7 +165,30 @@ fn parse_expr(parser: &mut Parser<'_>, ctx: &mut Ctx<'_>) -> Result<Expr> {
 			let args = parse_args(parser.delim('(')?, ctx).unwrap_or_default();
 			Ok(Expr::Syscall(l, a, b, args))
 		})
+		.test(|parser| {
+			let place = parse_place(parser, ctx)?;
+			Ok(Expr::Var(l, place))
+		})
 		.finish()
+}
+
+fn parse_place(parser: &mut Parser<'_>, ctx: &mut Ctx<'_>) -> Result<Place> {
+	Alt::new(parser)
+		.test(|parser| {
+			let var = parse_var(parser, ctx)?;
+			Ok(Place::Var(var))
+		})
+		.finish()
+}
+
+fn parse_var(parser: &mut Parser<'_>, ctx: &mut Ctx<'_>) -> Result<Var> {
+	let ident = parser.ident()?;
+	if let Some(num) = ctx.vars.iter().position(|v| v == ident) {
+		Ok(Var(num as u32))
+	} else {
+		ctx.errors.error("unknown variable", parser.report().0.prev_span());
+		Ok(Var(0))
+	}
 }
 
 fn parse_syscall(parser: Parser<'_>, ctx: &mut Ctx<'_>) -> (u8, u8) {
