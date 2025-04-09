@@ -243,6 +243,10 @@ fn parse_binop(parser: &mut Parser<'_>, _ctx: &mut Ctx<'_>) -> Result<Option<Pri
 fn parse_atom(parser: &mut Parser<'_>, ctx: &mut Ctx<'_>) -> Result<Expr> {
 	let l = parser.line();
 	Alt::new(parser)
+		.test(|parser| {
+			let value = super::parse_value(parser)?;
+			Ok(Expr::Value(l, value))
+		})
 		.test(|parser| parse_call(parser, ctx))
 		.test(|parser| {
 			let place = parse_place(parser, ctx)?;
