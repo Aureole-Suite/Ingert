@@ -575,6 +575,7 @@ impl<V: Print> Print for Expr<V> {
 	}
 }
 
+#[allow(private_bounds)] // false positive
 impl<V: Print> Expr<V> {
 	fn print_prec(&self, ctx: &mut Ctx, prec: u32) {
 		match self {
