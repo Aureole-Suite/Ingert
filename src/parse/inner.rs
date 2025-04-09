@@ -1,6 +1,7 @@
 use indexmap::IndexMap;
 
 use crate::scena::{Arg, Body, Called, Expr, Function, Place, Stmt, Var};
+use crate::scp::Name;
 
 use super::{Alt, Result, Parser};
 use super::error::Errors;
@@ -164,6 +165,23 @@ fn parse_expr(parser: &mut Parser<'_>, ctx: &mut Ctx<'_>) -> Result<Expr> {
 			let (a, b) = parse_syscall(parser.delim('[')?, ctx);
 			let args = parse_args(parser.delim('(')?, ctx).unwrap_or_default();
 			Ok(Expr::Syscall(l, a, b, args))
+		})
+		.test(|parser| {
+			let name = parser.ident()?;
+			let args = if let Some(args) = parse_args(parser.delim('(')?, ctx) {
+				// TODO verify args
+				args
+			} else {
+				Vec::new()
+			};
+			Ok(Expr::Call(l, Name(String::new(), name.to_owned()), args))
+		})
+		.test(|parser| {
+			let name1 = parser.ident()?;
+			parser.punct('.')?;
+			let name2 = parser.ident()?;
+			let args = parse_args(parser.delim('(')?, ctx).unwrap_or_default();
+			Ok(Expr::Call(l, Name(name1.to_owned(), name2.to_owned()), args))
 		})
 		.test(|parser| {
 			let place = parse_place(parser, ctx)?;

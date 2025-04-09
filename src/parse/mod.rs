@@ -69,12 +69,9 @@ pub fn parse(tokens: &lex::Tokens) -> ((), Errors) {
 	let signatures = functions.iter().map(|f| (f.name.as_str(), f.args.as_slice())).collect::<IndexMap<_, _>>();
 
 	let functions = functions.iter()
-		.take(4)
+		.take(128)
 		.map(|f| (f.name.clone(), inner::parse_fn(f, &signatures, &mut errors)))
 		.collect::<IndexMap<_, _>>();
-
-	dbg!(&functions);
-	dbg!(&errors);
 
 	((), errors)
 }
@@ -180,7 +177,9 @@ impl<'a, 'b, T> Alt<'a, 'b, T> {
 
 	pub fn test(mut self, f: impl FnOnce(&mut Parser<'a>) -> Result<T>) -> Self {
 		if self.value.is_none() {
-			if let Ok(value) = f(&mut self.parser) {
+			let mut clone = self.parser.clone();
+			if let Ok(value) = f(&mut clone) {
+				*self.parser = clone;
 				self.value = Some(value);
 			}
 		}
