@@ -1,6 +1,6 @@
 use indexmap::IndexMap;
 
-use crate::scena::{ArgType, Line, Scena, Value};
+use crate::{scena::{ArgType, Global, Line, Scena, Value}, scp::GlobalType};
 
 pub mod lex;
 pub mod error;
@@ -48,6 +48,7 @@ pub fn parse(tokens: &lex::Tokens) -> (Scena, Errors) {
 	let mut errors = Errors::new();
 
 	let mut functions = Vec::new();
+	let mut globals = IndexMap::new();
 
 	while !parser.at_end() {
 		let result = Alt::new(&mut parser)
@@ -56,19 +57,26 @@ pub fn parse(tokens: &lex::Tokens) -> (Scena, Errors) {
 				functions.push(func);
 				Ok(())
 			})
+			.test(|p| {
+				let (name, glob) = parse_global(p)?;
+				globals.insert(name, glob);
+				Ok(())
+			})
 			.finish();
 
 		if let Err(parser::Error) = result {
 			parser.report(|cursor, err| {
 				errors.error(err.to_string(), cursor.next_span());
-				while !(cursor.at_end() || cursor.clone().keyword("fn").is_ok()) {
+				while !(
+					cursor.at_end()
+					|| cursor.clone().keyword("fn").is_ok()
+					|| cursor.clone().keyword("global").is_ok()
+				) {
 					cursor.skip_any();
 				}
 			});
 		}
 	}
-
-	dbg!(&errors);
 
 	let signatures = functions.iter().map(|f| (f.name.as_str(), f.args.as_slice())).collect::<IndexMap<_, _>>();
 
@@ -77,14 +85,26 @@ pub fn parse(tokens: &lex::Tokens) -> (Scena, Errors) {
 		.collect::<IndexMap<_, _>>();
 
 	(Scena {
-		globals: IndexMap::new(),
+		globals,
 		functions,
 	}, errors)
 }
 
-fn parse_fn<'a>(parser: &mut Parser<'a>) -> Result<PFunction<'a>> {
+fn parse_global(parser: &mut alt::TryParser<'_>) -> Result<(String, Global)> {
+	let line = parser.line();
+	parser.keyword("global")?;
+	parser.commit();
+	let name = parser.ident()?;
+	parser.punct(':')?;
+	let ty = parse_gty(parser)?;
+	parser.punct(';')?;
+	Ok((name.to_owned(), Global { ty, line }))
+}
+
+fn parse_fn<'a>(parser: &mut alt::TryParser<'a>) -> Result<PFunction<'a>> {
 	let is_prelude = parser.keyword("prelude").is_ok();
 	parser.keyword("fn")?;
+	parser.commit();
 	let name = parser.ident()?;
 	let args = parse_args(parser.delim('(')?)?;
 
@@ -132,6 +152,20 @@ fn parse_args(mut parser: Parser) -> Result<Vec<PArg>> {
 		})
 	})
 }
+
+fn parse_gty(parser: &mut Parser) -> Result<GlobalType> {
+	Alt::new(parser)
+		.test(|p| {
+			p.keyword("num")?;
+			Ok(GlobalType::Number)
+		})
+		.test(|p| {
+			p.keyword("str")?;
+			Ok(GlobalType::String)
+		})
+		.finish()
+}
+
 
 fn parse_ty(parser: &mut Parser) -> Result<ArgType> {
 	Alt::new(parser)
