@@ -208,6 +208,11 @@ fn parse_stmt(
 			Ok(Stmt::Tailcall(l, name, args))
 		})
 		.test(|parser| {
+			let block = parser.delim('{')?;
+			parser.commit();
+			Ok(Stmt::Block(parse_tree(block, ctx.sub())))
+		})
+		.test(|parser| {
 			let expr = parse_call(parser, ctx)?;
 			parser.punct(';')?;
 			Ok(Stmt::Expr(expr))
