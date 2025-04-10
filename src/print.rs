@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 
-use crate::scp::{Call, CallArg, CallKind, Label, Op};
-use crate::scena::{ArgType, Binop, Body, Called, Expr, FlatStmt, FlatVar, Function, Line, Name, Place, Scena, Stmt, Unop, Value, Var};
+use crate::scp::{Call, CallArg, CallKind, GlobalType, Label, Op};
+use crate::scena::{ArgType, Binop, Body, Called, Expr, FlatStmt, FlatVar, Function, Global, Line, Name, Place, Scena, Stmt, Unop, Value, Var};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
 enum Space {
@@ -69,6 +69,10 @@ impl Ctx {
 	}
 
 	fn do_space(&mut self, inline: bool) {
+		if self.out.is_empty() {
+			self.space = Space::None;
+			return;
+		}
 		match self.space {
 			Space::None => {}
 			Space::Inline => {
@@ -123,15 +127,26 @@ impl Ctx {
 	}
 }
 
+enum Item<'a> {
+	Global(&'a str, &'a Global),
+	Function(&'a str, &'a Function),
+}
+
 pub fn print(scena: &Scena) -> String {
 	let mut ctx = Ctx::new();
-	for (k, v) in &scena.globals {
-		todo!()
-	}
-
-	for (k, v) in &scena.functions {
-		print_function(&mut ctx, k, v);
-		ctx.set_space(Space::Block(1));
+	for item in items(scena) {
+		match item {
+			Item::Global(name, global) => {
+				ctx.set_space(Space::Block(0));
+				print_global(&mut ctx, name, global);
+				ctx.set_space(Space::Block(0));
+			}
+			Item::Function(name, function) => {
+				ctx.set_space(Space::Block(1));
+				print_function(&mut ctx, name, function);
+				ctx.set_space(Space::Block(1));
+			}
+		}
 	}
 
 	if !ctx.out.is_empty() {
@@ -139,6 +154,32 @@ pub fn print(scena: &Scena) -> String {
 	}
 
 	ctx.out
+}
+
+fn items(scena: &Scena) -> Vec<Item<'_>> {
+	let mut items = Vec::new();
+	let mut globals = scena.globals.iter().peekable();
+	for func in &scena.functions {
+		if let Some(func_line) = crate::scena::first_line(&func.1.body) {
+			while let Some(g) = globals.next_if(|l| l.1.line.is_none_or(|v| v <= func_line)) {
+				items.push(Item::Global(g.0, g.1));
+			}
+		}
+		items.push(Item::Function(func.0, func.1));
+	}
+	for g in globals {
+		items.push(Item::Global(g.0, g.1));
+	}
+	items
+}
+
+fn print_global(ctx: &mut Ctx, name: &str, global: &Global) {
+	ctx.line(&global.line);
+	ctx.word("global");
+	ctx.ident(name.to_owned());
+	ctx.sym_(":");
+	global.ty.print(ctx);
+	ctx.sym_(";");
 }
 
 fn print_function(ctx: &mut Ctx, name: &str, f: &Function) {
@@ -193,6 +234,15 @@ fn print_function(ctx: &mut Ctx, name: &str, f: &Function) {
 
 trait Print {
 	fn print(&self, ctx: &mut Ctx);
+}
+
+impl Print for GlobalType {
+	fn print(&self, ctx: &mut Ctx) {
+		match self {
+			GlobalType::Number => ctx.word("num"),
+			GlobalType::String => ctx.word("str"),
+		}
+	}
 }
 
 impl Print for ArgType {

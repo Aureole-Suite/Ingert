@@ -136,7 +136,7 @@ pub fn compile(scena: Scena) -> Result<Scp, CompileError> {
 	})
 }
 
-fn first_line(body: &Body) -> Line {
+pub(crate) fn first_line(body: &Body) -> Line {
 	match body {
 		Body::Asm(ops) => ops.iter().find_map(|op| match op { Op::Line(n) => Some(*n), _ => None }),
 		Body::Flat(stmts) => stmts.iter().find_map(|stmt| stmt.line().flatten()),
