@@ -40,11 +40,11 @@ fn main() {
 		let str = ingert::print::print(&scena);
 		std::fs::write("system.ing", &str).unwrap();
 
-		let (tokens, errors) = ingert::parse::lex::lex(&str);
-		dbg!(errors);
-		let (scena2, errors) = ingert::parse::parse(&tokens);
+		let (tokens, errors1) = ingert::parse::lex::lex(&str);
+		let (scena2, errors2) = ingert::parse::parse(&tokens);
 
-		let mut errors = errors.errors;
+		let mut errors = errors1.errors;
+		errors.extend(errors2.errors);
 		let file = SimpleFile::new("system.ing", &str);
 		errors.sort_by_key(|e| e.sort_key());
 
