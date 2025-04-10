@@ -378,10 +378,22 @@ fn parse_call(parser: &mut Parser<'_>, ctx: &mut Ctx<'_>) -> Result<Expr> {
 		})
 		.test(|parser| {
 			let name = parser.ident()?;
+			let span = parser.prev_span();
 			let args = if let Some(args) = parse_args(parser.delim('(')?, ctx) {
-				// TODO verify args
+				if let Some(sig) = ctx.scope.functions.get(name) {
+					if !sig.contains(&args.len()) {
+						ctx.errors.error(format!("expected {sig:?} args"), span);
+					}
+				} else {
+					ctx.errors.error("unknown function", span);
+				}
 				args
 			} else {
+				if let Some(_) = ctx.scope.functions.get(name) {
+					// do nothing, since we failed to parse args
+				} else {
+					ctx.errors.error("unknown function", span);
+				}
 				Vec::new()
 			};
 			Ok(Expr::Call(l, Name(String::new(), name.to_owned()), args))

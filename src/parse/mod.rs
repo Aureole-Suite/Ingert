@@ -1,4 +1,4 @@
-use std::ops::Range;
+use std::ops::RangeInclusive;
 
 use indexmap::{IndexMap, IndexSet};
 
@@ -46,7 +46,7 @@ enum PBody<'a> {
 }
 
 struct Scope {
-	functions: IndexMap<String, Range<usize>>,
+	functions: IndexMap<String, RangeInclusive<usize>>,
 	globals: IndexSet<String>,
 }
 
@@ -89,7 +89,7 @@ pub fn parse(tokens: &lex::Tokens) -> (Scena, Errors) {
 		functions: functions.iter()
 			.map(|f| (
 				f.name.clone(),
-				f.args.iter().filter(|a| a.default.is_some()).count() .. f.args.len(),
+				f.args.iter().filter(|a| a.default.is_none()).count() ..= f.args.len(),
 			))
 			.collect(),
 		globals: globals.keys().cloned().collect(),
