@@ -5,13 +5,11 @@ use indexmap::IndexMap;
 use crate::scena::{Arg, Body, Called, Expr, Function, Place, Stmt, Var};
 use crate::scp::{Binop, Name, Unop, Value};
 
-use super::{Alt, Result, Parser};
+use super::{Alt, Parser, Result, Scope};
 use super::error::Errors;
-use super::{PArg, PBody, PCalled};
+use super::{PBody, PCalled};
 
-type Sig<'a> = IndexMap<&'a str, &'a [PArg]>;
-
-pub fn parse_fn(f: &super::PFunction, signatures: &Sig, errors: &mut Errors) -> Function {
+pub fn parse_fn(f: &super::PFunction, scope: &Scope, errors: &mut Errors) -> Function {
 	let mut vars = Vec::new();
 	let args = f
 		.args
@@ -24,15 +22,15 @@ pub fn parse_fn(f: &super::PFunction, signatures: &Sig, errors: &mut Errors) -> 
 	vars.reverse();
 	
 	let called = match &f.called {
-		PCalled::Raw(parser) => Called::Raw(parse_called(parser.clone(), signatures, errors)),
+		PCalled::Raw(parser) => Called::Raw(parse_called(parser.clone(), scope, errors)),
 		PCalled::Merged(dup) => Called::Merged(*dup),
 	};
 
 	let body = match &f.body {
-		PBody::Asm(parser) => Body::Asm(parse_asm(parser.clone(), signatures, errors)),
-		PBody::Flat(parser) => Body::Flat(parse_flat(parser.clone(), signatures, errors)),
+		PBody::Asm(parser) => Body::Asm(parse_asm(parser.clone(), scope, errors)),
+		PBody::Flat(parser) => Body::Flat(parse_flat(parser.clone(), scope, errors)),
 		PBody::Tree(parser) => Body::Tree(parse_tree(parser.clone(), Ctx {
-			signatures,
+			scope,
 			errors,
 			brk: false,
 			cont: false,
@@ -48,32 +46,20 @@ pub fn parse_fn(f: &super::PFunction, signatures: &Sig, errors: &mut Errors) -> 
 	}
 }
 
-fn parse_called(
-	parser: Parser<'_>,
-	signatures: &IndexMap<&str, &[PArg]>,
-	errors: &mut Errors,
-) -> Vec<crate::scp::Call> {
+fn parse_called(parser: Parser<'_>, scope: &Scope, errors: &mut Errors) -> Vec<crate::scp::Call> {
 	todo!()
 }
 
-fn parse_asm(
-	parser: Parser<'_>,
-	signatures: &IndexMap<&str, &[PArg]>,
-	errors: &mut Errors,
-) -> Vec<crate::scp::Op> {
+fn parse_asm(parser: Parser<'_>, scope: &Scope, errors: &mut Errors) -> Vec<crate::scp::Op> {
 	todo!()
 }
 
-fn parse_flat(
-	parser: Parser<'_>,
-	signatures: &IndexMap<&str, &[PArg]>,
-	errors: &mut Errors,
-) -> Vec<crate::scena::FlatStmt> {
+fn parse_flat(parser: Parser<'_>, scope: &Scope, errors: &mut Errors) -> Vec<crate::scena::FlatStmt> {
 	todo!()
 }
 
 struct Ctx<'a> {
-	signatures: &'a IndexMap<&'a str, &'a [PArg]>,
+	scope: &'a Scope,
 	errors: &'a mut Errors,
 	brk: bool,
 	cont: bool,
@@ -83,7 +69,7 @@ struct Ctx<'a> {
 impl Ctx<'_> {
 	fn sub(&mut self) -> Ctx<'_> {
 		Ctx {
-			signatures: self.signatures,
+			scope: self.scope,
 			errors: self.errors,
 			brk: self.brk,
 			cont: self.cont,
@@ -338,7 +324,7 @@ fn parse_atom(parser: &mut Parser<'_>, ctx: &mut Ctx<'_>) -> Result<Expr> {
 		})
 		.test(|parser| {
 			let paren = parser.delim('(')?;
-			Ok(do_parse(paren, ctx, parse_expr).unwrap_or_else(|| Expr::Value(l, Value::Int(0))))
+			Ok(do_parse(paren, ctx, parse_expr).unwrap_or(Expr::Value(l, Value::Int(0))))
 		})
 		.test(|parser| {
 			parser.punct('!')?;
@@ -358,8 +344,19 @@ fn parse_atom(parser: &mut Parser<'_>, ctx: &mut Ctx<'_>) -> Result<Expr> {
 		.test(|parser| {
 			parser.punct('&')?;
 			let name = parser.ident()?;
+			let span = parser.prev_span();
 			parser.commit();
-			Ok(Expr::Ref(l, lookup_var(ctx, name, parser.prev_span())))
+
+			let var = if let Some(num) = ctx.vars.iter().rposition(|v| *v == name) {
+				Var(num as u32)
+			} else if ctx.scope.globals.contains(name) {
+				ctx.errors.error("cannot reference globals", span);
+				Var(0)
+			} else {
+				ctx.errors.error("unknown variable", span);
+				Var(0)
+			};
+			Ok(Expr::Ref(l, var))
 		})
 		.test(|parser| parse_call(parser, ctx))
 		.test(|parser| {
@@ -417,18 +414,16 @@ impl PPlace {
 	fn lookup(self, ctx: &mut Ctx<'_>) -> Place {
 		match self {
 			PPlace::Var(span, name) => {
-				Place::Var(lookup_var(ctx, &name, span))
+				if let Some(num) = ctx.vars.iter().rposition(|v| *v == name) {
+					Place::Var(Var(num as u32))
+				} else if ctx.scope.globals.contains(&name) {
+					Place::Global(name)
+				} else {
+					ctx.errors.error("unknown variable", span);
+					Place::Var(Var(0))
+				}
 			}
 		}
-	}
-}
-
-fn lookup_var(ctx: &mut Ctx<'_>, name: &str, span: Range<usize>) -> Var {
-	if let Some(num) = ctx.vars.iter().rposition(|v| *v == name) {
-		Var(num as u32)
-	} else {
-		ctx.errors.error("unknown variable", span);
-		Var(0)
 	}
 }
 

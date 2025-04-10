@@ -1,4 +1,6 @@
-use indexmap::IndexMap;
+use std::ops::Range;
+
+use indexmap::{IndexMap, IndexSet};
 
 use crate::{scena::{ArgType, Global, Line, Scena, Value}, scp::GlobalType};
 
@@ -43,6 +45,11 @@ enum PBody<'a> {
 	Tree(Parser<'a>),
 }
 
+struct Scope {
+	functions: IndexMap<String, Range<usize>>,
+	globals: IndexSet<String>,
+}
+
 pub fn parse(tokens: &lex::Tokens) -> (Scena, Errors) {
 	let mut parser = Parser::new(tokens.cursor());
 	let mut errors = Errors::new();
@@ -77,11 +84,19 @@ pub fn parse(tokens: &lex::Tokens) -> (Scena, Errors) {
 			});
 		}
 	}
-
-	let signatures = functions.iter().map(|f| (f.name.as_str(), f.args.as_slice())).collect::<IndexMap<_, _>>();
+	
+	let scope = Scope {
+		functions: functions.iter()
+			.map(|f| (
+				f.name.clone(),
+				f.args.iter().filter(|a| a.default.is_some()).count() .. f.args.len(),
+			))
+			.collect(),
+		globals: globals.keys().cloned().collect(),
+	};
 
 	let functions = functions.iter()
-		.map(|f| (f.name.clone(), inner::parse_fn(f, &signatures, &mut errors)))
+		.map(|f| (f.name.clone(), inner::parse_fn(f, &scope, &mut errors)))
 		.collect::<IndexMap<_, _>>();
 
 	(Scena {
