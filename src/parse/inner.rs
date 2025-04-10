@@ -201,6 +201,13 @@ fn parse_stmt(
 			Ok(Stmt::Debug(l, args))
 		})
 		.test(|parser| {
+			parser.keyword("tailcall")?;
+			parser.commit();
+			let (name, args) = parse_func_call(parser, ctx)?;
+			parser.punct(';')?;
+			Ok(Stmt::Tailcall(l, name, args))
+		})
+		.test(|parser| {
 			let expr = parse_call(parser, ctx)?;
 			parser.punct(';')?;
 			Ok(Stmt::Expr(expr))
@@ -377,6 +384,23 @@ fn parse_call(parser: &mut Parser<'_>, ctx: &mut Ctx<'_>) -> Result<Expr> {
 			Ok(Expr::Syscall(l, a, b, args))
 		})
 		.test(|parser| {
+			let (name, args) = parse_func_call(parser, ctx)?;
+			Ok(Expr::Call(l, name, args))
+		})
+		.test(|parser| {
+			let name1 = parser.ident()?;
+			parser.punct('.')?;
+			parser.commit();
+			let name2 = parser.ident()?;
+			let args = parse_args(parser.delim('(')?, ctx).unwrap_or_default();
+			Ok(Expr::Call(l, Name(name1.to_owned(), name2.to_owned()), args))
+		})
+		.finish()
+}
+
+fn parse_func_call(parser: &mut Parser<'_>, ctx: &mut Ctx<'_>) -> Result<(Name, Vec<Expr>)> {
+	Alt::new(parser)
+		.test(|parser| {
 			let name = parser.ident()?;
 			let span = parser.prev_span();
 			let args = if let Some(args) = parse_args(parser.delim('(')?, ctx) {
@@ -396,7 +420,7 @@ fn parse_call(parser: &mut Parser<'_>, ctx: &mut Ctx<'_>) -> Result<Expr> {
 				}
 				Vec::new()
 			};
-			Ok(Expr::Call(l, Name(String::new(), name.to_owned()), args))
+			Ok((Name(String::new(), name.to_owned()), args))
 		})
 		.test(|parser| {
 			let name1 = parser.ident()?;
@@ -404,7 +428,7 @@ fn parse_call(parser: &mut Parser<'_>, ctx: &mut Ctx<'_>) -> Result<Expr> {
 			parser.commit();
 			let name2 = parser.ident()?;
 			let args = parse_args(parser.delim('(')?, ctx).unwrap_or_default();
-			Ok(Expr::Call(l, Name(name1.to_owned(), name2.to_owned()), args))
+			Ok((Name(name1.to_owned(), name2.to_owned()), args))
 		})
 		.finish()
 }
