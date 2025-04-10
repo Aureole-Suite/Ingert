@@ -108,8 +108,9 @@ fn parse_tree(mut parser: Parser<'_>, mut ctx: Ctx<'_>) -> Vec<Stmt> {
 		match parse_stmt(&mut parser, &mut ctx) {
 			Ok(stmt) => stmts.push(stmt),
 			Err(_) => {
-				let (cursor, err) = parser.report();
-				ctx.errors.error(err.to_string(), cursor.next_span());
+				parser.report(|cursor, err| {
+					ctx.errors.error(err.to_string(), cursor.next_span());
+				});
 				break;
 			}
 		}
@@ -443,8 +444,9 @@ fn parse_syscall(parser: Parser<'_>, ctx: &mut Ctx<'_>) -> (u8, u8) {
 			ctx.errors.error("invalid syscall number", parser.prev_span());
 		}
 		if !parser.at_end() {
-			let (cursor, err) = parser.report();
-			ctx.errors.error(err.to_string(), cursor.next_span());
+			parser.report(|cursor, err| {
+				ctx.errors.error(err.to_string(), cursor.next_span());
+			});
 		}
 		Ok((a as u8, b as u8))
 	}
@@ -462,8 +464,9 @@ fn do_parse<T>(
 ) -> Option<T> {
 	let result = f(&mut parser, ctx);
 	if result.is_err() {
-		let (cursor, err) = parser.report();
-		ctx.errors.error(err.to_string(), cursor.next_span());
+		parser.report(|cursor, err| {
+			ctx.errors.error(err.to_string(), cursor.next_span());
+		});
 	}
 	result.ok()
 }

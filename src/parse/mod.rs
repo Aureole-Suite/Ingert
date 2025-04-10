@@ -59,11 +59,12 @@ pub fn parse(tokens: &lex::Tokens) -> (Scena, Errors) {
 			.finish();
 
 		if let Err(parser::Error) = result {
-			let (cursor, err) = parser.report();
-			errors.error(err.to_string(), cursor.next_span());
-			while !(cursor.at_end() || cursor.keyword("fn").is_ok()) {
-				cursor.skip_any();
-			}
+			parser.report(|cursor, err| {
+				errors.error(err.to_string(), cursor.next_span());
+				while !(cursor.at_end() || cursor.clone().keyword("fn").is_ok()) {
+					cursor.skip_any();
+				}
+			});
 		}
 	}
 

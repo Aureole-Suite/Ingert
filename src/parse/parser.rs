@@ -149,11 +149,12 @@ impl<'a> Parser<'a> {
 		}
 	}
 
-	pub fn report(&mut self) -> (&mut Cursor<'a>, ParseError) {
+	pub fn report(&mut self, f: impl FnOnce(&mut Cursor<'a>, ParseError)) {
 		let mut state = self.state.borrow_mut();
 		let expect = std::mem::take(&mut state.expect);
 		self.cursor.set_pos(state.pos);
-		(&mut self.cursor, ParseError { expect })
+		f(&mut self.cursor, ParseError { expect });
+		state.pos = self.cursor.pos();
 	}
 
 	pub fn line(&self) -> Option<u16> {

@@ -27,7 +27,6 @@ impl<'a> Cursor<'a> {
 	}
 
 	pub fn set_pos(&mut self, pos: usize) {
-		println!("{:?}, {}", self.range, pos);
 		assert!(pos > self.range.start);
 		assert!(pos <= self.range.end);
 		self.pos = pos;
