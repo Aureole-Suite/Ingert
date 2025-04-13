@@ -203,7 +203,7 @@ fn parse_stmt(
 		.test(|parser| {
 			parser.keyword("tailcall")?;
 			parser.commit();
-			let (name, args) = parse_func_call(parser, ctx)?;
+			let (name, args) = parse_func_call(parser, ctx, true)?;
 			parser.punct(';')?;
 			Ok(Stmt::Tailcall(l, name, args))
 		})
@@ -389,42 +389,35 @@ fn parse_call(parser: &mut Parser<'_>, ctx: &mut Ctx<'_>) -> Result<Expr> {
 			Ok(Expr::Syscall(l, a, b, args))
 		})
 		.test(|parser| {
-			let (name, args) = parse_func_call(parser, ctx)?;
+			let (name, args) = parse_func_call(parser, ctx, false)?;
 			Ok(Expr::Call(l, name, args))
-		})
-		.test(|parser| {
-			let name1 = parser.ident()?;
-			parser.punct('.')?;
-			parser.commit();
-			let name2 = parser.ident()?;
-			let args = parse_args(parser.delim('(')?, ctx).unwrap_or_default();
-			Ok(Expr::Call(l, Name(name1.to_owned(), name2.to_owned()), args))
 		})
 		.finish()
 }
 
-fn parse_func_call(parser: &mut Parser<'_>, ctx: &mut Ctx<'_>) -> Result<(Name, Vec<Expr>)> {
+fn parse_func_call(parser: &mut Parser<'_>, ctx: &mut Ctx<'_>, missing_ok: bool) -> Result<(Name, Vec<Expr>)> {
 	Alt::new(parser)
 		.test(|parser| {
 			let name = parser.ident()?;
 			let span = parser.prev_span();
+			let missing = ctx.scope.functions.get(name).is_none();
 			let args = if let Some(args) = parse_args(parser.delim('(')?, ctx) {
 				if let Some(sig) = ctx.scope.functions.get(name) {
 					if !sig.contains(&args.len()) {
-						ctx.errors.error(format!("expected {sig:?} args"), span);
+						ctx.errors.error(format!("expected {sig:?} args"), span.clone());
 					}
-				} else {
-					ctx.errors.error("unknown function", span);
 				}
 				args
 			} else {
-				if let Some(_) = ctx.scope.functions.get(name) {
-					// do nothing, since we failed to parse args
+				Vec::new()
+			};
+			if missing {
+				if missing_ok {
+					ctx.errors.warning("unknown function", span);
 				} else {
 					ctx.errors.error("unknown function", span);
 				}
-				Vec::new()
-			};
+			}
 			Ok((Name(String::new(), name.to_owned()), args))
 		})
 		.test(|parser| {
