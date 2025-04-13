@@ -41,7 +41,13 @@ impl Ctx {
 	}
 
 	fn ident(&mut self, name: String) {
-		self.token(name)
+		if is_normal_ident(name.as_str()) {
+			self.token(name);
+		} else {
+			self.do_space(true);
+			self.str(name.as_str(), '`');
+			self.set_space(Space::Inline);
+		}
 	}
 
 	fn sym(&mut self, sym: &'static str) {
@@ -119,12 +125,37 @@ impl Ctx {
 		self._sym_("}");
 	}
 
+	fn str(&mut self, str: &str, delim: char) {
+		self.do_space(true);
+		self.out.push(delim);
+		for char in str.chars() {
+			match char {
+				'\\' => self.out.push_str("\\\\"),
+				'\n' => self.out.push_str("\\n"),
+				'\r' => self.out.push_str("\\r"),
+				'\t' => self.out.push_str("\\t"),
+				c if c == delim => {
+					self.out.push('\\');
+					self.out.push(c);
+				}
+				c => self.out.push(c),
+			}
+		}
+		self.out.push(delim);
+		self.set_space(Space::Inline);
+	}
+
 	fn line(&mut self, line: &Line) {
 		if let Some(line) = line {
 			self.token(format!("{line}"));
 			self.sym("@");
 		}
 	}
+}
+
+fn is_normal_ident(ident: &str) -> bool {
+	let mut iter = ident.chars();
+	iter.next().is_some_and(unicode_ident::is_xid_start) && iter.all(unicode_ident::is_xid_continue)
 }
 
 enum Item<'a> {
@@ -748,7 +779,7 @@ impl Print for Value {
 		match self {
 			Value::Int(v) => ctx.token(format!("{v}")),
 			Value::Float(v) => ctx.token(format!("{v:?}")),
-			Value::String(v) => ctx.token(format!("{v:?}")),
+			Value::String(v) => ctx.str(v, '"'),
 		}
 	}
 }
