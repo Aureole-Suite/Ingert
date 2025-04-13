@@ -35,6 +35,7 @@ impl std::fmt::Debug for RawToken {
 #[derive(Debug, Clone)]
 pub enum TokenKind {
 	Ident(Box<str>),
+	RawIdent(Box<str>),
 	String(Box<str>),
 	Int(i32),
 	Float(f32),
@@ -233,7 +234,7 @@ impl Lex<'_> {
 		}
 
 		if self.consume("`") {
-			return Some(TokenKind::Ident(self.lex_string(start, "`")));
+			return Some(TokenKind::RawIdent(self.lex_string(start, "`")));
 		}
 
 		if let Some(c) = self.next_char() {

@@ -70,7 +70,7 @@ impl<'a> Cursor<'a> {
 
 	pub fn ident(&mut self) -> Result<&'a str> {
 		match &self.tokens[self.pos].token {
-			TokenKind::Ident(ident) => {
+			TokenKind::Ident(ident) | TokenKind::RawIdent(ident) => {
 				self.pos += 1;
 				Ok(ident.as_ref())
 			}
