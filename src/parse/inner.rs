@@ -433,10 +433,16 @@ fn parse_func_call(parser: &mut Parser<'_>, ctx: &mut Ctx<'_>, missing_ok: bool)
 
 enum PPlace {
 	Var(Range<usize>, String),
+	Deref(Range<usize>, String),
 }
 
 fn parse_place(parser: &mut Parser<'_>, _ctx: &mut Ctx<'_>) -> Result<PPlace> {
 	Alt::new(parser)
+		.test(|parser| {
+			parser.punct('*')?;
+			let name = parser.ident()?;
+			Ok(PPlace::Deref(parser.prev_span(), name.to_owned()))
+		})
 		.test(|parser| {
 			let name = parser.ident()?;
 			Ok(PPlace::Var(parser.prev_span(), name.to_owned()))
@@ -455,6 +461,17 @@ impl PPlace {
 				} else {
 					ctx.errors.error("unknown variable", span);
 					Place::Var(Var(0))
+				}
+			}
+			PPlace::Deref(span, name) => {
+				if let Some(num) = ctx.vars.iter().rposition(|v| *v == name) {
+					Place::Deref(Var(num as u32))
+				} else if ctx.scope.globals.contains(&name) {
+					ctx.errors.error("cannot dereference globals", span);
+					Place::Deref(Var(0))
+				} else {
+					ctx.errors.error("unknown variable", span);
+					Place::Deref(Var(0))
 				}
 			}
 		}
