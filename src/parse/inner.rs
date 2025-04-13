@@ -404,7 +404,11 @@ fn parse_func_call(parser: &mut Parser<'_>, ctx: &mut Ctx<'_>, missing_ok: bool)
 			let args = if let Some(args) = parse_args(parser.delim('(')?, ctx) {
 				if let Some(sig) = ctx.scope.functions.get(name) {
 					if !sig.contains(&args.len()) {
-						ctx.errors.error(format!("expected {sig:?} args"), span.clone());
+						if missing_ok {
+							ctx.errors.warning(format!("expected {sig:?} args"), span.clone());
+						} else {
+							ctx.errors.error(format!("expected {sig:?} args"), span.clone());
+						}
 					}
 				}
 				args
