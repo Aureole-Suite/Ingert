@@ -2,6 +2,7 @@ use clap::Parser;
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 use codespan_reporting::files::SimpleFile;
 use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
+use ingert::parse::error::Error;
 use std::path::PathBuf;
 use tracing_subscriber::prelude::*;
 
@@ -28,6 +29,7 @@ fn main() {
 			tracing::info!("Skipping mon9996_c00.da");
 			continue;
 		}
+		tracing::info!("Reading file");
 		let data = std::fs::read(file).unwrap();
 
 		let scp = ingert::scp::read(&data).unwrap();
@@ -49,26 +51,29 @@ fn main() {
 		errors.sort_by_key(|e| e.sort_key());
 
 		for error in errors {
-			let severity = match error.severity {
-				ingert::parse::error::Severity::Fatal => codespan_reporting::diagnostic::Severity::Error,
-				ingert::parse::error::Severity::Error => codespan_reporting::diagnostic::Severity::Error,
-				ingert::parse::error::Severity::Warning => codespan_reporting::diagnostic::Severity::Warning,
-				ingert::parse::error::Severity::Info => codespan_reporting::diagnostic::Severity::Note,
-			};
-			let diag = Diagnostic::<()>::new(severity)
-				.with_message(&error.main.desc)
-				.with_label(Label::primary((), error.main.span.clone()).with_message(&error.main.desc))
-				.with_labels_iter(error.notes.iter().map(|note| {
-					Label::secondary((), note.span.clone()).with_message(&note.desc)
-				}));
+			let diag = to_diagnostic(error);
 			codespan_reporting::term::emit(&mut writer.lock(), &config, &file, &diag).unwrap();
 		}
 
 		std::fs::write("system.dbg", format!("{scena:#?}")).unwrap();
 		std::fs::write("system.dbg2", format!("{scena2:#?}")).unwrap();
 
-
 		let scp2 = ingert::scena::compile(scena).unwrap();
 		similar_asserts::assert_eq!(scp, scp2);
 	}
+}
+
+fn to_diagnostic(error: Error) -> Diagnostic<()> {
+	let severity = match error.severity {
+		ingert::parse::error::Severity::Fatal => codespan_reporting::diagnostic::Severity::Error,
+		ingert::parse::error::Severity::Error => codespan_reporting::diagnostic::Severity::Error,
+		ingert::parse::error::Severity::Warning => codespan_reporting::diagnostic::Severity::Warning,
+		ingert::parse::error::Severity::Info => codespan_reporting::diagnostic::Severity::Note,
+	};
+	Diagnostic::new(severity)
+		.with_message(&error.main.desc)
+		.with_label(Label::primary((), error.main.span.clone()).with_message(&error.main.desc))
+		.with_labels_iter(error.notes.iter().map(|note| {
+			Label::secondary((), note.span.clone()).with_message(&note.desc)
+		}))
 }
