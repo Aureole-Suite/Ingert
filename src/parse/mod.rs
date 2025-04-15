@@ -6,7 +6,6 @@ use crate::{scena::{ArgType, Global, Line, Scena, Value}, scp::GlobalType};
 
 pub mod lex;
 pub mod error;
-mod cursor;
 mod inner;
 mod parser;
 mod alt;

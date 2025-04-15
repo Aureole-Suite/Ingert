@@ -1,10 +1,13 @@
 use super::error::Errors;
 
+mod cursor;
+pub use cursor::{Cursor, Error as CursorError};
+
 #[derive(Debug, Clone)]
-pub struct Tokens(pub Vec<RawToken>);
+pub struct Tokens(Vec<RawToken>);
 
 #[derive(Clone)]
-pub struct RawToken {
+struct RawToken {
 	pub start: u32,
 	pub end: u32,
 	pub line: Option<u32>,

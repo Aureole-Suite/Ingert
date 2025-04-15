@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use super::cursor::{self, Cursor};
+use super::lex::{Cursor, CursorError};
 
 #[derive(Debug, Clone)]
 pub struct Parser<'a> {
@@ -47,8 +47,8 @@ impl std::fmt::Display for Expect {
 
 pub struct Error;
 
-impl From<cursor::Error> for Error {
-	fn from(cursor::Error: cursor::Error) -> Self {
+impl From<CursorError> for Error {
+	fn from(CursorError: CursorError) -> Self {
 		Error
 	}
 }
