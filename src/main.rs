@@ -45,7 +45,7 @@ fn main() {
 
 		let mut errors = errors1.errors;
 		errors.extend(errors2.errors);
-		let file = SimpleFile::new("system.ing", &str);
+		let file = SimpleFile::new(file.display().to_string(), &str);
 		errors.sort_by_key(|e| e.sort_key());
 
 		for error in errors {
