@@ -390,7 +390,12 @@ fn compile_block(
 		match stmt {
 			Stmt::Expr(expr) => ctx.push(FlatStmt::Expr(expr.sub(depth))),
 			Stmt::Set(l, place, expr) => ctx.push(FlatStmt::Set(*l, place.sub(depth), expr.sub(depth))),
-			Stmt::Return(l, expr) => ctx.push(FlatStmt::Return(*l, expr.sub(depth), std::mem::take(&mut depth))),
+			Stmt::Return(l, expr) => {
+				ctx.push(FlatStmt::Return(*l, expr.sub(depth), depth));
+				if then.is_none() {
+					depth = 0;
+				}
+			}
 			Stmt::Debug(l, exprs) => ctx.push(FlatStmt::Debug(*l, exprs.sub(depth))),
 			Stmt::Tailcall(l, name, exprs) => ctx.push(FlatStmt::Tailcall(*l, name.clone(), exprs.sub(depth), depth)),
 			Stmt::If(l, expr, stmts, stmts1) => {
