@@ -173,9 +173,15 @@ pub fn print(scena: &Scena) -> String {
 				ctx.set_space(Space::Block(0));
 			}
 			Item::Function(name, function) => {
-				ctx.set_space(Space::Block(1));
-				print_function(&mut ctx, name, function);
-				ctx.set_space(Space::Block(1));
+				if let Some(wr) = as_wrapper(function) {
+					ctx.set_space(Space::Block(0));
+					print_wrapper(&mut ctx, name, function, &wr);
+					ctx.set_space(Space::Block(0));
+				} else {
+					ctx.set_space(Space::Block(1));
+					print_function(&mut ctx, name, function);
+					ctx.set_space(Space::Block(1));
+				}
 			}
 		}
 	}
@@ -210,6 +216,67 @@ fn print_global(ctx: &mut Ctx, name: &str, global: &Global) {
 	ctx.ident(name.to_owned());
 	ctx.sym_(":");
 	global.ty.print(ctx);
+	ctx.sym_(";");
+}
+
+struct SyscallWrapper {
+	ret: bool,
+	args: (u8, u8),
+}
+
+fn as_wrapper(f: &Function) -> Option<SyscallWrapper> {
+	let Body::Tree(body) = &f.body else { return None };
+	let (ret, a, b, args) = match body.as_slice() {
+		[Stmt::Return(None, Some(Expr::Syscall(None, a, b, args)))] => (true, *a, *b, args),
+		[Stmt::Expr(Expr::Syscall(None, a, b, args)), Stmt::Return(None, None)] => (false, *a, *b, args),
+		_ => return None,
+	};
+	dbg!(a, b, args);
+	for (i, arg) in args.iter().rev().enumerate().rev() {
+		if arg != &Expr::Var(None, Place::Var(Var(i as u32))) {
+			return None;
+		}
+	}
+	Some(SyscallWrapper {
+		ret,
+		args: (a, b),
+	})
+}
+
+fn print_wrapper(ctx: &mut Ctx, name: &str, f: &Function, wr: &SyscallWrapper) {
+	if f.is_prelude {
+		ctx.word("prelude");
+	}
+	ctx.word("fn");
+	ctx.ident(name.to_owned());
+
+	ctx._sym_("=");
+	if wr.ret {
+		ctx.word("return");
+	}
+	ctx.token(format!("system[{},{}]", wr.args.0, wr.args.1));
+
+	ctx.arglist(f.args.iter(), |arg, ctx| {
+		ctx.line(&arg.line);
+		arg.ty.print(ctx);
+
+		if let Some(default) = &arg.default {
+			ctx._sym_("=");
+			default.print(ctx);
+		}
+	});
+
+	match &f.called {
+		Called::Raw(calls) => {
+			ctx.word("calls");
+			ctx.block(calls, Call::print);
+		}
+		Called::Merged(true) => {
+			ctx.word("dup");
+		}
+		Called::Merged(false) => {}
+	}
+
 	ctx.sym_(";");
 }
 
