@@ -415,7 +415,7 @@ fn parse_func_call(parser: &mut Parser<'_>, ctx: &mut Ctx<'_>, missing_ok: bool)
 			} else {
 				Vec::new()
 			};
-			if missing {
+			if missing && !ctx.scope.error {
 				if missing_ok {
 					ctx.errors.warning("unknown function", span);
 				} else {

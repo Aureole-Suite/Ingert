@@ -45,6 +45,7 @@ enum PBody<'a> {
 }
 
 struct Scope {
+	error: bool,
 	functions: IndexMap<String, RangeInclusive<usize>>,
 	globals: IndexSet<String>,
 }
@@ -53,6 +54,7 @@ pub fn parse(tokens: &lex::Tokens) -> (Scena, Errors) {
 	let mut parser = Parser::new(tokens.cursor());
 	let mut errors = Errors::new();
 
+	let mut error = false;
 	let mut functions = Vec::new();
 	let mut globals = IndexMap::new();
 
@@ -72,6 +74,7 @@ pub fn parse(tokens: &lex::Tokens) -> (Scena, Errors) {
 
 		if let Err(parser::Error) = result {
 			parser.report(|cursor, err| {
+				error = true;
 				errors.error(err.to_string(), cursor.next_span());
 				while !(
 					cursor.at_end()
@@ -85,6 +88,7 @@ pub fn parse(tokens: &lex::Tokens) -> (Scena, Errors) {
 	}
 	
 	let scope = Scope {
+		error,
 		functions: functions.iter()
 			.map(|f| (
 				f.name.clone(),
