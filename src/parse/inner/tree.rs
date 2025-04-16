@@ -305,20 +305,7 @@ fn parse_atom(parser: &mut Parser, ctx: &mut Ctx) -> Result<Expr> {
 		})
 		.test(|parser| {
 			parser.punct('&')?;
-			let name = parser.ident()?;
-			let span = parser.prev_span();
-			parser.commit();
-
-			let var = if let Some(num) = ctx.vars.iter().rposition(|v| *v == name) {
-				Var(num as u32)
-			} else if ctx.scope.globals.contains(name) {
-				parser.errors.error("cannot reference globals", span);
-				Var(0)
-			} else {
-				parser.errors.error("unknown variable", span);
-				Var(0)
-			};
-			Ok(Expr::Ref(l, var))
+			Ok(Expr::Ref(l, parse_var(parser, ctx)?))
 		})
 		.test(|parser| parse_call(parser, ctx))
 		.test(|parser| {
@@ -387,33 +374,39 @@ fn parse_place(parser: &mut Parser, ctx: &mut Ctx) -> Result<Place> {
 	Alt::new(parser)
 		.test(|parser| {
 			parser.punct('*')?;
-			let name = parser.ident()?;
-			let span = parser.prev_span();
-			let var = if let Some(num) = ctx.vars.iter().rposition(|v| *v == name) {
-				Var(num as u32)
-			} else if ctx.scope.globals.contains(name) {
-				parser.errors.error("cannot dereference globals", span);
-				Var(0)
-			} else {
-				parser.errors.error("unknown variable", span);
-				Var(0)
-			};
-			Ok(Place::Deref(var))
+			Ok(Place::Deref(parse_var(parser, ctx)?))
 		})
-		.test(|parser| {
-			let name = parser.ident()?;
-			let span = parser.prev_span();
-			let var = if let Some(num) = ctx.vars.iter().rposition(|v| *v == name) {
-				Place::Var(Var(num as u32))
-			} else if ctx.scope.globals.contains(name) {
-				Place::Global(name.to_owned())
-			} else {
-				parser.errors.error("unknown variable", span);
-				Place::Var(Var(0))
-			};
-			Ok(var)
-		})
+		.test(|parser| parse_var_or_global(parser, ctx))
 		.finish()
+}
+
+fn parse_var(parser: &mut Parser, ctx: &mut Ctx) -> Result<Var> {
+	let name = parser.ident()?;
+	let span = parser.prev_span();
+	let var = if let Some(num) = ctx.vars.iter().rposition(|v| *v == name) {
+		Var(num as u32)
+	} else if ctx.scope.globals.contains(name) {
+		parser.errors.error("cannot dereference globals", span);
+		Var(0)
+	} else {
+		parser.errors.error("unknown variable", span);
+		Var(0)
+	};
+	Ok(var)
+}
+
+fn parse_var_or_global(parser: &mut Parser, ctx: &mut Ctx) -> Result<Place> {
+	let name = parser.ident()?;
+	let span = parser.prev_span();
+	let var = if let Some(num) = ctx.vars.iter().rposition(|v| *v == name) {
+		Place::Var(Var(num as u32))
+	} else if ctx.scope.globals.contains(name) {
+		Place::Global(name.to_owned())
+	} else {
+		parser.errors.error("unknown variable", span);
+		Place::Var(Var(0))
+	};
+	Ok(var)
 }
 
 fn parse_args(p: Parser, ctx: &mut Ctx<'_>) -> Option<Vec<Expr>> {
