@@ -13,6 +13,7 @@ pub fn parse_fn(f: &super::PFunction, scope: &Scope, errors: &mut Errors) -> Fun
 	let args = f
 		.args
 		.iter()
+		.flatten() // This will give undefined variable errors if failed to parse signature :(
 		.map(|arg| {
 			vars.push(arg.name.clone().clone());
 			Arg { ty: arg.ty, default: arg.default.clone(), line: arg.line }
@@ -30,7 +31,7 @@ pub fn parse_fn(f: &super::PFunction, scope: &Scope, errors: &mut Errors) -> Fun
 		PBody::Flat(cursor) => Body::Flat(parse_flat(Parser::new(cursor.clone(), errors), scope)),
 		PBody::Tree(cursor) => Body::Tree(tree::parse(Parser::new(cursor.clone(), errors), scope, vars)),
 		PBody::Wrapper(wr) => {
-			let args = (0..f.args.len())
+			let args = (0..f.args.as_ref().map_or(0, |args| args.len()))
 				.rev()
 				.map(|i| Expr::Var(None, Place::Var(Var(i as u32))))
 				.collect();

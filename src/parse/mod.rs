@@ -13,12 +13,12 @@ mod alt;
 
 use alt::Alt;
 use error::Errors;
-use parser::{Error, Parser, Result};
+use parser::{Parser, Result};
 
 #[derive(Debug, Clone)]
 struct PFunction<'a> {
 	name: String,
-	args: Vec<PArg>,
+	args: Option<Vec<PArg>>,
 	called: PCalled<'a>,
 	is_prelude: bool,
 	body: PBody<'a>,
@@ -49,7 +49,7 @@ enum PBody<'a> {
 
 struct Scope {
 	error: bool,
-	functions: IndexMap<String, RangeInclusive<usize>>,
+	functions: IndexMap<String, Option<RangeInclusive<usize>>>,
 	globals: IndexSet<String>,
 }
 
@@ -96,7 +96,7 @@ pub fn parse(tokens: &lex::Tokens) -> (Scena, Errors) {
 		functions: functions.iter()
 			.map(|f| (
 				f.name.clone(),
-				f.args.iter().filter(|a| a.default.is_none()).count() ..= f.args.len(),
+				f.args.as_ref().map(|a| a.iter().filter(|a| a.default.is_none()).count() ..= a.len()),
 			))
 			.collect(),
 		globals: globals.keys().cloned().collect(),
@@ -138,7 +138,7 @@ fn parse_fn<'a>(parser: &mut alt::TryParser<'a, '_>) -> Result<PFunction<'a>> {
 
 		parser.punct(';')?;
 
-		let args = parse_args(Parser::new(args, parser.errors), false)?;
+		let args = parse_args(Parser::new(args, parser.errors), false);
 
 		return Ok(PFunction {
 			name: name.to_owned(),
@@ -160,7 +160,7 @@ fn parse_fn<'a>(parser: &mut alt::TryParser<'a, '_>) -> Result<PFunction<'a>> {
 		PBody::Tree(parser.delim_later('{')?)
 	};
 
-	let args = parse_args(Parser::new(args, parser.errors), matches!(body, PBody::Tree(_)))?;
+	let args = parse_args(Parser::new(args, parser.errors), matches!(body, PBody::Tree(_)));
 
 	Ok(PFunction {
 		name: name.to_owned(),
@@ -171,8 +171,8 @@ fn parse_fn<'a>(parser: &mut alt::TryParser<'a, '_>) -> Result<PFunction<'a>> {
 	})
 }
 
-fn parse_args(mut parser: Parser, has_name: bool) -> Result<Vec<PArg>> {
-	parse_comma_sep(&mut parser, |parser| {
+fn parse_args(parser: Parser, has_name: bool) -> Option<Vec<PArg>> {
+	do_parse(parser, |p| parse_comma_sep(p, |parser| {
 		let line = parser.line();
 		let name = if has_name {
 			let name = parser.ident()?;
@@ -193,7 +193,7 @@ fn parse_args(mut parser: Parser, has_name: bool) -> Result<Vec<PArg>> {
 			default,
 			line,
 		})
-	})
+	}))
 }
 
 fn parse_called<'a>(parser: &mut Parser<'a, '_>) -> Result<PCalled<'a>> {
