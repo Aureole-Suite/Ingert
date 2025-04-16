@@ -211,29 +211,51 @@ impl expr::HasScope for Ctx<'_> {
 impl expr::ParseVar for FlatVar {
 	type Ctx<'a> = Ctx<'a>;
 
-	fn parse_var(parser: &mut Parser, _ctx: &mut Ctx) -> Result<Self> {
-		if parser.punct('#').is_ok() {
-			let var = parser.int()?;
-			let span = parser.prev_span();
-			if var <= 0 {
-				parser.errors.error("variable must be positive", span);
-			}
-			Ok(FlatVar(var as u32))
-		} else {
-			Err(Error)
-		}
+	fn parse_var(parser: &mut Parser, ctx: &mut Ctx) -> Result<Self> {
+		Alt::new(parser)
+			.test(|parser| {
+				parser.punct('#')?;
+				let var = parser.int()?;
+				let span = parser.prev_span();
+				if var < 0 {
+					parser.errors.error("depth must be non-negative", span);
+				}
+				Ok(FlatVar(var as u32))
+			})
+			.test(|parser| {
+				let name = parser.ident()?;
+				let span = parser.prev_span();
+				if ctx.scope.globals.contains(name) {
+					parser.errors.error("cannot dereference globals", span);
+				} else {
+					parser.errors.error("unknown variable", span);
+				}
+				Ok(FlatVar(0))
+			})
+			.finish()
 	}
 
-	fn parse_var_or_global(parser: &mut Parser, _ctx: &mut Ctx) -> Result<Place<Self>> {
-		if parser.punct('#').is_ok() {
-			let var = parser.int()?;
-			let span = parser.prev_span();
-			if var < 0 {
-				parser.errors.error("depth must be non-negative", span);
-			}
-			Ok(Place::Var(FlatVar(var as u32)))
-		} else {
-			Err(Error)
-		}
+	fn parse_var_or_global(parser: &mut Parser, ctx: &mut Ctx) -> Result<Place<Self>> {
+		Alt::new(parser)
+			.test(|parser| {
+				parser.punct('#')?;
+				let var = parser.int()?;
+				let span = parser.prev_span();
+				if var < 0 {
+					parser.errors.error("depth must be non-negative", span);
+				}
+				Ok(Place::Var(FlatVar(var as u32)))
+			})
+			.test(|parser| {
+				let name = parser.ident()?;
+				let span = parser.prev_span();
+				if ctx.scope.globals.contains(name) {
+					Ok(Place::Global(name.to_owned()))
+				} else {
+					parser.errors.error("unknown variable", span);
+					Ok(Place::Var(FlatVar(0)))
+				}
+			})
+			.finish()
 	}
 }
