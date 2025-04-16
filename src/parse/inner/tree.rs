@@ -2,6 +2,7 @@ use std::ops::Range;
 
 use indexmap::IndexMap;
 
+use crate::parse::lex::Cursor;
 use crate::scena::{Expr, Place, Stmt, Var};
 use crate::scp::{Binop, Name, Unop, Value};
 
@@ -43,8 +44,8 @@ impl crate::parse::HasErrors for Ctx<'_> {
 	}
 }
 
-pub fn parse(parser: Parser<'_>, scope: &Scope, errors: &mut Errors, vars: Vec<String>) -> Vec<Stmt> {
-	parse_tree(parser, Ctx {
+pub fn parse(cursor: Cursor<'_>, scope: &Scope, errors: &mut Errors, vars: Vec<String>) -> Vec<Stmt> {
+	parse_tree(cursor, Ctx {
 		scope,
 		errors,
 		brk: false,
@@ -53,8 +54,8 @@ pub fn parse(parser: Parser<'_>, scope: &Scope, errors: &mut Errors, vars: Vec<S
 	})
 }
 
-fn parse_tree(parser: Parser<'_>, mut ctx: Ctx<'_>) -> Vec<Stmt> {
-	do_parse(parser, &mut ctx, |parser, ctx| {
+fn parse_tree(cursor: Cursor<'_>, mut ctx: Ctx<'_>) -> Vec<Stmt> {
+	do_parse(cursor, &mut ctx, |parser, ctx| {
 		let mut stmts = Vec::new();
 		while !parser.at_end() {
 			stmts.push(parse_stmt(parser, ctx)?);
@@ -436,6 +437,6 @@ impl PPlace {
 	}
 }
 
-fn parse_args(parser: Parser<'_>, ctx: &mut Ctx<'_>) -> Option<Vec<Expr>> {
-	do_parse(parser, ctx, |p, c| parse::parse_comma_sep(p, |p| parse_expr(p, c)))
+fn parse_args(cursor: Cursor<'_>, ctx: &mut Ctx<'_>) -> Option<Vec<Expr>> {
+	do_parse(cursor, ctx, |p, c| parse::parse_comma_sep(p, |p| parse_expr(p, c)))
 }

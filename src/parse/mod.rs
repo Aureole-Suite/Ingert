@@ -1,6 +1,7 @@
 use std::ops::RangeInclusive;
 
 use indexmap::{IndexMap, IndexSet};
+use lex::Cursor;
 
 use crate::{print::SyscallWrapper, scena::{ArgType, Global, Line, Scena, Value}, scp::GlobalType};
 
@@ -34,15 +35,15 @@ struct PArg {
 
 #[derive(Debug, Clone)]
 enum PCalled<'a> {
-	Raw(Parser<'a>),
+	Raw(Cursor<'a>),
 	Merged(bool),
 }
 
 #[derive(Debug, Clone)]
 enum PBody<'a> {
-	Asm(Parser<'a>),
-	Flat(Parser<'a>),
-	Tree(Parser<'a>),
+	Asm(Cursor<'a>),
+	Flat(Cursor<'a>),
+	Tree(Cursor<'a>),
 	Wrapper(SyscallWrapper),
 }
 
@@ -169,7 +170,8 @@ fn parse_fn<'a>(parser: &mut alt::TryParser<'a>, errors: &mut Errors) -> Result<
 	})
 }
 
-fn parse_args(mut parser: Parser, has_name: bool) -> Result<Vec<PArg>> {
+fn parse_args(cursor: Cursor, has_name: bool) -> Result<Vec<PArg>> {
+	let mut parser = Parser::new(cursor);
 	parse_comma_sep(&mut parser, |parser| {
 		let line = parser.line();
 		let name = if has_name {
@@ -256,7 +258,8 @@ fn parse_value(parser: &mut Parser<'_>) -> Result<Value> {
 }
 
 fn parse_syscall(parser: &mut Parser<'_>, errors: &mut Errors) -> Result<(u8, u8)> {
-	fn inner(mut parser: Parser<'_>, errors: &mut Errors) -> Result<(u8, u8)> {
+	fn inner(cursor: Cursor<'_>, errors: &mut Errors) -> Result<(u8, u8)> {
+		let mut parser = Parser::new(cursor);
 		let a = parser.int()?;
 		if !(0..=255).contains(&a) {
 			errors.error("invalid syscall number", parser.prev_span());
@@ -287,11 +290,12 @@ impl HasErrors for Errors {
 	}
 }
 
-fn do_parse<T, E: HasErrors>(
-	mut parser: Parser<'_>,
+fn do_parse<'a, T, E: HasErrors>(
+	cursor: Cursor<'a>,
 	ctx: &mut E,
-	f: impl FnOnce(&mut Parser<'_>, &mut E) -> Result<T>,
+	f: impl FnOnce(&mut Parser<'a>, &mut E) -> Result<T>,
 ) -> Option<T> {
+	let mut parser = Parser::new(cursor);
 	let result = f(&mut parser, ctx);
 	if result.is_err() {
 		parser.report(|cursor, err| {

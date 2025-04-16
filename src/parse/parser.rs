@@ -111,8 +111,8 @@ impl<'a> Parser<'a> {
 		self.test(op, |p| Ok(p.cursor.operator(op)?))
 	}
 
-	pub fn delim(&mut self, delim: char) -> Result<Parser<'a>> {
-		self.test(delim, |p| Ok(Parser::new(p.cursor.delim(delim)?)))
+	pub fn delim(&mut self, delim: char) -> Result<Cursor<'a>> {
+		self.test(delim, |p| Ok(p.cursor.delim(delim)?))
 	}
 
 	pub fn at_end(&self) -> bool {
