@@ -107,20 +107,14 @@ impl super::HasErrors for Ctx<'_> {
 	}
 }
 
-fn parse_tree(mut parser: Parser<'_>, mut ctx: Ctx<'_>) -> Vec<Stmt> {
-	let mut stmts = Vec::new();
-	while !parser.at_end() {
-		match parse_stmt(&mut parser, &mut ctx) {
-			Ok(stmt) => stmts.push(stmt),
-			Err(_) => {
-				parser.report(|cursor, err| {
-					ctx.errors.error(err.to_string(), cursor.next_span());
-				});
-				break;
-			}
+fn parse_tree(parser: Parser<'_>, mut ctx: Ctx<'_>) -> Vec<Stmt> {
+	do_parse(parser, &mut ctx, |parser, ctx| {
+		let mut stmts = Vec::new();
+		while !parser.at_end() {
+			stmts.push(parse_stmt(parser, ctx)?);
 		}
-	}
-	stmts
+		Ok(stmts)
+	}).unwrap_or_default()
 }
 
 fn parse_stmt(
