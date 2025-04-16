@@ -200,13 +200,13 @@ struct PrioOp {
 	prio: u32,
 }
 
-pub struct Prio {
+pub struct Prio<T> {
 	ops: Vec<PrioOp>,
-	stack: Vec<Expr>,
+	stack: Vec<Expr<T>>,
 }
 
-impl Prio {
-	pub fn new(left: Expr) -> Self {
+impl<T> Prio<T> {
+	pub fn new(left: Expr<T>) -> Self {
 		Self {
 			ops: Vec::new(),
 			stack: vec![left],
@@ -220,7 +220,7 @@ impl Prio {
 		self.stack.push(Expr::Binop(top.line, top.op, Box::new(left), Box::new(right)))
 	}
 
-	fn push(&mut self, op: PrioOp, expr: Expr) {
+	fn push(&mut self, op: PrioOp, expr: Expr<T>) {
 		while let Some(top) = self.ops.last() && top.prio >= op.prio {
 			self.pop();
 		}
@@ -228,7 +228,7 @@ impl Prio {
 		self.stack.push(expr);
 	}
 
-	fn finish(&mut self) -> Expr {
+	fn finish(&mut self) -> Expr<T> {
 		while !self.ops.is_empty() {
 			self.pop();
 		}
@@ -237,7 +237,7 @@ impl Prio {
 	}
 }
 
-fn parse_expr(parser: &mut Parser, ctx: &mut Ctx) -> Result<Expr> {
+fn parse_expr<T: ParseVar>(parser: &mut Parser, ctx: &mut T::Ctx<'_>) -> Result<Expr<T>> {
 	let mut prio = Prio::new(parse_atom(parser, ctx)?);
 	while let Some(op) = parse_binop(parser)? {
 		prio.push(op, parse_atom(parser, ctx)?);
@@ -277,7 +277,7 @@ fn parse_binop(parser: &mut Parser) -> Result<Option<PrioOp>> {
 	}
 }
 
-fn parse_atom(parser: &mut Parser, ctx: &mut Ctx) -> Result<Expr> {
+fn parse_atom<T: ParseVar>(parser: &mut Parser, ctx: &mut T::Ctx<'_>) -> Result<Expr<T>> {
 	let l = parser.line();
 	Alt::new(parser)
 		.test(|parser| {
@@ -305,7 +305,7 @@ fn parse_atom(parser: &mut Parser, ctx: &mut Ctx) -> Result<Expr> {
 		})
 		.test(|parser| {
 			parser.punct('&')?;
-			Ok(Expr::Ref(l, parse_var(parser, ctx)?))
+			Ok(Expr::Ref(l, T::parse_var(parser, ctx)?))
 		})
 		.test(|parser| parse_call(parser, ctx))
 		.test(|parser| {
@@ -315,7 +315,7 @@ fn parse_atom(parser: &mut Parser, ctx: &mut Ctx) -> Result<Expr> {
 		.finish()
 }
 
-fn parse_call(parser: &mut Parser, ctx: &mut Ctx) -> Result<Expr> {
+fn parse_call<T: ParseVar>(parser: &mut Parser, ctx: &mut T::Ctx<'_>) -> Result<Expr<T>> {
 	let l = parser.line();
 	Alt::new(parser)
 		.test(|parser| {
@@ -330,14 +330,14 @@ fn parse_call(parser: &mut Parser, ctx: &mut Ctx) -> Result<Expr> {
 		.finish()
 }
 
-fn parse_func_call(parser: &mut Parser, ctx: &mut Ctx, missing_ok: bool) -> Result<(Name, Vec<Expr>)> {
+fn parse_func_call<T: ParseVar>(parser: &mut Parser, ctx: &mut T::Ctx<'_>, missing_ok: bool) -> Result<(Name, Vec<Expr<T>>)> {
 	Alt::new(parser)
 		.test(|parser| {
 			let name = parser.ident()?;
 			let span = parser.prev_span();
-			let missing = ctx.scope.functions.get(name).is_none();
+			let missing = ctx.scope().functions.get(name).is_none();
 			let args = if let Some(args) = parse_args(parser.delim('(')?, ctx) {
-				if let Some(sig) = ctx.scope.functions.get(name) {
+				if let Some(sig) = ctx.scope().functions.get(name) {
 					if !sig.contains(&args.len()) {
 						if missing_ok {
 							parser.errors.warning(format!("expected {sig:?} args"), span.clone());
@@ -350,7 +350,7 @@ fn parse_func_call(parser: &mut Parser, ctx: &mut Ctx, missing_ok: bool) -> Resu
 			} else {
 				Vec::new()
 			};
-			if missing && !ctx.scope.error {
+			if missing && !ctx.scope().error {
 				if missing_ok {
 					parser.errors.warning("unknown function", span);
 				} else {
@@ -370,45 +370,66 @@ fn parse_func_call(parser: &mut Parser, ctx: &mut Ctx, missing_ok: bool) -> Resu
 		.finish()
 }
 
-fn parse_place(parser: &mut Parser, ctx: &mut Ctx) -> Result<Place> {
+fn parse_place<T: ParseVar>(parser: &mut Parser, ctx: &mut T::Ctx<'_>) -> Result<Place<T>> {
 	Alt::new(parser)
 		.test(|parser| {
 			parser.punct('*')?;
-			Ok(Place::Deref(parse_var(parser, ctx)?))
+			Ok(Place::Deref(T::parse_var(parser, ctx)?))
 		})
-		.test(|parser| parse_var_or_global(parser, ctx))
+		.test(|parser| T::parse_var_or_global(parser, ctx))
 		.finish()
 }
 
-fn parse_var(parser: &mut Parser, ctx: &mut Ctx) -> Result<Var> {
-	let name = parser.ident()?;
-	let span = parser.prev_span();
-	let var = if let Some(num) = ctx.vars.iter().rposition(|v| *v == name) {
-		Var(num as u32)
-	} else if ctx.scope.globals.contains(name) {
-		parser.errors.error("cannot dereference globals", span);
-		Var(0)
-	} else {
-		parser.errors.error("unknown variable", span);
-		Var(0)
-	};
-	Ok(var)
+trait HasScope {
+	fn scope(&self) -> &Scope;
 }
 
-fn parse_var_or_global(parser: &mut Parser, ctx: &mut Ctx) -> Result<Place> {
-	let name = parser.ident()?;
-	let span = parser.prev_span();
-	let var = if let Some(num) = ctx.vars.iter().rposition(|v| *v == name) {
-		Place::Var(Var(num as u32))
-	} else if ctx.scope.globals.contains(name) {
-		Place::Global(name.to_owned())
-	} else {
-		parser.errors.error("unknown variable", span);
-		Place::Var(Var(0))
-	};
-	Ok(var)
+trait ParseVar: Sized {
+	type Ctx<'a>: HasScope;
+
+	fn parse_var(parser: &mut Parser, ctx: &mut Self::Ctx<'_>) -> Result<Self>;
+	fn parse_var_or_global(parser: &mut Parser, ctx: &mut Self::Ctx<'_>) -> Result<Place<Self>>;
 }
 
-fn parse_args(p: Parser, ctx: &mut Ctx<'_>) -> Option<Vec<Expr>> {
+impl HasScope for Ctx<'_> {
+	fn scope(&self) -> &Scope {
+		self.scope
+	}
+}
+
+impl ParseVar for Var {
+	type Ctx<'a> = Ctx<'a>;
+
+	fn parse_var(parser: &mut Parser, ctx: &mut Ctx) -> Result<Var> {
+		let name = parser.ident()?;
+		let span = parser.prev_span();
+		let var = if let Some(num) = ctx.vars.iter().rposition(|v| *v == name) {
+			Var(num as u32)
+		} else if ctx.scope.globals.contains(name) {
+			parser.errors.error("cannot dereference globals", span);
+			Var(0)
+		} else {
+			parser.errors.error("unknown variable", span);
+			Var(0)
+		};
+		Ok(var)
+	}
+
+	fn parse_var_or_global(parser: &mut Parser, ctx: &mut Ctx) -> Result<Place> {
+		let name = parser.ident()?;
+		let span = parser.prev_span();
+		let var = if let Some(num) = ctx.vars.iter().rposition(|v| *v == name) {
+			Place::Var(Var(num as u32))
+		} else if ctx.scope.globals.contains(name) {
+			Place::Global(name.to_owned())
+		} else {
+			parser.errors.error("unknown variable", span);
+			Place::Var(Var(0))
+		};
+		Ok(var)
+	}
+}
+
+fn parse_args<T: ParseVar>(p: Parser, ctx: &mut T::Ctx<'_>) -> Option<Vec<Expr<T>>> {
 	do_parse(p, |p| parse::parse_comma_sep(p, |p| parse_expr(p, ctx)))
 }
