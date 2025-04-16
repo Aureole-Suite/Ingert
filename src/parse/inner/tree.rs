@@ -134,7 +134,9 @@ fn parse_stmt(parser: &mut Parser, ctx: &mut Ctx) -> Result<Stmt> {
 		})
 		.test(|parser| {
 			let place = parse_place(parser, ctx)?;
-			parser.punct('=')?;
+			parser.punct('=').inspect_err(|_| {
+				parser.reject();
+			})?;
 			parser.commit();
 			let expr = parse_expr(parser, ctx)?;
 			parser.punct(';')?;
@@ -159,7 +161,9 @@ fn parse_stmt(parser: &mut Parser, ctx: &mut Ctx) -> Result<Stmt> {
 			Ok(Stmt::Block(parse_tree(block, ctx.sub())))
 		})
 		.test(|parser| {
-			let expr = parse_call(parser, ctx)?;
+			let expr = parse_call(parser, ctx).inspect_err(|_| {
+				parser.reject(); // This might skip some useful suggestions, but it's hard to do it better
+			})?;
 			parser.punct(';')?;
 			Ok(Stmt::Expr(expr))
 		})

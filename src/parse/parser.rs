@@ -1,12 +1,9 @@
-use std::cell::RefCell;
-use std::rc::Rc;
-
 use super::{error::Errors, lex::{Cursor, CursorError}};
 
 #[derive(Debug)]
 pub struct Parser<'a, 'e> {
 	pub cursor: Cursor<'a>,
-	state: Rc<RefCell<State>>,
+	pub expect: Vec<Expect>,
 	pub errors: &'e mut Errors,
 }
 
@@ -17,7 +14,7 @@ struct State {
 }
 
 #[derive(Debug, Clone)]
-enum Expect {
+pub enum Expect {
 	Str(&'static str),
 	Char(char),
 	Nt(&'static str),
@@ -76,11 +73,8 @@ pub type Result<T, E=Error> = std::result::Result<T, E>;
 impl<'a, 'e> Parser<'a, 'e> {
 	pub fn new(cursor: Cursor<'a>, errors: &'e mut Errors) -> Self {
 		Self {
-			state: Rc::new(RefCell::new(State {
-				pos: cursor.pos(),
-				expect: Vec::new(),
-			})),
 			cursor,
+			expect: Vec::new(),
 			errors,
 		}
 	}
@@ -88,7 +82,7 @@ impl<'a, 'e> Parser<'a, 'e> {
 	pub fn peek<'e2>(&'e2 mut self) -> Parser<'a, 'e2> {
 		Parser {
 			cursor: self.cursor.clone(),
-			state: self.state.clone(),
+			expect: Vec::new(),
 			errors: self.errors,
 		}
 	}
@@ -123,25 +117,18 @@ impl<'a, 'e> Parser<'a, 'e> {
 
 	pub fn delim<'e2>(&'e2 mut self, delim: char) -> Result<Parser<'a, 'e2>> {
 		self.delim_later(delim)
-			.map(|cursor| Parser {
-				cursor,
-				state: self.state.clone(),
-				errors: self.errors,
-			})
+			.map(|cursor| Parser::new(cursor, self.errors))
 	}
 
 	pub fn delim_later(&mut self, delim: char) -> Result<Cursor<'a>> {
 		self.test(delim, |p| Ok(p.cursor.delim(delim)?))
 	}
 
-	pub fn at_end(&self) -> bool {
+	pub fn at_end(&mut self) -> bool {
 		if self.cursor.at_end() {
 			true
 		} else {
-			let mut state = self.state.borrow_mut();
-			if state.pos == self.cursor.pos() {
-				state.expect.push(Expect::Char(self.cursor.end_delim()))
-			}
+			self.expect.push(Expect::Char(self.cursor.end_delim()));
 			false
 		}
 	}
@@ -151,30 +138,20 @@ impl<'a, 'e> Parser<'a, 'e> {
 		match f(&mut clone) {
 			Ok(v) => {
 				self.cursor = clone.cursor;
-				let mut state = self.state.borrow_mut();
-				if state.pos < self.cursor.pos() {
-					state.expect.clear();
-					state.pos = self.cursor.pos();
-				}
+				self.expect.clear();
 				Ok(v)
 			}
 			Err(e) => {
-				let mut state = self.state.borrow_mut();
-				if state.pos == self.cursor.pos() {
-					state.expect.push(what.into());
-				}
+				self.expect.push(what.into());
 				Err(e)
 			}
 		}
 	}
 
 	pub fn report(&mut self, f: impl FnOnce(&mut Cursor<'a>)) {
-		let mut state = self.state.borrow_mut();
-		let expect = std::mem::take(&mut state.expect);
-		self.cursor.set_pos(state.pos);
+		let expect = std::mem::take(&mut self.expect);
 		self.errors.error(ParseError { expect }.to_string(), self.cursor.next_span());
 		f(&mut self.cursor);
-		state.pos = self.cursor.pos();
 	}
 
 	pub fn line(&self) -> Option<u16> {
