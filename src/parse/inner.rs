@@ -1,5 +1,6 @@
 mod expr;
 mod tree;
+mod flat;
 
 use crate::scena::{Arg, Body, Called, Expr, Function, Place, Stmt, Var};
 
@@ -28,7 +29,7 @@ pub fn parse_fn(f: &super::PFunction, scope: &Scope, errors: &mut Errors) -> Fun
 
 	let body = match &f.body {
 		PBody::Asm(cursor) => Body::Asm(parse_asm(Parser::new(cursor.clone(), errors), scope)),
-		PBody::Flat(cursor) => Body::Flat(parse_flat(Parser::new(cursor.clone(), errors), scope)),
+		PBody::Flat(cursor) => Body::Flat(flat::parse(Parser::new(cursor.clone(), errors), scope)),
 		PBody::Tree(cursor) => Body::Tree(tree::parse(Parser::new(cursor.clone(), errors), scope, vars)),
 		PBody::Wrapper(wr) => {
 			let args = (0..f.args.as_ref().map_or(0, |args| args.len()))
@@ -53,14 +54,10 @@ pub fn parse_fn(f: &super::PFunction, scope: &Scope, errors: &mut Errors) -> Fun
 	}
 }
 
-fn parse_called(_parser: Parser, scope: &Scope) -> Vec<crate::scp::Call> {
+fn parse_called(_parser: Parser, _scope: &Scope) -> Vec<crate::scp::Call> {
 	todo!()
 }
 
-fn parse_asm(_parser: Parser, scope: &Scope) -> Vec<crate::scp::Op> {
-	todo!()
-}
-
-fn parse_flat(_parser: Parser, scope: &Scope) -> Vec<crate::scena::FlatStmt> {
+fn parse_asm(_parser: Parser, _scope: &Scope) -> Vec<crate::scp::Op> {
 	todo!()
 }

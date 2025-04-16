@@ -58,6 +58,7 @@ fn main() {
 		std::fs::write("system.dbg", format!("{scena:#?}")).unwrap();
 		std::fs::write("system.dbg2", format!("{scena2:#?}")).unwrap();
 
+		similar_asserts::assert_eq!(scena, scena2);
 		let scp2 = ingert::scena::compile(scena).unwrap();
 		similar_asserts::assert_eq!(scp, scp2);
 	}

@@ -292,8 +292,10 @@ fn print_function(ctx: &mut Ctx, name: &str, f: &Function) {
 	ctx.ident(name.to_owned());
 	ctx.arglist(f.args.iter().rev().enumerate().rev(), |(i, arg), ctx| {
 		ctx.line(&arg.line);
-		Var(i as u32).print(ctx);
-		ctx.sym_(":");
+		if matches!(f.body, Body::Tree(_)) {
+			Var(i as u32).print(ctx);
+			ctx.sym_(":");
+		}
 		arg.ty.print(ctx);
 
 		if let Some(default) = &arg.default {

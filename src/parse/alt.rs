@@ -58,6 +58,9 @@ impl<'a, 'b, 'e, T> Alt<'a, 'b, 'e, T> {
 
 	pub fn finish(self) -> Result<T> {
 		if !self.committed {
+			if self.parser.cursor.pos() != self.max_pos {
+				self.parser.expect.clear();
+			}
 			self.parser.cursor.set_pos(self.max_pos);
 			self.parser.expect.extend(self.max_expect);
 			self.parser.errors.errors.extend(self.max_errors);

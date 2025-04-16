@@ -202,7 +202,7 @@ impl expr::HasScope for Ctx<'_> {
 impl expr::ParseVar for Var {
 	type Ctx<'a> = Ctx<'a>;
 
-	fn parse_var(parser: &mut Parser, ctx: &mut Ctx) -> Result<Var> {
+	fn parse_var(parser: &mut Parser, ctx: &mut Ctx) -> Result<Self> {
 		let name = parser.ident()?;
 		let span = parser.prev_span();
 		let var = if let Some(num) = ctx.vars.iter().rposition(|v| *v == name) {
@@ -217,7 +217,7 @@ impl expr::ParseVar for Var {
 		Ok(var)
 	}
 
-	fn parse_var_or_global(parser: &mut Parser, ctx: &mut Ctx) -> Result<Place> {
+	fn parse_var_or_global(parser: &mut Parser, ctx: &mut Ctx) -> Result<Place<Self>> {
 		let name = parser.ident()?;
 		let span = parser.prev_span();
 		let var = if let Some(num) = ctx.vars.iter().rposition(|v| *v == name) {
