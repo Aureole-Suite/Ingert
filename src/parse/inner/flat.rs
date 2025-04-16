@@ -78,6 +78,15 @@ fn parse_stmt(parser: &mut Parser, ctx: &mut Ctx) -> Result<FlatStmt> {
 			Ok(FlatStmt::If(l, cond, label))
 		})
 		.test(|parser| {
+			parser.keyword("switch")?;
+			parser.commit();
+			let cond = expr::parse_expr(parser, ctx)?;
+			let block = parse_switch(parser.delim('{')?, ctx);
+			let label = parse_label(parser, ctx, false)?;
+			parser.punct(';')?;
+			Ok(FlatStmt::Switch(l, cond, block, label))
+		})
+		.test(|parser| {
 			parser.keyword("return")?;
 			parser.commit();
 			let depth = parse_depth(parser)?;
@@ -140,6 +149,20 @@ fn parse_stmt(parser: &mut Parser, ctx: &mut Ctx) -> Result<FlatStmt> {
 			Ok(FlatStmt::Expr(expr))
 		})
 		.finish()
+}
+
+fn parse_switch(delim: Parser, ctx: &mut Ctx) -> Vec<(i32, Label)> {
+	do_parse(delim, |parser| {
+		let mut cases = Vec::new();
+		while !parser.at_end() {
+			let case = parser.int()?;
+			parser.operator("=>")?;
+			let label = parse_label(parser, ctx, false)?;
+			parser.punct(';')?;
+			cases.push((case, label));
+		}
+		Ok(cases)
+	}).unwrap_or_default()
 }
 
 fn parse_depth(parser: &mut Parser) -> Result<usize> {
