@@ -30,13 +30,17 @@ pub fn parse(parser: Parser, scope: &Scope) -> Vec<FlatStmt> {
 			labels: IndexMap::new(),
 		},
 	};
-	let mut stmts = do_parse(Parser::new(parser.cursor, parser.errors), |parser| {
+	let stmts = do_parse(Parser::new(parser.cursor, parser.errors), |parser| {
 		let mut stmts = Vec::new();
 		while !parser.at_end() {
 			stmts.push(parse_stmt(parser, &mut ctx)?);
 		}
 		Ok(stmts)
-	}).unwrap_or_default();
+	});
+	if stmts.is_none() {
+		return Vec::new();
+	}
+	let mut stmts = stmts.unwrap_or_default();
 
 	let mut error = false;
 	for label in ctx.labels.labels.into_values() {
