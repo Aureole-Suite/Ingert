@@ -276,3 +276,27 @@ fn parse_syscall(parser: &mut Parser<'_>, errors: &mut Errors) -> Result<(u8, u8
 	parser.keyword("system")?;
 	Ok(inner(parser.delim('[')?, errors).unwrap_or((0, 0)))
 }
+
+trait HasErrors {
+	fn errors(&mut self) -> &mut Errors;
+}
+
+impl HasErrors for Errors {
+	fn errors(&mut self) -> &mut Errors {
+		self
+	}
+}
+
+fn do_parse<T, E: HasErrors>(
+	mut parser: Parser<'_>,
+	ctx: &mut E,
+	f: impl FnOnce(&mut Parser<'_>, &mut E) -> Result<T>,
+) -> Option<T> {
+	let result = f(&mut parser, ctx);
+	if result.is_err() {
+		parser.report(|cursor, err| {
+			ctx.errors().error(err.to_string(), cursor.next_span());
+		});
+	}
+	result.ok()
+}

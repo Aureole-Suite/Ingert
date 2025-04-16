@@ -5,7 +5,7 @@ use indexmap::IndexMap;
 use crate::scena::{Arg, Body, Called, Expr, Function, Place, Stmt, Var};
 use crate::scp::{Binop, Name, Unop, Value};
 
-use super::{Alt, Parser, Result, Scope};
+use super::{do_parse, Alt, Parser, Result, Scope};
 use super::error::Errors;
 use super::{PBody, PCalled};
 
@@ -98,6 +98,12 @@ impl Ctx<'_> {
 	fn with_cont(mut self) -> Self {
 		self.cont = true;
 		self
+	}
+}
+
+impl super::HasErrors for Ctx<'_> {
+	fn errors(&mut self) -> &mut Errors {
+		self.errors
 	}
 }
 
@@ -495,18 +501,4 @@ impl PPlace {
 
 fn parse_args(parser: Parser<'_>, ctx: &mut Ctx<'_>) -> Option<Vec<Expr>> {
 	do_parse(parser, ctx, |p, c| super::parse_comma_sep(p, |p| parse_expr(p, c)))
-}
-
-fn do_parse<T>(
-	mut parser: Parser<'_>,
-	ctx: &mut Ctx<'_>,
-	f: impl FnOnce(&mut Parser<'_>, &mut Ctx<'_>) -> Result<T>,
-) -> Option<T> {
-	let result = f(&mut parser, ctx);
-	if result.is_err() {
-		parser.report(|cursor, err| {
-			ctx.errors.error(err.to_string(), cursor.next_span());
-		});
-	}
-	result.ok()
 }
