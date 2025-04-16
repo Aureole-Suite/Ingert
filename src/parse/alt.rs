@@ -1,13 +1,13 @@
 use super::{Error, Parser, Result};
 
-pub struct Alt<'a, 'b, T> {
-	parser: &'b mut Parser<'a>,
+pub struct Alt<'a, 'b, 'e, T> {
+	parser: &'b mut Parser<'a, 'e>,
 	value: Option<T>,
 	committed: bool,
 }
 
-impl<'a, 'b, T> Alt<'a, 'b, T> {
-	pub fn new(parser: &'b mut Parser<'a>) -> Self {
+impl<'a, 'b, 'e, T> Alt<'a, 'b, 'e, T> {
+	pub fn new(parser: &'b mut Parser<'a, 'e>) -> Self {
 		Self {
 			parser,
 			value: None,
@@ -15,19 +15,21 @@ impl<'a, 'b, T> Alt<'a, 'b, T> {
 		}
 	}
 
-	pub fn test(mut self, f: impl FnOnce(&mut TryParser<'a>) -> Result<T>) -> Self {
+	pub fn test(mut self, f: impl FnOnce(&mut TryParser<'a, '_>) -> Result<T>) -> Self {
 		if !self.committed {
+			let n = self.parser.errors.errors.len();
 			let mut clone = TryParser {
-				parser: self.parser.clone(),
+				parser: self.parser.peek(),
 				committed: false,
 			};
 			if let Ok(value) = f(&mut clone) {
-				*self.parser = clone.parser;
+				self.parser.cursor = clone.parser.cursor;
 				self.value = Some(value);
 				self.committed = true;
-			}
-			if clone.committed {
+			} else if clone.committed {
 				self.committed = true;
+			} else {
+				self.parser.errors.errors.truncate(n);
 			}
 		}
 		self
@@ -38,26 +40,26 @@ impl<'a, 'b, T> Alt<'a, 'b, T> {
 	}
 }
 
-pub struct TryParser<'a> {
-	parser: Parser<'a>,
+pub struct TryParser<'a, 'e> {
+	parser: Parser<'a, 'e>,
 	committed: bool,
 }
 
-impl<'a> std::ops::Deref for TryParser<'a> {
-	type Target = Parser<'a>;
+impl<'a, 'e> std::ops::Deref for TryParser<'a, 'e> {
+	type Target = Parser<'a, 'e>;
 
 	fn deref(&self) -> &Self::Target {
 		&self.parser
 	}
 }
 
-impl std::ops::DerefMut for TryParser<'_> {
+impl std::ops::DerefMut for TryParser<'_, '_> {
 	fn deref_mut(&mut self) -> &mut Self::Target {
 		&mut self.parser
 	}
 }
 
-impl TryParser<'_> {
+impl TryParser<'_, '_> {
 	pub fn commit(&mut self) {
 		self.committed = true;
 	}

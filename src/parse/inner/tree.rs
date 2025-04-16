@@ -1,16 +1,12 @@
-use std::ops::Range;
-
 use indexmap::IndexMap;
 
-use crate::parse::lex::Cursor;
 use crate::scena::{Expr, Place, Stmt, Var};
 use crate::scp::{Binop, Name, Unop, Value};
 
-use crate::parse::{self, do_parse, Alt, Errors, Parser, Result, Scope};
+use crate::parse::{self, do_parse, Alt, Parser, Result, Scope};
 
 struct Ctx<'a> {
 	scope: &'a Scope,
-	errors: &'a mut Errors,
 	brk: bool,
 	cont: bool,
 	vars: Vec<String>,
@@ -20,7 +16,6 @@ impl Ctx<'_> {
 	fn sub(&mut self) -> Ctx<'_> {
 		Ctx {
 			scope: self.scope,
-			errors: self.errors,
 			brk: self.brk,
 			cont: self.cont,
 			vars: self.vars.clone(),
@@ -38,33 +33,26 @@ impl Ctx<'_> {
 	}
 }
 
-impl crate::parse::HasErrors for Ctx<'_> {
-	fn errors(&mut self) -> &mut Errors {
-		self.errors
-	}
-}
-
-pub fn parse(cursor: Cursor<'_>, scope: &Scope, errors: &mut Errors, vars: Vec<String>) -> Vec<Stmt> {
-	parse_tree(cursor, Ctx {
+pub fn parse(parser: Parser, scope: &Scope, vars: Vec<String>) -> Vec<Stmt> {
+	parse_tree(parser, Ctx {
 		scope,
-		errors,
 		brk: false,
 		cont: false,
 		vars,
 	})
 }
 
-fn parse_tree(cursor: Cursor<'_>, mut ctx: Ctx<'_>) -> Vec<Stmt> {
-	do_parse(cursor, &mut ctx, |parser, ctx| {
+fn parse_tree(parser: Parser, mut ctx: Ctx) -> Vec<Stmt> {
+	do_parse(parser, |parser| {
 		let mut stmts = Vec::new();
 		while !parser.at_end() {
-			stmts.push(parse_stmt(parser, ctx)?);
+			stmts.push(parse_stmt(parser, &mut ctx)?);
 		}
 		Ok(stmts)
 	}).unwrap_or_default()
 }
 
-fn parse_stmt(parser: &mut Parser<'_>, ctx: &mut Ctx<'_>) -> Result<Stmt> {
+fn parse_stmt(parser: &mut Parser, ctx: &mut Ctx) -> Result<Stmt> {
 	let l = parser.line();
 	Alt::new(parser)
 		.test(|parser| {
@@ -73,7 +61,7 @@ fn parse_stmt(parser: &mut Parser<'_>, ctx: &mut Ctx<'_>) -> Result<Stmt> {
 			let cond = parse_expr(parser, ctx)?;
 			let then = parse_tree(parser.delim('{')?, ctx.sub());
 			let els = if parser.keyword("else").is_ok() {
-				if parser.clone().keyword("if").is_ok() {
+				if parser.peek().keyword("if").is_ok() {
 					Some(vec![parse_stmt(parser, ctx)?])
 				} else {
 					Some(parse_tree(parser.delim('{')?, ctx.sub()))
@@ -94,7 +82,7 @@ fn parse_stmt(parser: &mut Parser<'_>, ctx: &mut Ctx<'_>) -> Result<Stmt> {
 			parser.keyword("switch")?;
 			parser.commit();
 			let cond = parse_expr(parser, ctx)?;
-			let body = do_parse(parser.delim('{')?, &mut ctx.sub().with_brk(), parse_switch).unwrap_or_default();
+			let body = do_parse(parser.delim('{')?, |p| parse_switch(p, ctx.sub().with_brk())).unwrap_or_default();
 			Ok(Stmt::Switch(l, cond, body))
 		})
 		.test(|parser| {
@@ -111,18 +99,20 @@ fn parse_stmt(parser: &mut Parser<'_>, ctx: &mut Ctx<'_>) -> Result<Stmt> {
 		})
 		.test(|parser| {
 			parser.keyword("break")?;
+			let span = parser.prev_span();
 			parser.commit();
 			if !ctx.brk {
-				ctx.errors.error("break outside of loop/switch", parser.prev_span());
+				parser.errors.error("break outside of loop/switch", span);
 			}
 			parser.punct(';')?;
 			Ok(Stmt::Break)
 		})
 		.test(|parser| {
 			parser.keyword("continue")?;
+			let span = parser.prev_span();
 			parser.commit();
 			if !ctx.cont {
-				ctx.errors.error("continue outside of loop", parser.prev_span());
+				parser.errors.error("continue outside of loop", span);
 			}
 			parser.punct(';')?;
 			Ok(Stmt::Continue)
@@ -148,7 +138,7 @@ fn parse_stmt(parser: &mut Parser<'_>, ctx: &mut Ctx<'_>) -> Result<Stmt> {
 			parser.commit();
 			let expr = parse_expr(parser, ctx)?;
 			parser.punct(';')?;
-			Ok(Stmt::Set(l, place.lookup(ctx), expr))
+			Ok(Stmt::Set(l, place, expr))
 		})
 		.test(|parser| {
 			parser.keyword("debug")?;
@@ -166,7 +156,6 @@ fn parse_stmt(parser: &mut Parser<'_>, ctx: &mut Ctx<'_>) -> Result<Stmt> {
 		})
 		.test(|parser| {
 			let block = parser.delim('{')?;
-			parser.commit();
 			Ok(Stmt::Block(parse_tree(block, ctx.sub())))
 		})
 		.test(|parser| {
@@ -177,7 +166,7 @@ fn parse_stmt(parser: &mut Parser<'_>, ctx: &mut Ctx<'_>) -> Result<Stmt> {
 		.finish()
 }
 
-fn parse_switch(parser: &mut Parser<'_>, ctx: &mut Ctx<'_>) -> Result<IndexMap<Option<i32>, Vec<Stmt>>> {
+fn parse_switch(parser: &mut Parser, mut ctx: Ctx) -> Result<IndexMap<Option<i32>, Vec<Stmt>>> {
 	// TODO error on duplicate cases
 	let mut cases = IndexMap::new();
 	while !parser.at_end() {
@@ -190,11 +179,11 @@ fn parse_switch(parser: &mut Parser<'_>, ctx: &mut Ctx<'_>) -> Result<IndexMap<O
 			cases.insert(None, Vec::new());
 		} else {
 			let span = parser.next_span();
-			let stmt = parse_stmt(parser, ctx)?;
+			let stmt = parse_stmt(parser, &mut ctx)?;
 			if let Some((_, stmts)) = cases.last_mut() {
 				stmts.push(stmt);
 			} else {
-				ctx.errors.error("expected 'case', 'default'", span);
+				parser.errors.error("expected 'case', 'default'", span);
 			}
 		}
 	}
@@ -244,15 +233,15 @@ impl Prio {
 	}
 }
 
-fn parse_expr(parser: &mut Parser<'_>, ctx: &mut Ctx<'_>) -> Result<Expr> {
+fn parse_expr(parser: &mut Parser, ctx: &mut Ctx) -> Result<Expr> {
 	let mut prio = Prio::new(parse_atom(parser, ctx)?);
-	while let Some(op) = parse_binop(parser, ctx)? {
+	while let Some(op) = parse_binop(parser)? {
 		prio.push(op, parse_atom(parser, ctx)?);
 	}
 	Ok(prio.finish())
 }
 
-fn parse_binop(parser: &mut Parser<'_>, _ctx: &mut Ctx<'_>) -> Result<Option<PrioOp>> {
+fn parse_binop(parser: &mut Parser) -> Result<Option<PrioOp>> {
 	let line = parser.line();
 	macro_rules! op {
 		($($ident:ident => ($op:literal, $prio:literal),)*) => {
@@ -284,7 +273,7 @@ fn parse_binop(parser: &mut Parser<'_>, _ctx: &mut Ctx<'_>) -> Result<Option<Pri
 	}
 }
 
-fn parse_atom(parser: &mut Parser<'_>, ctx: &mut Ctx<'_>) -> Result<Expr> {
+fn parse_atom(parser: &mut Parser, ctx: &mut Ctx) -> Result<Expr> {
 	let l = parser.line();
 	Alt::new(parser)
 		.test(|parser| {
@@ -292,8 +281,8 @@ fn parse_atom(parser: &mut Parser<'_>, ctx: &mut Ctx<'_>) -> Result<Expr> {
 			Ok(Expr::Value(l, value))
 		})
 		.test(|parser| {
-			let paren = parser.delim('(')?;
-			Ok(do_parse(paren, ctx, parse_expr).unwrap_or(Expr::Value(l, Value::Int(0))))
+			let expr = do_parse(parser.delim('(')?, |p| parse_expr(p, ctx));
+			Ok(expr.unwrap_or(Expr::Value(l, Value::Int(0))))
 		})
 		.test(|parser| {
 			parser.punct('!')?;
@@ -319,10 +308,10 @@ fn parse_atom(parser: &mut Parser<'_>, ctx: &mut Ctx<'_>) -> Result<Expr> {
 			let var = if let Some(num) = ctx.vars.iter().rposition(|v| *v == name) {
 				Var(num as u32)
 			} else if ctx.scope.globals.contains(name) {
-				ctx.errors.error("cannot reference globals", span);
+				parser.errors.error("cannot reference globals", span);
 				Var(0)
 			} else {
-				ctx.errors.error("unknown variable", span);
+				parser.errors.error("unknown variable", span);
 				Var(0)
 			};
 			Ok(Expr::Ref(l, var))
@@ -330,16 +319,16 @@ fn parse_atom(parser: &mut Parser<'_>, ctx: &mut Ctx<'_>) -> Result<Expr> {
 		.test(|parser| parse_call(parser, ctx))
 		.test(|parser| {
 			let place = parse_place(parser, ctx)?;
-			Ok(Expr::Var(l, place.lookup(ctx)))
+			Ok(Expr::Var(l, place))
 		})
 		.finish()
 }
 
-fn parse_call(parser: &mut Parser<'_>, ctx: &mut Ctx<'_>) -> Result<Expr> {
+fn parse_call(parser: &mut Parser, ctx: &mut Ctx) -> Result<Expr> {
 	let l = parser.line();
 	Alt::new(parser)
 		.test(|parser| {
-			let (a, b) = parse::parse_syscall(parser, ctx.errors)?;
+			let (a, b) = parse::parse_syscall(parser)?;
 			let args = parse_args(parser.delim('(')?, ctx).unwrap_or_default();
 			Ok(Expr::Syscall(l, a, b, args))
 		})
@@ -350,7 +339,7 @@ fn parse_call(parser: &mut Parser<'_>, ctx: &mut Ctx<'_>) -> Result<Expr> {
 		.finish()
 }
 
-fn parse_func_call(parser: &mut Parser<'_>, ctx: &mut Ctx<'_>, missing_ok: bool) -> Result<(Name, Vec<Expr>)> {
+fn parse_func_call(parser: &mut Parser, ctx: &mut Ctx, missing_ok: bool) -> Result<(Name, Vec<Expr>)> {
 	Alt::new(parser)
 		.test(|parser| {
 			let name = parser.ident()?;
@@ -360,9 +349,9 @@ fn parse_func_call(parser: &mut Parser<'_>, ctx: &mut Ctx<'_>, missing_ok: bool)
 				if let Some(sig) = ctx.scope.functions.get(name) {
 					if !sig.contains(&args.len()) {
 						if missing_ok {
-							ctx.errors.warning(format!("expected {sig:?} args"), span.clone());
+							parser.errors.warning(format!("expected {sig:?} args"), span.clone());
 						} else {
-							ctx.errors.error(format!("expected {sig:?} args"), span.clone());
+							parser.errors.error(format!("expected {sig:?} args"), span.clone());
 						}
 					}
 				}
@@ -372,9 +361,9 @@ fn parse_func_call(parser: &mut Parser<'_>, ctx: &mut Ctx<'_>, missing_ok: bool)
 			};
 			if missing && !ctx.scope.error {
 				if missing_ok {
-					ctx.errors.warning("unknown function", span);
+					parser.errors.warning("unknown function", span);
 				} else {
-					ctx.errors.error("unknown function", span);
+					parser.errors.error("unknown function", span);
 				}
 			}
 			Ok((Name(String::new(), name.to_owned()), args))
@@ -390,53 +379,39 @@ fn parse_func_call(parser: &mut Parser<'_>, ctx: &mut Ctx<'_>, missing_ok: bool)
 		.finish()
 }
 
-enum PPlace {
-	Var(Range<usize>, String),
-	Deref(Range<usize>, String),
-}
-
-fn parse_place(parser: &mut Parser<'_>, _ctx: &mut Ctx<'_>) -> Result<PPlace> {
+fn parse_place(parser: &mut Parser, ctx: &mut Ctx) -> Result<Place> {
 	Alt::new(parser)
 		.test(|parser| {
 			parser.punct('*')?;
 			let name = parser.ident()?;
-			Ok(PPlace::Deref(parser.prev_span(), name.to_owned()))
+			let span = parser.prev_span();
+			let var = if let Some(num) = ctx.vars.iter().rposition(|v| *v == name) {
+				Var(num as u32)
+			} else if ctx.scope.globals.contains(name) {
+				parser.errors.error("cannot dereference globals", span);
+				Var(0)
+			} else {
+				parser.errors.error("unknown variable", span);
+				Var(0)
+			};
+			Ok(Place::Deref(var))
 		})
 		.test(|parser| {
 			let name = parser.ident()?;
-			Ok(PPlace::Var(parser.prev_span(), name.to_owned()))
+			let span = parser.prev_span();
+			let var = if let Some(num) = ctx.vars.iter().rposition(|v| *v == name) {
+				Place::Var(Var(num as u32))
+			} else if ctx.scope.globals.contains(name) {
+				Place::Global(name.to_owned())
+			} else {
+				parser.errors.error("unknown variable", span);
+				Place::Var(Var(0))
+			};
+			Ok(var)
 		})
 		.finish()
 }
 
-impl PPlace {
-	fn lookup(self, ctx: &mut Ctx<'_>) -> Place {
-		match self {
-			PPlace::Var(span, name) => {
-				if let Some(num) = ctx.vars.iter().rposition(|v| *v == name) {
-					Place::Var(Var(num as u32))
-				} else if ctx.scope.globals.contains(&name) {
-					Place::Global(name)
-				} else {
-					ctx.errors.error("unknown variable", span);
-					Place::Var(Var(0))
-				}
-			}
-			PPlace::Deref(span, name) => {
-				if let Some(num) = ctx.vars.iter().rposition(|v| *v == name) {
-					Place::Deref(Var(num as u32))
-				} else if ctx.scope.globals.contains(&name) {
-					ctx.errors.error("cannot dereference globals", span);
-					Place::Deref(Var(0))
-				} else {
-					ctx.errors.error("unknown variable", span);
-					Place::Deref(Var(0))
-				}
-			}
-		}
-	}
-}
-
-fn parse_args(cursor: Cursor<'_>, ctx: &mut Ctx<'_>) -> Option<Vec<Expr>> {
-	do_parse(cursor, ctx, |p, c| parse::parse_comma_sep(p, |p| parse_expr(p, c)))
+fn parse_args(p: Parser, ctx: &mut Ctx<'_>) -> Option<Vec<Expr>> {
+	do_parse(p, |p| parse::parse_comma_sep(p, |p| parse_expr(p, ctx)))
 }

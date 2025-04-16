@@ -2,7 +2,7 @@ mod tree;
 
 use crate::scena::{Arg, Body, Called, Expr, Function, Place, Stmt, Var};
 
-use super::lex::Cursor;
+use super::parser::Parser;
 use super::Scope;
 use super::error::Errors;
 use super::{PBody, PCalled};
@@ -20,14 +20,14 @@ pub fn parse_fn(f: &super::PFunction, scope: &Scope, errors: &mut Errors) -> Fun
 	vars.reverse();
 
 	let called = match &f.called {
-		PCalled::Raw(cursor) => Called::Raw(parse_called(cursor.clone(), scope, errors)),
+		PCalled::Raw(cursor) => Called::Raw(parse_called(Parser::new(cursor.clone(), errors), scope)),
 		PCalled::Merged(dup) => Called::Merged(*dup),
 	};
 
 	let body = match &f.body {
-		PBody::Asm(cursor) => Body::Asm(parse_asm(cursor.clone(), scope, errors)),
-		PBody::Flat(cursor) => Body::Flat(parse_flat(cursor.clone(), scope, errors)),
-		PBody::Tree(cursor) => Body::Tree(tree::parse(cursor.clone(), scope, errors, vars)),
+		PBody::Asm(cursor) => Body::Asm(parse_asm(Parser::new(cursor.clone(), errors), scope)),
+		PBody::Flat(cursor) => Body::Flat(parse_flat(Parser::new(cursor.clone(), errors), scope)),
+		PBody::Tree(cursor) => Body::Tree(tree::parse(Parser::new(cursor.clone(), errors), scope, vars)),
 		PBody::Wrapper(wr) => {
 			let args = (0..f.args.len())
 				.rev()
@@ -51,14 +51,14 @@ pub fn parse_fn(f: &super::PFunction, scope: &Scope, errors: &mut Errors) -> Fun
 	}
 }
 
-fn parse_called(cursor: Cursor<'_>, scope: &Scope, errors: &mut Errors) -> Vec<crate::scp::Call> {
+fn parse_called(_parser: Parser, scope: &Scope) -> Vec<crate::scp::Call> {
 	todo!()
 }
 
-fn parse_asm(cursor: Cursor<'_>, scope: &Scope, errors: &mut Errors) -> Vec<crate::scp::Op> {
+fn parse_asm(_parser: Parser, scope: &Scope) -> Vec<crate::scp::Op> {
 	todo!()
 }
 
-fn parse_flat(cursor: Cursor<'_>, scope: &Scope, errors: &mut Errors) -> Vec<crate::scena::FlatStmt> {
+fn parse_flat(_parser: Parser, scope: &Scope) -> Vec<crate::scena::FlatStmt> {
 	todo!()
 }

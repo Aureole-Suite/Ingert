@@ -54,8 +54,8 @@ struct Scope {
 }
 
 pub fn parse(tokens: &lex::Tokens) -> (Scena, Errors) {
-	let mut parser = Parser::new(tokens.cursor());
 	let mut errors = Errors::new();
+	let mut parser = Parser::new(tokens.cursor(), &mut errors);
 
 	let mut error = false;
 	let mut functions = Vec::new();
@@ -64,7 +64,7 @@ pub fn parse(tokens: &lex::Tokens) -> (Scena, Errors) {
 	while !parser.at_end() {
 		let result = Alt::new(&mut parser)
 			.test(|p| {
-				let func = parse_fn(p, &mut errors)?;
+				let func = parse_fn(p)?;
 				functions.push(func);
 				Ok(())
 			})
@@ -76,9 +76,8 @@ pub fn parse(tokens: &lex::Tokens) -> (Scena, Errors) {
 			.finish();
 
 		if let Err(parser::Error) = result {
-			parser.report(|cursor, err| {
+			parser.report(|cursor| {
 				error = true;
-				errors.error(err.to_string(), cursor.next_span());
 				while !(
 					cursor.at_end()
 					|| cursor.clone().keyword("fn").is_ok()
@@ -89,6 +88,8 @@ pub fn parse(tokens: &lex::Tokens) -> (Scena, Errors) {
 			});
 		}
 	}
+
+	drop(parser);
 	
 	let scope = Scope {
 		error,
@@ -111,7 +112,7 @@ pub fn parse(tokens: &lex::Tokens) -> (Scena, Errors) {
 	}, errors)
 }
 
-fn parse_global(parser: &mut alt::TryParser<'_>) -> Result<(String, Global)> {
+fn parse_global(parser: &mut alt::TryParser) -> Result<(String, Global)> {
 	let line = parser.line();
 	parser.keyword("global")?;
 	parser.commit();
@@ -122,7 +123,7 @@ fn parse_global(parser: &mut alt::TryParser<'_>) -> Result<(String, Global)> {
 	Ok((name.to_owned(), Global { ty, line }))
 }
 
-fn parse_fn<'a>(parser: &mut alt::TryParser<'a>, errors: &mut Errors) -> Result<PFunction<'a>> {
+fn parse_fn<'a>(parser: &mut alt::TryParser<'a, '_>) -> Result<PFunction<'a>> {
 	let is_prelude = parser.keyword("prelude").is_ok();
 	parser.keyword("fn")?;
 	parser.commit();
@@ -130,14 +131,14 @@ fn parse_fn<'a>(parser: &mut alt::TryParser<'a>, errors: &mut Errors) -> Result<
 
 	if parser.punct('=').is_ok() {
 		let ret = parser.keyword("return").is_ok();
-		let (a, b) = parse_syscall(parser, errors)?;
+		let (a, b) = parse_syscall(parser)?;
 
-		let args = parser.delim('(')?;
+		let args = parser.delim_later('(')?;
 		let called = parse_called(parser)?;
 
 		parser.punct(';')?;
 
-		let args = parse_args(args, false)?;
+		let args = parse_args(Parser::new(args, parser.errors), false)?;
 
 		return Ok(PFunction {
 			name: name.to_owned(),
@@ -148,18 +149,18 @@ fn parse_fn<'a>(parser: &mut alt::TryParser<'a>, errors: &mut Errors) -> Result<
 		});
 	}
 
-	let args = parser.delim('(')?;
+	let args = parser.delim_later('(')?;
 	let called = parse_called(parser)?;
 
 	let body = if parser.keyword("asm").is_ok() {
-		PBody::Asm(parser.delim('{')?)
+		PBody::Asm(parser.delim_later('{')?)
 	} else if parser.keyword("flat").is_ok() {
-		PBody::Flat(parser.delim('{')?)
+		PBody::Flat(parser.delim_later('{')?)
 	} else {
-		PBody::Tree(parser.delim('{')?)
+		PBody::Tree(parser.delim_later('{')?)
 	};
 
-	let args = parse_args(args, matches!(body, PBody::Tree(_)))?;
+	let args = parse_args(Parser::new(args, parser.errors), matches!(body, PBody::Tree(_)))?;
 
 	Ok(PFunction {
 		name: name.to_owned(),
@@ -170,8 +171,7 @@ fn parse_fn<'a>(parser: &mut alt::TryParser<'a>, errors: &mut Errors) -> Result<
 	})
 }
 
-fn parse_args(cursor: Cursor, has_name: bool) -> Result<Vec<PArg>> {
-	let mut parser = Parser::new(cursor);
+fn parse_args(mut parser: Parser, has_name: bool) -> Result<Vec<PArg>> {
 	parse_comma_sep(&mut parser, |parser| {
 		let line = parser.line();
 		let name = if has_name {
@@ -196,9 +196,9 @@ fn parse_args(cursor: Cursor, has_name: bool) -> Result<Vec<PArg>> {
 	})
 }
 
-fn parse_called<'a>(parser: &mut Parser<'a>) -> Result<PCalled<'a>> {
+fn parse_called<'a>(parser: &mut Parser<'a, '_>) -> Result<PCalled<'a>> {
 	if parser.keyword("calls").is_ok() {
-		Ok(PCalled::Raw(parser.delim('{')?))
+		Ok(PCalled::Raw(parser.delim_later('{')?))
 	} else if parser.keyword("dup").is_ok() {
 		Ok(PCalled::Merged(true))
 	} else {
@@ -249,7 +249,7 @@ fn parse_comma_sep<T>(parser: &mut Parser, mut f: impl FnMut(&mut Parser) -> Res
 	Ok(args)
 }
 
-fn parse_value(parser: &mut Parser<'_>) -> Result<Value> {
+fn parse_value(parser: &mut Parser) -> Result<Value> {
 	Alt::new(parser)
 		.test(|p| p.int().map(Value::Int))
 		.test(|p| p.float().map(Value::Float))
@@ -257,50 +257,30 @@ fn parse_value(parser: &mut Parser<'_>) -> Result<Value> {
 		.finish()
 }
 
-fn parse_syscall(parser: &mut Parser<'_>, errors: &mut Errors) -> Result<(u8, u8)> {
-	fn inner(cursor: Cursor<'_>, errors: &mut Errors) -> Result<(u8, u8)> {
-		let mut parser = Parser::new(cursor);
+fn parse_syscall(parser: &mut Parser) -> Result<(u8, u8)> {
+	fn inner(mut parser: Parser) -> Result<(u8, u8)> {
 		let a = parser.int()?;
 		if !(0..=255).contains(&a) {
-			errors.error("invalid syscall number", parser.prev_span());
+			parser.errors.error("invalid syscall number", parser.prev_span());
 		}
 		parser.punct(',')?;
 		let b = parser.int()?;
 		if !(0..=255).contains(&b) {
-			errors.error("invalid syscall number", parser.prev_span());
-		}
-		if !parser.at_end() {
-			parser.report(|cursor, err| {
-				errors.error(err.to_string(), cursor.next_span());
-			});
+			parser.errors.error("invalid syscall number", parser.prev_span());
 		}
 		Ok((a as u8, b as u8))
 	}
 	parser.keyword("system")?;
-	Ok(inner(parser.delim('[')?, errors).unwrap_or((0, 0)))
+	Ok(inner(parser.delim('[')?).unwrap_or((0, 0)))
 }
 
-trait HasErrors {
-	fn errors(&mut self) -> &mut Errors;
-}
-
-impl HasErrors for Errors {
-	fn errors(&mut self) -> &mut Errors {
-		self
-	}
-}
-
-fn do_parse<'a, T, E: HasErrors>(
-	cursor: Cursor<'a>,
-	ctx: &mut E,
-	f: impl FnOnce(&mut Parser<'a>, &mut E) -> Result<T>,
+fn do_parse<'a, 'e, T>(
+	mut parser: Parser<'a, 'e>,
+	f: impl FnOnce(&mut Parser<'a, 'e>) -> Result<T>,
 ) -> Option<T> {
-	let mut parser = Parser::new(cursor);
-	let result = f(&mut parser, ctx);
+	let result = f(&mut parser);
 	if result.is_err() {
-		parser.report(|cursor, err| {
-			ctx.errors().error(err.to_string(), cursor.next_span());
-		});
+		parser.report(|_cursor| { });
 	}
 	result.ok()
 }

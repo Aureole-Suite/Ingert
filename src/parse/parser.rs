@@ -1,12 +1,13 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use super::lex::{Cursor, CursorError};
+use super::{error::Errors, lex::{Cursor, CursorError}};
 
-#[derive(Debug, Clone)]
-pub struct Parser<'a> {
-	cursor: Cursor<'a>,
+#[derive(Debug)]
+pub struct Parser<'a, 'e> {
+	pub cursor: Cursor<'a>,
 	state: Rc<RefCell<State>>,
+	pub errors: &'e mut Errors,
 }
 
 #[derive(Debug)]
@@ -72,14 +73,23 @@ impl std::fmt::Display for ParseError {
 
 pub type Result<T, E=Error> = std::result::Result<T, E>;
 
-impl<'a> Parser<'a> {
-	pub fn new(cursor: Cursor<'a>) -> Self {
+impl<'a, 'e> Parser<'a, 'e> {
+	pub fn new(cursor: Cursor<'a>, errors: &'e mut Errors) -> Self {
 		Self {
 			state: Rc::new(RefCell::new(State {
 				pos: cursor.pos(),
 				expect: Vec::new(),
 			})),
 			cursor,
+			errors,
+		}
+	}
+
+	pub fn peek<'e2>(&'e2 mut self) -> Parser<'a, 'e2> {
+		Parser {
+			cursor: self.cursor.clone(),
+			state: self.state.clone(),
+			errors: self.errors,
 		}
 	}
 
@@ -111,7 +121,16 @@ impl<'a> Parser<'a> {
 		self.test(op, |p| Ok(p.cursor.operator(op)?))
 	}
 
-	pub fn delim(&mut self, delim: char) -> Result<Cursor<'a>> {
+	pub fn delim<'e2>(&'e2 mut self, delim: char) -> Result<Parser<'a, 'e2>> {
+		self.delim_later(delim)
+			.map(|cursor| Parser {
+				cursor,
+				state: self.state.clone(),
+				errors: self.errors,
+			})
+	}
+
+	pub fn delim_later(&mut self, delim: char) -> Result<Cursor<'a>> {
 		self.test(delim, |p| Ok(p.cursor.delim(delim)?))
 	}
 
@@ -127,8 +146,8 @@ impl<'a> Parser<'a> {
 		}
 	}
 
-	fn test<T>(&mut self, what: impl Into<Expect>, f: impl FnOnce(&mut Self) -> Result<T>) -> Result<T> {
-		let mut clone = self.clone();
+	fn test<T>(&mut self, what: impl Into<Expect>, f: impl FnOnce(&mut Parser<'a, '_>) -> Result<T>) -> Result<T> {
+		let mut clone = self.peek();
 		match f(&mut clone) {
 			Ok(v) => {
 				self.cursor = clone.cursor;
@@ -149,11 +168,12 @@ impl<'a> Parser<'a> {
 		}
 	}
 
-	pub fn report(&mut self, f: impl FnOnce(&mut Cursor<'a>, ParseError)) {
+	pub fn report(&mut self, f: impl FnOnce(&mut Cursor<'a>)) {
 		let mut state = self.state.borrow_mut();
 		let expect = std::mem::take(&mut state.expect);
 		self.cursor.set_pos(state.pos);
-		f(&mut self.cursor, ParseError { expect });
+		self.errors.error(ParseError { expect }.to_string(), self.cursor.next_span());
+		f(&mut self.cursor);
 		state.pos = self.cursor.pos();
 	}
 
