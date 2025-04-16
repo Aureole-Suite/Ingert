@@ -30,14 +30,34 @@ pub fn parse(parser: Parser, scope: &Scope) -> Vec<FlatStmt> {
 			labels: IndexMap::new(),
 		},
 	};
-	let stmts = do_parse(parser, |parser| {
+	let mut stmts = do_parse(Parser::new(parser.cursor, parser.errors), |parser| {
 		let mut stmts = Vec::new();
 		while !parser.at_end() {
 			stmts.push(parse_stmt(parser, &mut ctx)?);
 		}
 		Ok(stmts)
 	}).unwrap_or_default();
-	{} // TODO check for undefined labels
+
+	let mut error = false;
+	for label in ctx.labels.labels.into_values() {
+		match (label.defined, label.referenced) {
+			(Some(_), Some(_)) => {}
+			(Some(d), None) => {
+				parser.errors.warning("label not referenced", d);
+			}
+			(None, Some(r)) => {
+				error = true;
+				parser.errors.error("label not defined", r);
+			}
+			(None, None) => unreachable!(),
+		}
+	}
+
+	if error {
+		stmts.clear();
+	} else {
+		crate::labels::normalize(&mut stmts, 0).expect("failed to normalize labels");
+	}
 	stmts
 }
 
