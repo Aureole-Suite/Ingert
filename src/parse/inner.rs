@@ -1,3 +1,4 @@
+mod expr;
 mod tree;
 
 use crate::scena::{Arg, Body, Called, Expr, Function, Place, Stmt, Var};
