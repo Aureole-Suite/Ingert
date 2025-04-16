@@ -219,9 +219,11 @@ fn print_global(ctx: &mut Ctx, name: &str, global: &Global) {
 	ctx.sym_(";");
 }
 
-struct SyscallWrapper {
-	ret: bool,
-	args: (u8, u8),
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct SyscallWrapper {
+	pub ret: bool,
+	pub a: u8,
+	pub b: u8,
 }
 
 fn as_wrapper(f: &Function) -> Option<SyscallWrapper> {
@@ -231,16 +233,12 @@ fn as_wrapper(f: &Function) -> Option<SyscallWrapper> {
 		[Stmt::Expr(Expr::Syscall(None, a, b, args)), Stmt::Return(None, None)] => (false, *a, *b, args),
 		_ => return None,
 	};
-	dbg!(a, b, args);
 	for (i, arg) in args.iter().rev().enumerate().rev() {
 		if arg != &Expr::Var(None, Place::Var(Var(i as u32))) {
 			return None;
 		}
 	}
-	Some(SyscallWrapper {
-		ret,
-		args: (a, b),
-	})
+	Some(SyscallWrapper { ret, a, b })
 }
 
 fn print_wrapper(ctx: &mut Ctx, name: &str, f: &Function, wr: &SyscallWrapper) {
@@ -254,7 +252,7 @@ fn print_wrapper(ctx: &mut Ctx, name: &str, f: &Function, wr: &SyscallWrapper) {
 	if wr.ret {
 		ctx.word("return");
 	}
-	ctx.token(format!("system[{},{}]", wr.args.0, wr.args.1));
+	ctx.token(format!("system[{},{}]", wr.a, wr.b));
 
 	ctx.arglist(f.args.iter(), |arg, ctx| {
 		ctx.line(&arg.line);

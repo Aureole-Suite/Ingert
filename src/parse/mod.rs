@@ -2,7 +2,7 @@ use std::ops::RangeInclusive;
 
 use indexmap::{IndexMap, IndexSet};
 
-use crate::{scena::{ArgType, Global, Line, Scena, Value}, scp::GlobalType};
+use crate::{print::SyscallWrapper, scena::{ArgType, Global, Line, Scena, Value}, scp::GlobalType};
 
 pub mod lex;
 pub mod error;
@@ -25,6 +25,7 @@ struct PFunction<'a> {
 
 #[derive(Debug, Clone)]
 struct PArg {
+	// empty except on Tree
 	name: String,
 	ty: ArgType,
 	default: Option<Value>,
@@ -42,6 +43,7 @@ enum PBody<'a> {
 	Asm(Parser<'a>),
 	Flat(Parser<'a>),
 	Tree(Parser<'a>),
+	Wrapper(SyscallWrapper),
 }
 
 struct Scope {
@@ -61,7 +63,7 @@ pub fn parse(tokens: &lex::Tokens) -> (Scena, Errors) {
 	while !parser.at_end() {
 		let result = Alt::new(&mut parser)
 			.test(|p| {
-				let func = parse_fn(p)?;
+				let func = parse_fn(p, &mut errors)?;
 				functions.push(func);
 				Ok(())
 			})
@@ -119,20 +121,34 @@ fn parse_global(parser: &mut alt::TryParser<'_>) -> Result<(String, Global)> {
 	Ok((name.to_owned(), Global { ty, line }))
 }
 
-fn parse_fn<'a>(parser: &mut alt::TryParser<'a>) -> Result<PFunction<'a>> {
+fn parse_fn<'a>(parser: &mut alt::TryParser<'a>, errors: &mut Errors) -> Result<PFunction<'a>> {
 	let is_prelude = parser.keyword("prelude").is_ok();
 	parser.keyword("fn")?;
 	parser.commit();
 	let name = parser.ident()?;
-	let args = parse_args(parser.delim('(')?)?;
 
-	let called = if parser.keyword("calls").is_ok() {
-		PCalled::Raw(parser.delim('{')?)
-	} else if parser.keyword("dup").is_ok() {
-		PCalled::Merged(true)
-	} else {
-		PCalled::Merged(false)
-	};
+	if parser.punct('=').is_ok() {
+		let ret = parser.keyword("return").is_ok();
+		let (a, b) = parse_syscall(parser, errors)?;
+
+		let args = parser.delim('(')?;
+		let called = parse_called(parser)?;
+
+		parser.punct(';')?;
+
+		let args = parse_args(args, false)?;
+
+		return Ok(PFunction {
+			name: name.to_owned(),
+			args,
+			called,
+			is_prelude,
+			body: PBody::Wrapper(SyscallWrapper { a, b, ret }),
+		});
+	}
+
+	let args = parser.delim('(')?;
+	let called = parse_called(parser)?;
 
 	let body = if parser.keyword("asm").is_ok() {
 		PBody::Asm(parser.delim('{')?)
@@ -141,6 +157,8 @@ fn parse_fn<'a>(parser: &mut alt::TryParser<'a>) -> Result<PFunction<'a>> {
 	} else {
 		PBody::Tree(parser.delim('{')?)
 	};
+
+	let args = parse_args(args, matches!(body, PBody::Tree(_)))?;
 
 	Ok(PFunction {
 		name: name.to_owned(),
@@ -151,11 +169,16 @@ fn parse_fn<'a>(parser: &mut alt::TryParser<'a>) -> Result<PFunction<'a>> {
 	})
 }
 
-fn parse_args(mut parser: Parser) -> Result<Vec<PArg>> {
+fn parse_args(mut parser: Parser, has_name: bool) -> Result<Vec<PArg>> {
 	parse_comma_sep(&mut parser, |parser| {
 		let line = parser.line();
-		let name = parser.ident()?;
-		parser.punct(':')?;
+		let name = if has_name {
+			let name = parser.ident()?;
+			parser.punct(':')?;
+			name
+		} else {
+			""
+		};
 		let ty = parse_ty(parser)?;
 		let default = if parser.punct('=').is_ok() {
 			Some(parse_value(parser)?)
@@ -169,6 +192,16 @@ fn parse_args(mut parser: Parser) -> Result<Vec<PArg>> {
 			line,
 		})
 	})
+}
+
+fn parse_called<'a>(parser: &mut Parser<'a>) -> Result<PCalled<'a>> {
+	if parser.keyword("calls").is_ok() {
+		Ok(PCalled::Raw(parser.delim('{')?))
+	} else if parser.keyword("dup").is_ok() {
+		Ok(PCalled::Merged(true))
+	} else {
+		Ok(PCalled::Merged(false))
+	}
 }
 
 fn parse_gty(parser: &mut Parser) -> Result<GlobalType> {
@@ -220,4 +253,26 @@ fn parse_value(parser: &mut Parser<'_>) -> Result<Value> {
 		.test(|p| p.float().map(Value::Float))
 		.test(|p| p.string().map(|s| Value::String(s.to_owned())))
 		.finish()
+}
+
+fn parse_syscall(parser: &mut Parser<'_>, errors: &mut Errors) -> Result<(u8, u8)> {
+	fn inner(mut parser: Parser<'_>, errors: &mut Errors) -> Result<(u8, u8)> {
+		let a = parser.int()?;
+		if !(0..=255).contains(&a) {
+			errors.error("invalid syscall number", parser.prev_span());
+		}
+		parser.punct(',')?;
+		let b = parser.int()?;
+		if !(0..=255).contains(&b) {
+			errors.error("invalid syscall number", parser.prev_span());
+		}
+		if !parser.at_end() {
+			parser.report(|cursor, err| {
+				errors.error(err.to_string(), cursor.next_span());
+			});
+		}
+		Ok((a as u8, b as u8))
+	}
+	parser.keyword("system")?;
+	Ok(inner(parser.delim('[')?, errors).unwrap_or((0, 0)))
 }

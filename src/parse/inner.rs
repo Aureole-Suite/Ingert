@@ -36,6 +36,19 @@ pub fn parse_fn(f: &super::PFunction, scope: &Scope, errors: &mut Errors) -> Fun
 			cont: false,
 			vars,
 		})),
+		PBody::Wrapper(wr) => {
+			let args = (0..f.args.len())
+				.rev()
+				.map(|i| Expr::Var(None, Place::Var(Var(i as u32))))
+				.collect();
+			let syscall = Expr::Syscall(None, wr.a, wr.b, args);
+			let body = if wr.ret {
+				vec![Stmt::Return(None, Some(syscall))]
+			} else {
+				vec![Stmt::Expr(syscall), Stmt::Return(None, None)]
+			};
+			Body::Tree(body)
+		}
 	};
 
 	Function {
@@ -382,9 +395,7 @@ fn parse_call(parser: &mut Parser<'_>, ctx: &mut Ctx<'_>) -> Result<Expr> {
 	let l = parser.line();
 	Alt::new(parser)
 		.test(|parser| {
-			parser.keyword("system")?;
-			let (a, b) = parse_syscall(parser.delim('[')?, ctx);
-			parser.commit();
+			let (a, b) = super::parse_syscall(parser, ctx.errors)?;
 			let args = parse_args(parser.delim('(')?, ctx).unwrap_or_default();
 			Ok(Expr::Syscall(l, a, b, args))
 		})
@@ -480,27 +491,6 @@ impl PPlace {
 			}
 		}
 	}
-}
-
-fn parse_syscall(parser: Parser<'_>, ctx: &mut Ctx<'_>) -> (u8, u8) {
-	fn inner(mut parser: Parser<'_>, ctx: &mut Ctx<'_>) -> Result<(u8, u8)> {
-		let a = parser.int()?;
-		if !(0..=255).contains(&a) {
-			ctx.errors.error("invalid syscall number", parser.prev_span());
-		}
-		parser.punct(',')?;
-		let b = parser.int()?;
-		if !(0..=255).contains(&b) {
-			ctx.errors.error("invalid syscall number", parser.prev_span());
-		}
-		if !parser.at_end() {
-			parser.report(|cursor, err| {
-				ctx.errors.error(err.to_string(), cursor.next_span());
-			});
-		}
-		Ok((a as u8, b as u8))
-	}
-	inner(parser, ctx).unwrap_or((0, 0))
 }
 
 fn parse_args(parser: Parser<'_>, ctx: &mut Ctx<'_>) -> Option<Vec<Expr>> {
