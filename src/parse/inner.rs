@@ -29,13 +29,7 @@ pub fn parse_fn(f: &super::PFunction, scope: &Scope, errors: &mut Errors) -> Fun
 	let body = match &f.body {
 		PBody::Asm(parser) => Body::Asm(parse_asm(parser.clone(), scope, errors)),
 		PBody::Flat(parser) => Body::Flat(parse_flat(parser.clone(), scope, errors)),
-		PBody::Tree(parser) => Body::Tree(parse_tree(parser.clone(), Ctx {
-			scope,
-			errors,
-			brk: false,
-			cont: false,
-			vars,
-		})),
+		PBody::Tree(parser) => Body::Tree(parse_root(parser.clone(), scope, errors, vars)),
 		PBody::Wrapper(wr) => {
 			let args = (0..f.args.len())
 				.rev()
@@ -105,6 +99,16 @@ impl super::HasErrors for Ctx<'_> {
 	fn errors(&mut self) -> &mut Errors {
 		self.errors
 	}
+}
+
+fn parse_root(parser: Parser<'_>, scope: &Scope, errors: &mut Errors, vars: Vec<String>) -> Vec<Stmt> {
+	parse_tree(parser, Ctx {
+		scope,
+		errors,
+		brk: false,
+		cont: false,
+		vars,
+	})
 }
 
 fn parse_tree(parser: Parser<'_>, mut ctx: Ctx<'_>) -> Vec<Stmt> {
