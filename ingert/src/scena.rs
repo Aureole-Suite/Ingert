@@ -44,27 +44,41 @@ pub fn from_scp(scp: Scp) -> Scena {
 	Scena { globals, functions }
 }
 
-pub fn decompile(scena: &mut Scena) {
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Default)]
+pub enum DecompileMode {
+	#[default]
+	Tree,
+	Flat,
+	Asm
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct DecompileOptions {
+	pub mode: DecompileMode,
+	pub called: bool,
+}
+
+pub fn decompile(scena: &mut Scena, opts: &DecompileOptions) {
 	let mut funcsig = scena.functions.iter().map(|(name, f)| (name.clone(), f.args.clone())).collect();
 
 	for (name, f) in &mut scena.functions {
 		let _span = tracing::info_span!("function", name = name).entered();
 
-		if let Body::Asm(ops) = &f.body {
+		if let Body::Asm(ops) = &f.body && opts.mode >= DecompileMode::Flat {
 			match flat::decompile(ops) {
 				Ok(stmts) => f.body = Body::Flat(stmts),
 				Err(e) => tracing::error!("decompile error: {e}"),
 			}
 		}
 
-		if let Body::Flat(fstmts) = &f.body {
+		if let Body::Flat(fstmts) = &f.body && opts.mode >= DecompileMode::Tree {
 			match tree::decompile(fstmts, f.args.len()) {
 				Ok(stmts) => f.body = Body::Tree(stmts),
 				Err(e) => tracing::error!("decompile error: {e}"),
 			}
 		}
 
-		if let Called::Raw(called) = &f.called {
+		if let Called::Raw(called) = &f.called && opts.called {
 			match &mut f.body {
 				Body::Asm(_) => {},
 				Body::Flat(stmts) => f.called = Called::Merged(called::apply_flat(stmts, called, &mut funcsig).unwrap()),

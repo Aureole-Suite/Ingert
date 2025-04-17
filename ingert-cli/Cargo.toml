@@ -9,6 +9,10 @@ ingert-syntax.path = "../ingert-syntax"
 clap = { version = "4.5.20", features = ["derive"] }
 tracing-subscriber = { version = "0.3.18", features = ["env-filter", "fmt"] }
 tracing = { version = "0.1.40", features = ["attributes"] }
+codespan-reporting = "0.12.0"
+walkdir = "2.5.0"
+anyhow = "1.0.98"
+
+[dev-dependencies]
 compact-debug = "0.1.3"
 similar-asserts = "1.6.0"
-codespan-reporting = "0.12.0"

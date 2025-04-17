@@ -8,10 +8,10 @@ pub struct Errors {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Severity {
-	Fatal,
-	Error,
-	Warning,
 	Info,
+	Warning,
+	Error,
+	Fatal,
 }
 
 pub struct Diagnostic {
