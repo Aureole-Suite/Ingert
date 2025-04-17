@@ -93,12 +93,20 @@ fn parse_op(parser: &mut Parser, ctx: &mut Ctx) -> Result<Op> {
 		.test(|parser| {
 			parser.keyword("get_global")?;
 			let var = parser.ident()?;
+			if ctx.scope.globals.get(var).is_none() {
+				let span = parser.prev_span();
+				parser.errors.error("unknown global", span);
+			}
 			parser.punct(';')?;
 			Ok(Op::GetGlobal(var.to_owned()))
 		})
 		.test(|parser| {
 			parser.keyword("set_global")?;
 			let var = parser.ident()?;
+			if ctx.scope.globals.get(var).is_none() {
+				let span = parser.prev_span();
+				parser.errors.error("unknown global", span);
+			}
 			parser.punct(';')?;
 			Ok(Op::SetGlobal(var.to_owned()))
 		})
