@@ -3,7 +3,6 @@ use std::fmt::Debug;
 
 pub struct Errors {
 	pub errors: Vec<Diagnostic>,
-	pub max_severity: Severity,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -35,7 +34,6 @@ impl Errors {
 	pub fn new() -> Self {
 		Self {
 			errors: Vec::new(),
-			max_severity: Severity::Info,
 		}
 	}
 
@@ -56,7 +54,6 @@ impl Errors {
 	}
 
 	fn push(&mut self, severity: Severity, desc: impl Into<String>, span: Range<usize>) -> &mut Diagnostic {
-		self.max_severity = self.max_severity.max(severity);
 		self.errors.push(Diagnostic {
 			severity,
 			main: Note { desc: desc.into(), span },
@@ -65,8 +62,8 @@ impl Errors {
 		self.errors.last_mut().unwrap()
 	}
 
-	pub fn is_fatal(&self) -> bool {
-		self.max_severity >= Severity::Fatal
+	pub fn max_severity(&self) -> Severity {
+		self.errors.iter().map(|e| e.severity).max().unwrap_or(Severity::Info)
 	}
 }
 

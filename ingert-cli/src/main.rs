@@ -171,13 +171,13 @@ fn compile_inner(infile: &Path, outfile: &Path) -> anyhow::Result<()> {
 	let source = std::fs::read_to_string(infile).with_context(|| format!("failed to read file: {}", infile.display()))?;
 	let mut errors = diag::Errors::new();
 	let tokens = ingert_syntax::lex::lex(&source, &mut errors);
-	if errors.max_severity >= diag::Severity::Fatal {
+	if errors.max_severity() >= diag::Severity::Fatal {
 		print_errors(infile, &errors, &source);
 		return Ok(());
 	}
 	let scena = ingert_syntax::parse::parse(&tokens, &mut errors);
 	print_errors(infile, &errors, &source);
-	if errors.max_severity >= diag::Severity::Error {
+	if errors.max_severity() >= diag::Severity::Error {
 		return Ok(());
 	}
 	let scp = ingert::scena::compile(scena).context("failed to compile")?;
