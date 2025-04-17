@@ -14,7 +14,6 @@ pub struct Ctx<'a> {
 	code: &'a [Op],
 	pos: usize,
 
-	label: Option<Label>,
 	lines: Vec<u16>,
 	stack: Vec<(StackVal, Vec<u16>)>,
 	output: Vec<FlatStmt>,
@@ -25,7 +24,6 @@ impl<'a> Ctx<'a> {
 		Self {
 			code,
 			pos: 0,
-			label: None,
 			lines: Vec::new(),
 			stack: Vec::new(),
 			output: Vec::new(),
@@ -84,13 +82,8 @@ impl<'a> Ctx<'a> {
 
 	pub fn label(&mut self, label: Label) -> Result<(), DecompileError> {
 		self.check_empty()?;
-		self.label = Some(label);
 		self.output.push(FlatStmt::Label(label));
 		Ok(())
-	}
-
-	pub fn get_label(&self) -> Option<Label> {
-		self.label
 	}
 
 	pub fn line(&mut self, line: u16) -> Result<(), DecompileError> {
@@ -111,7 +104,6 @@ impl<'a> Ctx<'a> {
 			self.lines.clear();
 		}
 
-		self.label = None;
 		self.output.push(stmt);
 		Ok(())
 	}

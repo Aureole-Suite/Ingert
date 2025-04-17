@@ -8,12 +8,6 @@ pub struct Parser<'a, 'e> {
 	pub errors: &'e mut Errors,
 }
 
-#[derive(Debug)]
-struct State {
-	pos: usize,
-	expect: Vec<Expect>,
-}
-
 #[derive(Debug, Clone)]
 pub enum Expect {
 	Str(&'static str),
