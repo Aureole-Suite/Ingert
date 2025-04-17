@@ -3,7 +3,8 @@ use std::ops::RangeInclusive;
 use indexmap::{IndexMap, IndexSet};
 use lex::Cursor;
 
-use crate::{print::SyscallWrapper, scena::{ArgType, Global, Line, Scena, Value}, scp::GlobalType};
+use crate::print::SyscallWrapper;
+use ingert::scena::{ArgType, Global, Line, Scena, Value, GlobalType};
 
 pub mod lex;
 pub mod error;

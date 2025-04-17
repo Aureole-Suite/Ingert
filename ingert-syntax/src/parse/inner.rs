@@ -5,7 +5,7 @@ mod flat;
 mod asm;
 mod called;
 
-use crate::scena::{Arg, Body, Called, Expr, Function, Place, Stmt, Var};
+use ingert::scena::{Arg, Body, Called, Expr, Function, Place, Stmt, Var};
 
 use super::parser::Parser;
 use super::Scope;

@@ -1,6 +1,6 @@
+use ingert::scp::{Label, Name, Op, StackSlot, Unop};
 use crate::parse::parser::Error;
 use crate::parse::{do_parse, Alt, Parser, Result, Scope};
-use crate::scp::{Label, Name, Op, StackSlot, Unop};
 
 use super::labels;
 

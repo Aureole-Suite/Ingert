@@ -1,6 +1,5 @@
-use crate::parse::parser::Error;
 use crate::parse::{do_parse, parse_comma_sep, parse_value, Alt, Parser, Result, Scope};
-use crate::scp::{Call, CallArg, CallKind, Name};
+use ingert::scp::{Call, CallArg, CallKind, Name};
 
 pub fn parse(parser: Parser, scope: &Scope) -> Vec<Call> {
 	let stmts = do_parse(Parser::new(parser.cursor, parser.errors), |parser| {

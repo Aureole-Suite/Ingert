@@ -218,17 +218,34 @@ dependencies = [
 name = "ingert"
 version = "0.1.0"
 dependencies = [
- "clap",
- "codespan-reporting",
- "compact-debug",
  "crc32fast",
  "gospel",
  "indexmap",
- "similar-asserts",
  "snafu",
  "strum",
  "tracing",
+]
+
+[[package]]
+name = "ingert-cli"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "codespan-reporting",
+ "compact-debug",
+ "ingert",
+ "ingert-syntax",
+ "similar-asserts",
+ "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "ingert-syntax"
+version = "0.1.0"
+dependencies = [
+ "indexmap",
+ "ingert",
  "unicode-ident",
 ]
 

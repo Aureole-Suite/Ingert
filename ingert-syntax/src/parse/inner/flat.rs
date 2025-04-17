@@ -1,4 +1,4 @@
-use crate::scena::{FlatStmt, FlatVar, Place, Label};
+use ingert::scena::{FlatStmt, FlatVar, Place, Label};
 use crate::parse::{do_parse, Alt, Parser, Result, Scope};
 
 use super::expr;

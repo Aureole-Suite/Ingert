@@ -2,7 +2,7 @@ use std::ops::Range;
 
 use indexmap::IndexMap;
 
-use crate::scp::Label;
+use ingert::scp::Label;
 use crate::parse::error::Errors;
 
 struct LabelInfo {
@@ -42,7 +42,7 @@ impl Labels {
 		label.label
 	}
 
-	pub fn finish<T: crate::labels::LabelsMut>(
+	pub fn finish<T: ingert::labels::LabelsMut>(
 		self,
 		mut stmts: Vec<T>,
 		errors: &mut Errors,
@@ -65,7 +65,7 @@ impl Labels {
 		if error {
 			stmts.clear();
 		} else {
-			crate::labels::normalize(&mut stmts, 0).expect("failed to normalize labels");
+			ingert::labels::normalize(&mut stmts, 0).expect("failed to normalize labels");
 		}
 		stmts
 	}

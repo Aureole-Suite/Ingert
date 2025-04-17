@@ -1,5 +1,5 @@
-use crate::scena::{Expr, Place};
-use crate::scp::{Binop, Name, Unop, Value};
+use ingert::scena::{Expr, Place};
+use ingert::scp::{Binop, Name, Unop, Value};
 
 use crate::parse::{self, do_parse, Alt, Parser, Result, Scope};
 

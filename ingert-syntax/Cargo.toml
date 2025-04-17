@@ -1,0 +1,9 @@
+[package]
+name = "ingert-syntax"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+ingert.path = "../ingert"
+indexmap.workspace = true
+unicode-ident = "1.0.18"

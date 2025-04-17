@@ -2,7 +2,7 @@ use clap::Parser;
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 use codespan_reporting::files::SimpleFile;
 use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
-use ingert::parse::error::Error;
+use ingert_syntax::parse::error::Error;
 use std::path::PathBuf;
 use tracing_subscriber::prelude::*;
 
@@ -39,16 +39,16 @@ fn main() {
 		let mut scena = ingert::scena::from_scp(scp.clone());
 		ingert::scena::decompile(&mut scena);
 
-		let str = ingert::print::print(&scena);
+		let str = ingert_syntax::print::print(&scena);
 		std::fs::write("system.ing", &str).unwrap();
 
-		let (tokens, errors1) = ingert::parse::lex::lex(&str);
-		let (scena2, errors2) = ingert::parse::parse(&tokens);
+		let (tokens, errors1) = ingert_syntax::parse::lex::lex(&str);
+		let (scena2, errors2) = ingert_syntax::parse::parse(&tokens);
 
 		let mut errors = errors1.errors;
 		errors.extend(errors2.errors);
 		let file = SimpleFile::new(file.display().to_string(), &str);
-		errors.sort_by_key(|e| e.sort_key());
+		errors.sort_by(|a, b| a.sort_key().cmp(&b.sort_key()));
 
 		for error in errors {
 			let diag = to_diagnostic(error);
@@ -66,10 +66,10 @@ fn main() {
 
 fn to_diagnostic(error: Error) -> Diagnostic<()> {
 	let severity = match error.severity {
-		ingert::parse::error::Severity::Fatal => codespan_reporting::diagnostic::Severity::Error,
-		ingert::parse::error::Severity::Error => codespan_reporting::diagnostic::Severity::Error,
-		ingert::parse::error::Severity::Warning => codespan_reporting::diagnostic::Severity::Warning,
-		ingert::parse::error::Severity::Info => codespan_reporting::diagnostic::Severity::Note,
+		ingert_syntax::parse::error::Severity::Fatal => codespan_reporting::diagnostic::Severity::Error,
+		ingert_syntax::parse::error::Severity::Error => codespan_reporting::diagnostic::Severity::Error,
+		ingert_syntax::parse::error::Severity::Warning => codespan_reporting::diagnostic::Severity::Warning,
+		ingert_syntax::parse::error::Severity::Info => codespan_reporting::diagnostic::Severity::Note,
 	};
 	Diagnostic::new(severity)
 		.with_message(&error.main.desc)

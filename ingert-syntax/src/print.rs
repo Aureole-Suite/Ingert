@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 
-use crate::scp::{Call, CallArg, CallKind, GlobalType, Label, Op};
-use crate::scena::{ArgType, Binop, Body, Called, Expr, FlatStmt, FlatVar, Function, Global, Line, Name, Place, Scena, Stmt, Unop, Value, Var};
+use ingert::scp::{Call, CallArg, CallKind, GlobalType, Label, Op};
+use ingert::scena::{ArgType, Binop, Body, Called, Expr, FlatStmt, FlatVar, Function, Global, Line, Name, Place, Scena, Stmt, Unop, Value, Var};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
 enum Space {
@@ -197,7 +197,7 @@ fn items(scena: &Scena) -> Vec<Item<'_>> {
 	let mut items = Vec::new();
 	let mut globals = scena.globals.iter().peekable();
 	for func in &scena.functions {
-		if let Some(func_line) = crate::scena::first_line(&func.1.body) {
+		if let Some(func_line) = ingert::scena::first_line(&func.1.body) {
 			while let Some(g) = globals.next_if(|l| l.1.line.is_none_or(|v| v <= func_line)) {
 				items.push(Item::Global(g.0, g.1));
 			}
@@ -720,66 +720,63 @@ impl<V: Print> Print for Place<V> {
 
 impl<V: Print> Print for Expr<V> {
 	fn print(&self, ctx: &mut Ctx) {
-		self.print_prec(ctx, 0);
+		print_prec(self, ctx, 0);
 	}
 }
 
-#[allow(private_bounds)] // false positive
-impl<V: Print> Expr<V> {
-	fn print_prec(&self, ctx: &mut Ctx, prec: u32) {
-		match self {
-			Expr::Value(l, value) => {
-				ctx.line(l);
-				value.print(ctx);
+fn print_prec<V: Print>(expr: &Expr<V>, ctx: &mut Ctx, prec: u32) {
+	match expr {
+		Expr::Value(l, value) => {
+			ctx.line(l);
+			value.print(ctx);
+		}
+		Expr::Var(l, place) => {
+			ctx.line(l);
+			place.print(ctx);
+		}
+		Expr::Ref(l, n) => {
+			ctx.line(l);
+			ctx._sym("&");
+			n.print(ctx);
+		}
+		Expr::Call(l, name, exprs) => {
+			ctx.line(l);
+			name.print(ctx);
+			exprs.print(ctx);
+		}
+		Expr::Syscall(l, a, b, exprs) => {
+			ctx.line(l);
+			ctx.token(format!("system[{a},{b}]"));
+			exprs.print(ctx);
+		}
+		Expr::Unop(l, unop, expr) => {
+			ctx.line(l);
+			if *unop == Unop::Neg && matches!(**expr, Expr::Value(..)) {
+				ctx._sym("-");
+				ctx.sym("(");
+				print_prec(expr, ctx, 0);
+				ctx.sym_(")");
+			} else {
+				let op = match unop {
+					Unop::Neg => "-",
+					Unop::BoolNot => "!",
+					Unop::BitNot => "~",
+				};
+				ctx._sym(op);
+				print_prec(expr, ctx, 10);
 			}
-			Expr::Var(l, place) => {
-				ctx.line(l);
-				place.print(ctx);
+		}
+		Expr::Binop(l, binop, left, right) => {
+			let (op, op_prio) = binop_prio(*binop);
+			if op_prio < prec {
+				ctx._sym("(");
 			}
-			Expr::Ref(l, n) => {
-				ctx.line(l);
-				ctx._sym("&");
-				n.print(ctx);
-			}
-			Expr::Call(l, name, exprs) => {
-				ctx.line(l);
-				name.print(ctx);
-				exprs.print(ctx);
-			}
-			Expr::Syscall(l, a, b, exprs) => {
-				ctx.line(l);
-				ctx.token(format!("system[{a},{b}]"));
-				exprs.print(ctx);
-			}
-			Expr::Unop(l, unop, expr) => {
-				ctx.line(l);
-				if *unop == Unop::Neg && matches!(**expr, Expr::Value(..)) {
-					ctx._sym("-");
-					ctx.sym("(");
-					expr.print_prec(ctx, 0);
-					ctx.sym_(")");
-				} else {
-					let op = match unop {
-						Unop::Neg => "-",
-						Unop::BoolNot => "!",
-						Unop::BitNot => "~",
-					};
-					ctx._sym(op);
-					expr.print_prec(ctx, 10);
-				}
-			}
-			Expr::Binop(l, binop, left, right) => {
-				let (op, op_prio) = binop_prio(*binop);
-				if op_prio < prec {
-					ctx._sym("(");
-				}
-				left.print_prec(ctx, op_prio);
-				ctx.line(l);
-				ctx._sym_(op);
-				right.print_prec(ctx, op_prio + 1);
-				if op_prio < prec {
-					ctx.sym_(")");
-				}
+			print_prec(left, ctx, op_prio);
+			ctx.line(l);
+			ctx._sym_(op);
+			print_prec(right, ctx, op_prio + 1);
+			if op_prio < prec {
+				ctx.sym_(")");
 			}
 		}
 	}

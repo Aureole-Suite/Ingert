@@ -1,6 +1,6 @@
 use indexmap::IndexMap;
 
-use crate::scena::{Place, Stmt, Var};
+use ingert::scena::{Place, Stmt, Var};
 use crate::parse::{do_parse, Alt, Parser, Result, Scope};
 use super::expr;
 

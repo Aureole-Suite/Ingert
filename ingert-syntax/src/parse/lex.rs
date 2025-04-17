@@ -300,7 +300,6 @@ impl Lex<'_> {
 mod test {
 	#[test]
 	fn test() {
-		unsafe { compact_debug::enable(true) };
 		dbg!(super::lex(r#"foo bar _おはよう　123 0x123 -123 1.23 -1.23 "foo\nbar" (`foo\`bar`)"#));
 		dbg!(super::lex(r#"-.0"#));
 		let delims_str = "(()[]{})";
