@@ -1,4 +1,5 @@
 mod expr;
+mod labels;
 mod tree;
 mod flat;
 

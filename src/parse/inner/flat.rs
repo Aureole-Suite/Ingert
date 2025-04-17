@@ -1,34 +1,18 @@
-use std::ops::Range;
-
-use indexmap::IndexMap;
-
-use crate::parse::parser::Error;
 use crate::scena::{FlatStmt, FlatVar, Place, Label};
 use crate::parse::{do_parse, Alt, Parser, Result, Scope};
 
 use super::expr;
-
-struct LabelInfo {
-	label: Label,
-	defined: Option<Range<usize>>,
-	referenced: Option<Range<usize>>,
-}
-
-struct Labels {
-	labels: IndexMap<String, LabelInfo>,
-}
+use super::labels;
 
 pub struct Ctx<'a> {
 	scope: &'a Scope,
-	labels: Labels,
+	labels: labels::Labels,
 }
 
 pub fn parse(parser: Parser, scope: &Scope) -> Vec<FlatStmt> {
 	let mut ctx = Ctx {
 		scope,
-		labels: Labels {
-			labels: IndexMap::new(),
-		},
+		labels: labels::Labels::new(),
 	};
 	let stmts = do_parse(Parser::new(parser.cursor, parser.errors), |parser| {
 		let mut stmts = Vec::new();
@@ -40,29 +24,8 @@ pub fn parse(parser: Parser, scope: &Scope) -> Vec<FlatStmt> {
 	if stmts.is_none() {
 		return Vec::new();
 	}
-	let mut stmts = stmts.unwrap_or_default();
 
-	let mut error = false;
-	for label in ctx.labels.labels.into_values() {
-		match (label.defined, label.referenced) {
-			(Some(_), Some(_)) => {}
-			(Some(d), None) => {
-				parser.errors.warning("label not referenced", d);
-			}
-			(None, Some(r)) => {
-				error = true;
-				parser.errors.error("label not defined", r);
-			}
-			(None, None) => unreachable!(),
-		}
-	}
-
-	if error {
-		stmts.clear();
-	} else {
-		crate::labels::normalize(&mut stmts, 0).expect("failed to normalize labels");
-	}
-	stmts
+	ctx.labels.finish(stmts.unwrap_or_default(), parser.errors)
 }
 
 fn parse_stmt(parser: &mut Parser, ctx: &mut Ctx) -> Result<FlatStmt> {
@@ -183,23 +146,7 @@ fn parse_depth(parser: &mut Parser) -> Result<usize> {
 fn parse_label(parser: &mut Parser, ctx: &mut Ctx, def: bool) -> Result<Label> {
 	parser.punct('$')?;
 	let ident = parser.ident()?;
-	let n = ctx.labels.labels.len() as u32;
-	let label = ctx.labels.labels.entry(ident.to_owned())
-		.or_insert_with(|| LabelInfo {
-			label: Label(n),
-			defined: None,
-			referenced: None,
-		});
-	if def {
-		if let Some(prev) = &label.defined {
-			parser.errors.error("label already defined", parser.prev_span())
-				.note("previously defined here", prev.clone());
-		}
-		label.defined = Some(parser.prev_span());
-	} else if label.referenced.is_none() {
-		label.referenced = Some(parser.prev_span());
-	}
-	Ok(label.label)
+	Ok(ctx.labels.add(ident, parser.errors, parser.prev_span(), def))
 }
 
 impl expr::HasScope for Ctx<'_> {
