@@ -2,6 +2,7 @@ mod expr;
 mod labels;
 mod tree;
 mod flat;
+mod asm;
 
 use crate::scena::{Arg, Body, Called, Expr, Function, Place, Stmt, Var};
 
@@ -29,7 +30,7 @@ pub fn parse_fn(f: &super::PFunction, scope: &Scope, errors: &mut Errors) -> Fun
 	};
 
 	let body = match &f.body {
-		PBody::Asm(cursor) => Body::Asm(parse_asm(Parser::new(cursor.clone(), errors), scope)),
+		PBody::Asm(cursor) => Body::Asm(asm::parse(Parser::new(cursor.clone(), errors), scope)),
 		PBody::Flat(cursor) => Body::Flat(flat::parse(Parser::new(cursor.clone(), errors), scope)),
 		PBody::Tree(cursor) => Body::Tree(tree::parse(Parser::new(cursor.clone(), errors), scope, vars)),
 		PBody::Wrapper(wr) => {
@@ -56,9 +57,5 @@ pub fn parse_fn(f: &super::PFunction, scope: &Scope, errors: &mut Errors) -> Fun
 }
 
 fn parse_called(_parser: Parser, _scope: &Scope) -> Vec<crate::scp::Call> {
-	todo!()
-}
-
-fn parse_asm(_parser: Parser, _scope: &Scope) -> Vec<crate::scp::Op> {
-	todo!()
+	vec![]
 }

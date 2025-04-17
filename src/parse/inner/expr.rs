@@ -14,10 +14,10 @@ pub trait ParseVar: Sized {
 	fn parse_var_or_global(parser: &mut Parser, ctx: &mut Self::Ctx<'_>) -> Result<Place<Self>>;
 }
 
-struct PrioOp {
-	line: Option<u16>,
-	op: Binop,
-	prio: u32,
+pub struct PrioOp {
+	pub line: Option<u16>,
+	pub op: Binop,
+	pub prio: u32,
 }
 
 pub struct Prio<T> {
@@ -59,23 +59,23 @@ impl<T> Prio<T> {
 
 pub fn parse_expr<T: ParseVar>(parser: &mut Parser, ctx: &mut T::Ctx<'_>) -> Result<Expr<T>> {
 	let mut prio = Prio::new(parse_atom(parser, ctx)?);
-	while let Some(op) = parse_binop(parser)? {
+	while let Ok(op) = parse_binop(parser) {
 		prio.push(op, parse_atom(parser, ctx)?);
 	}
 	Ok(prio.finish())
 }
 
-fn parse_binop(parser: &mut Parser) -> Result<Option<PrioOp>> {
+pub fn parse_binop(parser: &mut Parser) -> Result<PrioOp> {
 	let line = parser.line();
 	macro_rules! op {
 		($($ident:ident => ($op:literal, $prio:literal),)*) => {
 			$(if parser.operator($op).is_ok() {
-				return Ok(Some(PrioOp {
+				Ok(PrioOp {
 					line,
 					op: Binop::$ident,
 					prio: $prio,
-				}));
-			} else )* { Ok(None) }
+				})
+			} else )* { Err(crate::parse::parser::Error) }
 		}
 	}
 	op! {

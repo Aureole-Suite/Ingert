@@ -405,7 +405,8 @@ impl Print for Op {
 				ctx.token(n.to_string());
 			}
 			Op::PushNull => {
-				ctx.word("push_null");
+				ctx.word("push");
+				ctx.word("null");
 			}
 			Op::GetVar(slot) => {
 				ctx.word("get_var");
@@ -444,29 +445,15 @@ impl Print for Op {
 				ctx.token(n.to_string());
 			}
 			Op::Binop(binop) => {
-				ctx.word(match binop {
-					Binop::Add => "add",
-					Binop::Sub => "sub",
-					Binop::Mul => "mul",
-					Binop::Div => "div",
-					Binop::Mod => "mod",
-					Binop::Eq => "eq",
-					Binop::Ne => "ne",
-					Binop::Gt => "gt",
-					Binop::Ge => "ge",
-					Binop::Lt => "lt",
-					Binop::Le => "le",
-					Binop::BitAnd => "bit_and",
-					Binop::BitOr => "bit_or",
-					Binop::BoolAnd => "bool_and",
-					Binop::BoolOr => "bool_or",
-				});
+				ctx.word("binop");
+				ctx._sym_(binop_prio(*binop).0);
 			}
 			Op::Unop(unop) => {
-				ctx.word(match unop {
-					Unop::Neg => "neg",
-					Unop::BoolNot => "bool_not",
-					Unop::BitNot => "bit_not",
+				ctx.word("unop");
+				ctx._sym_(match unop {
+					Unop::Neg => "-",
+					Unop::BoolNot => "!",
+					Unop::BitNot => "~",
 				});
 			}
 			Op::Jnz(label) => {
@@ -482,12 +469,14 @@ impl Print for Op {
 				label.print(ctx);
 			}
 			Op::CallLocal(b) => {
-				ctx.word("call_local");
+				ctx.word("call");
 				ctx.ident(b.clone());
 			}
 			Op::CallExtern(name, n) => {
-				ctx.word("call_extern");
-				name.print(ctx);
+				ctx.word("call");
+				ctx.ident(name.0.clone());
+				ctx.sym(".");
+				ctx.ident(name.1.clone());
 				ctx.token(n.to_string());
 			}
 			Op::CallTail(name, b) => {
@@ -496,9 +485,8 @@ impl Print for Op {
 				ctx.token(b.to_string());
 			}
 			Op::CallSystem(a, b, n) => {
-				ctx.word("call_system");
-				ctx.token(a.to_string());
-				ctx.token(b.to_string());
+				ctx.word("call");
+				ctx.token(format!("system[{},{}]", a, b));
 				ctx.token(n.to_string());
 			}
 			Op::PrepareCallLocal(label) => {
