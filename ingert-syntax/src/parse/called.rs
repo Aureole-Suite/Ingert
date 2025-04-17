@@ -1,6 +1,8 @@
 use crate::parse::{do_parse, parse_comma_sep, parse_value, Alt, Parser, Result, Scope};
 use ingert::scp::{Call, CallArg, CallKind, Name};
 
+use super::parse_syscall;
+
 pub fn parse(parser: Parser, scope: &Scope) -> Vec<Call> {
 	let stmts = do_parse(Parser::new(parser.cursor, parser.errors), |parser| {
 		let mut stmts = Vec::new();
@@ -15,7 +17,7 @@ pub fn parse(parser: Parser, scope: &Scope) -> Vec<Call> {
 fn parse_call(parser: &mut Parser, scope: &Scope) -> Result<Call> {
 	let kind = Alt::new(parser)
 		.test(|parser| {
-			let (a, b) = super::super::parse_syscall(parser)?;
+			let (a, b) = parse_syscall(parser)?;
 			Ok(CallKind::Syscall(a, b))
 		})
 		.test(|parser| {

@@ -2,7 +2,7 @@ use ingert::scp::{Label, Name, Op, StackSlot, Unop};
 use crate::parse::parser::Error;
 use crate::parse::{do_parse, Alt, Parser, Result, Scope};
 
-use super::labels;
+use super::{labels, parse_syscall, parse_value};
 
 pub struct Ctx<'a> {
 	scope: &'a Scope<'a>,
@@ -37,7 +37,7 @@ fn parse_op(parser: &mut Parser, ctx: &mut Ctx) -> Result<Op> {
 		})
 		.test(|parser| {
 			parser.keyword("push")?;
-			let push = super::super::parse_value(parser)?;
+			let push = parse_value(parser)?;
 			parser.punct(';')?;
 			Ok(Op::Push(push))
 		})
@@ -117,7 +117,7 @@ fn parse_op(parser: &mut Parser, ctx: &mut Ctx) -> Result<Op> {
 
 		.test(|parser| {
 			parser.keyword("call")?;
-			let (a, b) = super::super::parse_syscall(parser)?;
+			let (a, b) = parse_syscall(parser)?;
 			let pop = parse_u8(parser)?;
 			parser.punct(';')?;
 			Ok(Op::CallSystem(a, b, pop))
