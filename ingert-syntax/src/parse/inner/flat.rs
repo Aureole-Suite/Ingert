@@ -5,7 +5,7 @@ use super::expr;
 use super::labels;
 
 pub struct Ctx<'a> {
-	scope: &'a Scope,
+	scope: &'a Scope<'a>,
 	labels: labels::Labels,
 }
 
@@ -172,7 +172,7 @@ impl expr::ParseVar for FlatVar {
 			.test(|parser| {
 				let name = parser.ident()?;
 				let span = parser.prev_span();
-				if ctx.scope.globals.contains(name) {
+				if ctx.scope.globals.contains_key(name) {
 					parser.errors.error("cannot dereference globals", span);
 				} else {
 					parser.errors.error("unknown variable", span);
@@ -196,7 +196,7 @@ impl expr::ParseVar for FlatVar {
 			.test(|parser| {
 				let name = parser.ident()?;
 				let span = parser.prev_span();
-				if ctx.scope.globals.contains(name) {
+				if ctx.scope.globals.contains_key(name) {
 					Ok(Place::Global(name.to_owned()))
 				} else {
 					parser.errors.error("unknown variable", span);

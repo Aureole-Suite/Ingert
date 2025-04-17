@@ -5,7 +5,7 @@ use crate::parse::{do_parse, Alt, Parser, Result, Scope};
 use super::expr;
 
 pub struct Ctx<'a> {
-	scope: &'a Scope,
+	scope: &'a Scope<'a>,
 	brk: bool,
 	cont: bool,
 	vars: Vec<String>,
@@ -207,7 +207,7 @@ impl expr::ParseVar for Var {
 		let span = parser.prev_span();
 		let var = if let Some(num) = ctx.vars.iter().rposition(|v| *v == name) {
 			Var(num as u32)
-		} else if ctx.scope.globals.contains(name) {
+		} else if ctx.scope.globals.contains_key(name) {
 			parser.errors.error("cannot dereference globals", span);
 			Var(0)
 		} else {
@@ -222,7 +222,7 @@ impl expr::ParseVar for Var {
 		let span = parser.prev_span();
 		let var = if let Some(num) = ctx.vars.iter().rposition(|v| *v == name) {
 			Place::Var(Var(num as u32))
-		} else if ctx.scope.globals.contains(name) {
+		} else if ctx.scope.globals.contains_key(name) {
 			Place::Global(name.to_owned())
 		} else {
 			parser.errors.error("unknown variable", span);

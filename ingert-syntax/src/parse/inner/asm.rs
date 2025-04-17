@@ -5,7 +5,7 @@ use crate::parse::{do_parse, Alt, Parser, Result, Scope};
 use super::labels;
 
 pub struct Ctx<'a> {
-	scope: &'a Scope,
+	scope: &'a Scope<'a>,
 	labels: labels::Labels,
 }
 

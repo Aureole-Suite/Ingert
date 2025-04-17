@@ -157,8 +157,8 @@ pub fn parse_func_call<T: ParseVar>(parser: &mut Parser, ctx: &mut T::Ctx<'_>, m
 			let span = parser.prev_span();
 			let missing = ctx.scope().functions.get(name).is_none();
 			let args = if let Some(args) = parse_args(parser.delim('(')?, ctx) {
-				if let Some(Some(sig)) = ctx.scope().functions.get(name) {
-					if !sig.contains(&args.len()) {
+				if let Some(func) = ctx.scope().functions.get(name) {
+					if let Some(sig) = &func.arg_count && !sig.contains(&args.len()) {
 						if missing_ok {
 							parser.errors.warning(format!("expected {sig:?} args"), span.clone());
 						} else {
