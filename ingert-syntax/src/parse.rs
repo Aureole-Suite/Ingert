@@ -52,9 +52,8 @@ struct Scope {
 	globals: IndexSet<String>,
 }
 
-pub fn parse(tokens: &crate::lex::Tokens) -> (Scena, Errors) {
-	let mut errors = Errors::new();
-	let mut parser = Parser::new(tokens.cursor(), &mut errors);
+pub fn parse(tokens: &crate::lex::Tokens, errors: &mut Errors) -> Scena {
+	let mut parser = Parser::new(tokens.cursor(), errors);
 
 	let mut error = false;
 	let mut functions = Vec::new();
@@ -102,13 +101,10 @@ pub fn parse(tokens: &crate::lex::Tokens) -> (Scena, Errors) {
 	};
 
 	let functions = functions.iter()
-		.map(|f| (f.name.clone(), inner::parse_fn(f, &scope, &mut errors)))
+		.map(|f| (f.name.clone(), inner::parse_fn(f, &scope, errors)))
 		.collect::<IndexMap<_, _>>();
 
-	(Scena {
-		globals,
-		functions,
-	}, errors)
+	Scena { globals, functions }
 }
 
 fn parse_global(parser: &mut alt::TryParser) -> Result<(String, Global)> {

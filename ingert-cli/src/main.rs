@@ -42,11 +42,11 @@ fn main() {
 		let str = ingert_syntax::print::print(&scena);
 		std::fs::write("system.ing", &str).unwrap();
 
-		let (tokens, errors1) = ingert_syntax::lex::lex(&str);
-		let (scena2, errors2) = ingert_syntax::parse::parse(&tokens);
+		let mut errors = diag::Errors::new();
+		let tokens = ingert_syntax::lex::lex(&str, &mut errors);
+		let scena2 = ingert_syntax::parse::parse(&tokens, &mut errors);
 
-		let mut errors = errors1.errors;
-		errors.extend(errors2.errors);
+		let mut errors = errors.errors;
 		let file = SimpleFile::new(file.display().to_string(), &str);
 		errors.sort_by(|a, b| a.sort_key().cmp(&b.sort_key()));
 

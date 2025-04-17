@@ -45,8 +45,8 @@ pub enum TokenKind {
 	Punct(char),
 }
 
-pub fn lex(src: &str) -> (Tokens, Errors) {
-	let mut lexer = Lex::new(src);
+pub fn lex(src: &str, errors: &mut Errors) -> Tokens {
+	let mut lexer = Lex::new(src, errors);
 	let mut tokens = Vec::new();
 	let dummy = RawToken {
 		start: 0,
@@ -60,11 +60,10 @@ pub fn lex(src: &str) -> (Tokens, Errors) {
 		tokens.push(token);
 	}
 	tokens.push(RawToken { start: lexer.pos as u32, end: lexer.pos as u32, ..dummy });
-	let mut errors = lexer.errors;
 
-	match_delims(&mut tokens, &mut errors);
+	match_delims(&mut tokens, errors);
 
-	(Tokens(tokens), errors)
+	Tokens(tokens)
 }
 
 fn match_delims(tokens: &mut [RawToken], errors: &mut Errors) {
@@ -102,12 +101,12 @@ fn match_delims(tokens: &mut [RawToken], errors: &mut Errors) {
 struct Lex<'a> {
 	src: &'a str,
 	pos: usize,
-	errors: Errors,
+	errors: &'a mut Errors,
 }
 
-impl Lex<'_> {
-	fn new(src: &str) -> Lex<'_> {
-		let mut lex = Lex { src, pos: 0, errors: Errors::new() };
+impl<'a> Lex<'a> {
+	fn new(src: &'a str, errors: &'a mut Errors) -> Self {
+		let mut lex = Lex { src, pos: 0, errors };
 		lex.skip_whitespace();
 		lex
 	}
@@ -293,23 +292,5 @@ impl Lex<'_> {
 			}
 			_ => None,
 		}
-	}
-}
-
-#[cfg(test)]
-mod test {
-	#[test]
-	fn test() {
-		dbg!(super::lex(r#"foo bar _おはよう　123 0x123 -123 1.23 -1.23 "foo\nbar" (`foo\`bar`)"#));
-		dbg!(super::lex(r#"-.0"#));
-		let delims_str = "(()[]{})";
-		dbg!(super::lex(delims_str));
-		for i in 0..delims_str.len() {
-			let mut s = delims_str.to_owned();
-			s.replace_range(i..i+1, "");
-			dbg!(super::lex(&s));
-		}
-		dbg!(super::lex(r#"123@ 123"#));
-		panic!();
 	}
 }
