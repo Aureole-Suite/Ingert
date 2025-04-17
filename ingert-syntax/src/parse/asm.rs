@@ -81,13 +81,13 @@ fn parse_op(parser: &mut Parser, ctx: &mut Ctx) -> Result<Op> {
 			parser.keyword("get_ref")?;
 			let slot = parse_slot(parser)?;
 			parser.punct(';')?;
-			Ok(Op::PushRef(slot))
+			Ok(Op::GetRef(slot))
 		})
 		.test(|parser| {
 			parser.keyword("set_ref")?;
 			let slot = parse_slot(parser)?;
 			parser.punct(';')?;
-			Ok(Op::PushRef(slot))
+			Ok(Op::SetRef(slot))
 		})
 
 		.test(|parser| {
