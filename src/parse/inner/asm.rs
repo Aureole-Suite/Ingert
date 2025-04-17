@@ -161,7 +161,7 @@ fn parse_op(parser: &mut Parser, ctx: &mut Ctx) -> Result<Op> {
 			};
 			let pop = parse_u8(parser)?;
 			parser.punct(';')?;
-			Ok(Op::CallExtern(Name(a.to_owned(), b.to_owned()), pop))
+			Ok(Op::CallTail(Name(a.to_owned(), b.to_owned()), pop))
 		})
 
 		.test(|parser| {
