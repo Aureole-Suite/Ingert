@@ -27,6 +27,14 @@ fn parse_call(parser: &mut Parser, scope: &Scope) -> Result<Call> {
 				let b = parser.ident()?;
 				Name(a.to_owned(), b.to_owned())
 			} else {
+				if scope.functions.get(a).is_none() {
+					let span = parser.prev_span();
+					if tailcall {
+						parser.errors.warning("unknown function", span);
+					} else {
+						parser.errors.error("unknown function", span);
+					}
+				}
 				Name::local(a.to_owned())
 			};
 			if tailcall {

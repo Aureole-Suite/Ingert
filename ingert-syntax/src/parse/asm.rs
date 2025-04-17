@@ -131,6 +131,10 @@ fn parse_op(parser: &mut Parser, ctx: &mut Ctx) -> Result<Op> {
 		.test(|parser| {
 			parser.keyword("call")?;
 			let ident = parser.ident()?;
+			if ctx.scope.functions.get(ident).is_none() {
+				let span = parser.prev_span();
+				parser.errors.error("unknown function", span);
+			}
 			parser.punct(';')?;
 			Ok(Op::CallLocal(ident.to_owned()))
 		})
@@ -157,6 +161,10 @@ fn parse_op(parser: &mut Parser, ctx: &mut Ctx) -> Result<Op> {
 				let b = parser.ident()?;
 				(a, b)
 			} else {
+				if ctx.scope.functions.get(a).is_none() {
+					let span = parser.prev_span();
+					parser.errors.warning("unknown function", span);
+				}
 				("", a)
 			};
 			let pop = parse_u8(parser)?;
