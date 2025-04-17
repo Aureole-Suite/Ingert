@@ -46,10 +46,10 @@ pub fn from_scp(scp: Scp) -> Scena {
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub enum DecompileMode {
+	Asm,
+	Flat,
 	#[default]
 	Tree,
-	Flat,
-	Asm
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
