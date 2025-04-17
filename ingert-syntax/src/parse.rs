@@ -1,12 +1,11 @@
 use std::ops::RangeInclusive;
 
 use indexmap::{IndexMap, IndexSet};
-use lex::Cursor;
+use crate::lex::Cursor;
 
 use crate::print::SyscallWrapper;
 use ingert::scena::{ArgType, Global, Line, Scena, Value, GlobalType};
 
-pub mod lex;
 pub mod error;
 mod inner;
 mod parser;
@@ -54,7 +53,7 @@ struct Scope {
 	globals: IndexSet<String>,
 }
 
-pub fn parse(tokens: &lex::Tokens) -> (Scena, Errors) {
+pub fn parse(tokens: &crate::lex::Tokens) -> (Scena, Errors) {
 	let mut errors = Errors::new();
 	let mut parser = Parser::new(tokens.cursor(), &mut errors);
 

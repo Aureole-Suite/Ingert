@@ -42,7 +42,7 @@ fn main() {
 		let str = ingert_syntax::print::print(&scena);
 		std::fs::write("system.ing", &str).unwrap();
 
-		let (tokens, errors1) = ingert_syntax::parse::lex::lex(&str);
+		let (tokens, errors1) = ingert_syntax::lex::lex(&str);
 		let (scena2, errors2) = ingert_syntax::parse::parse(&tokens);
 
 		let mut errors = errors1.errors;

@@ -1,4 +1,5 @@
-use super::{error::Errors, lex::{Cursor, CursorError}};
+use super::error::Errors;
+use crate::lex::{Cursor, CursorError};
 
 #[derive(Debug)]
 pub struct Parser<'a, 'e> {
@@ -46,7 +47,7 @@ impl std::fmt::Display for Expect {
 pub struct Error;
 
 impl From<CursorError> for Error {
-	fn from(CursorError: CursorError) -> Self {
+	fn from(_: CursorError) -> Self {
 		Error
 	}
 }
