@@ -3,6 +3,7 @@ mod labels;
 mod tree;
 mod flat;
 mod asm;
+mod called;
 
 use crate::scena::{Arg, Body, Called, Expr, Function, Place, Stmt, Var};
 
@@ -25,7 +26,7 @@ pub fn parse_fn(f: &super::PFunction, scope: &Scope, errors: &mut Errors) -> Fun
 	vars.reverse();
 
 	let called = match &f.called {
-		PCalled::Raw(cursor) => Called::Raw(parse_called(Parser::new(cursor.clone(), errors), scope)),
+		PCalled::Raw(cursor) => Called::Raw(called::parse(Parser::new(cursor.clone(), errors), scope)),
 		PCalled::Merged(dup) => Called::Merged(*dup),
 	};
 
@@ -54,8 +55,4 @@ pub fn parse_fn(f: &super::PFunction, scope: &Scope, errors: &mut Errors) -> Fun
 		body,
 		is_prelude: f.is_prelude,
 	}
-}
-
-fn parse_called(_parser: Parser, _scope: &Scope) -> Vec<crate::scp::Call> {
-	vec![]
 }

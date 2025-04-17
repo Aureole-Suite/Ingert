@@ -363,7 +363,7 @@ impl Print for Call {
 				name.print(ctx);
 			}
 			CallKind::Tailcall(name) => {
-				ctx.word("become");
+				ctx.word("tailcall");
 				name.print(ctx);
 			}
 			CallKind::Syscall(a, b) => {
