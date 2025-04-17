@@ -178,8 +178,11 @@ fn pop_count(f: &mut Reader) -> Result<u8, ReadError> {
 #[derive(Debug, snafu::Snafu)]
 #[snafu(module(write), context(suffix(false)))]
 pub enum WriteError {
+	#[snafu(display("missing label {label:?}"))]
 	MissingLabel { label: Label },
+	#[snafu(display("unknown global {name}"))]
 	Global { name: String },
+	#[snafu(display("unknown function {name}"))]
 	Function { name: String },
 }
 

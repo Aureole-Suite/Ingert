@@ -29,7 +29,9 @@ pub fn read(f: &mut Reader) -> Result<Global, ReadError> {
 }
 
 #[derive(Debug, snafu::Snafu)]
-pub enum WriteError {}
+pub enum WriteError {
+	Inhabited
+}
 
 pub fn write(global: &Global, w: &mut super::WCtx) -> Result<(), WriteError> {
 	let f = &mut w.f_globals;

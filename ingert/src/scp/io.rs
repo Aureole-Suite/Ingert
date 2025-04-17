@@ -101,9 +101,13 @@ pub enum WriteError {
 		#[snafu(implicit)]
 		location: snafu::Location,
 	},
+	#[snafu(display("failed to write function {name}"))]
 	Function { name: String, source: function::WriteError },
+	#[snafu(display("failed to write global {name}"))]
 	Global { name: String, source: global::WriteError },
+	#[snafu(display("failed to write calleds of {name}"))]
 	Called { name: String, source: called::WriteError },
+	#[snafu(display("failed to write code for {name}"))]
 	Code { name: String, source: code::WriteError },
 }
 

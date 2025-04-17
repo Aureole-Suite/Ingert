@@ -106,7 +106,9 @@ pub fn read(number: usize, f: &mut Reader) -> Result<RawFunction, ReadError> {
 }
 
 #[derive(Debug, snafu::Snafu)]
-pub enum WriteError {}
+pub enum WriteError {
+	Inhabited,
+}
 
 pub fn write(func: &crate::scp::Function, code: Label, w: &mut super::WCtx) -> Result<(), WriteError> {
 	let f = &mut w.f_functions;
