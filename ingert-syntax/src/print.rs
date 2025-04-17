@@ -655,10 +655,12 @@ impl Print for Stmt {
 						}
 					};
 					ctx.indent += 1;
+					let size = ctx.vars.len();
 					for stmt in body {
 						ctx.set_space(Space::Block(0));
 						stmt.print(ctx);
 					}
+					ctx.vars.truncate(size);
 					ctx.indent -= 1;
 				});
 			}

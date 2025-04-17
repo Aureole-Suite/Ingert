@@ -173,22 +173,25 @@ fn parse_switch(parser: &mut Parser, mut ctx: Ctx) -> Result<IndexMap<Option<i32
 	// TODO error on duplicate cases
 	let mut cases = IndexMap::new();
 	while !parser.at_end() {
-		if parser.keyword("case").is_ok() {
-			let num = parser.int()?;
-			parser.punct(':')?;
-			cases.insert(Some(num), Vec::new());
-		} else if parser.keyword("default").is_ok() {
-			parser.punct(':')?;
-			cases.insert(None, Vec::new());
-		} else {
-			let span = parser.next_span();
-			let stmt = parse_stmt(parser, &mut ctx)?;
-			if let Some((_, stmts)) = cases.last_mut() {
-				stmts.push(stmt);
-			} else {
-				parser.errors.error("expected 'case', 'default'", span);
-			}
+		let case = Alt::new(parser)
+			.test(|parser| {
+				parser.keyword("case")?;
+				let num = parser.int()?;
+				parser.punct(':')?;
+				Ok(Some(num))
+			})
+			.test(|parser| {
+				parser.keyword("default")?;
+				parser.punct(':')?;
+				Ok(None)
+			})
+			.finish()?;
+		let mut sub = ctx.sub();
+		let mut body = Vec::new();
+		while let Ok(stmt) = parse_stmt(parser, &mut sub) {
+			body.push(stmt);
 		}
+		cases.insert(case, body);
 	}
 	Ok(cases)
 }
