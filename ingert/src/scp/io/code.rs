@@ -146,6 +146,9 @@ pub fn read(
 		}
 		ops2.push(op);
 	}
+	if labels.remove(&f.pos()) {
+		ops2.push(Op::Label(Label(f.pos() as u32)));
+	}
 	if !labels.is_empty() {
 		let mut labels = labels.into_iter().collect::<Vec<_>>();
 		labels.sort();
