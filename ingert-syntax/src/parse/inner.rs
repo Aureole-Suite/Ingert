@@ -8,11 +8,9 @@ mod called;
 use ingert::scena::{Arg, Body, Called, Expr, Function, Place, Stmt, Var};
 
 use super::parser::Parser;
-use super::Scope;
-use super::error::Errors;
 use super::{PBody, PCalled};
 
-pub fn parse_fn(f: &super::PFunction, scope: &Scope, errors: &mut Errors) -> Function {
+pub fn parse_fn(f: &super::PFunction, scope: &super::Scope, errors: &mut crate::diag::Errors) -> Function {
 	let mut vars = Vec::new();
 	let args = f
 		.args

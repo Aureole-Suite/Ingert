@@ -6,13 +6,12 @@ use crate::lex::Cursor;
 use crate::print::SyscallWrapper;
 use ingert::scena::{ArgType, Global, Line, Scena, Value, GlobalType};
 
-pub mod error;
 mod inner;
 mod parser;
 mod alt;
 
 use alt::Alt;
-use error::Errors;
+use crate::diag::Errors;
 use parser::{Parser, Result};
 
 #[derive(Debug, Clone)]

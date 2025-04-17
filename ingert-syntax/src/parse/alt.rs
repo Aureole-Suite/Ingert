@@ -1,3 +1,5 @@
+use crate::diag::Diagnostic;
+
 use super::{parser::Expect, Parser, Result};
 
 pub struct Alt<'a, 'b, 'e, T> {
@@ -7,7 +9,7 @@ pub struct Alt<'a, 'b, 'e, T> {
 
 	max_pos: usize,
 	max_expect: Vec<Expect>,
-	max_errors: Vec<super::error::Error>,
+	max_errors: Vec<Diagnostic>,
 }
 
 impl<'a, 'b, 'e, T> Alt<'a, 'b, 'e, T> {

@@ -3,7 +3,7 @@ use std::ops::Range;
 use indexmap::IndexMap;
 
 use ingert::scp::Label;
-use crate::parse::error::Errors;
+use crate::diag::Errors;
 
 struct LabelInfo {
 	label: Label,

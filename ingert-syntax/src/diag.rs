@@ -2,7 +2,7 @@ use std::ops::Range;
 use std::fmt::Debug;
 
 pub struct Errors {
-	pub errors: Vec<Error>,
+	pub errors: Vec<Diagnostic>,
 	pub max_severity: Severity,
 }
 
@@ -14,13 +14,13 @@ pub enum Severity {
 	Info,
 }
 
-pub struct Error {
+pub struct Diagnostic {
 	pub severity: Severity,
 	pub main: Note,
 	pub notes: Vec<Note>,
 }
 
-impl Error {
+impl Diagnostic {
 	pub fn sort_key(&self) -> impl Ord {
 		(self.main.span.start, self.severity)
 	}
@@ -39,25 +39,25 @@ impl Errors {
 		}
 	}
 
-	pub fn info(&mut self, desc: impl Into<String>, span: Range<usize>) -> &mut Error {
+	pub fn info(&mut self, desc: impl Into<String>, span: Range<usize>) -> &mut Diagnostic {
 		self.push(Severity::Info, desc, span)
 	}
 
-	pub fn warning(&mut self, desc: impl Into<String>, span: Range<usize>) -> &mut Error {
+	pub fn warning(&mut self, desc: impl Into<String>, span: Range<usize>) -> &mut Diagnostic {
 		self.push(Severity::Warning, desc, span)
 	}
 
-	pub fn error(&mut self, desc: impl Into<String>, span: Range<usize>) -> &mut Error {
+	pub fn error(&mut self, desc: impl Into<String>, span: Range<usize>) -> &mut Diagnostic {
 		self.push(Severity::Error, desc, span)
 	}
 
-	pub fn fatal(&mut self, desc: impl Into<String>, span: Range<usize>) -> &mut Error {
+	pub fn fatal(&mut self, desc: impl Into<String>, span: Range<usize>) -> &mut Diagnostic {
 		self.push(Severity::Fatal, desc, span)
 	}
 
-	fn push(&mut self, severity: Severity, desc: impl Into<String>, span: Range<usize>) -> &mut Error {
+	fn push(&mut self, severity: Severity, desc: impl Into<String>, span: Range<usize>) -> &mut Diagnostic {
 		self.max_severity = self.max_severity.max(severity);
-		self.errors.push(Error {
+		self.errors.push(Diagnostic {
 			severity,
 			main: Note { desc: desc.into(), span },
 			notes: Vec::new(),
@@ -70,7 +70,7 @@ impl Errors {
 	}
 }
 
-impl Error {
+impl Diagnostic {
 	pub fn note(&mut self, desc: impl Into<String>, span: Range<usize>) -> &mut Self {
 		self.notes.push(Note { desc: desc.into(), span });
 		self
@@ -89,7 +89,7 @@ impl Debug for Errors {
 	}
 }
 
-impl Debug for Error {
+impl Debug for Diagnostic {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		let mut tup = f.debug_tuple(&format!("{:?}", self.severity));
 		tup.field(&self.main);

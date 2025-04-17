@@ -2,4 +2,5 @@
 
 pub mod print;
 pub mod lex;
+pub mod diag;
 pub mod parse;

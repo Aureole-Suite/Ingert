@@ -2,7 +2,7 @@ use clap::Parser;
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 use codespan_reporting::files::SimpleFile;
 use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
-use ingert_syntax::parse::error::Error;
+use ingert_syntax::diag;
 use std::path::PathBuf;
 use tracing_subscriber::prelude::*;
 
@@ -64,12 +64,12 @@ fn main() {
 	}
 }
 
-fn to_diagnostic(error: Error) -> Diagnostic<()> {
+fn to_diagnostic(error: diag::Diagnostic) -> Diagnostic<()> {
 	let severity = match error.severity {
-		ingert_syntax::parse::error::Severity::Fatal => codespan_reporting::diagnostic::Severity::Error,
-		ingert_syntax::parse::error::Severity::Error => codespan_reporting::diagnostic::Severity::Error,
-		ingert_syntax::parse::error::Severity::Warning => codespan_reporting::diagnostic::Severity::Warning,
-		ingert_syntax::parse::error::Severity::Info => codespan_reporting::diagnostic::Severity::Note,
+		diag::Severity::Fatal => codespan_reporting::diagnostic::Severity::Error,
+		diag::Severity::Error => codespan_reporting::diagnostic::Severity::Error,
+		diag::Severity::Warning => codespan_reporting::diagnostic::Severity::Warning,
+		diag::Severity::Info => codespan_reporting::diagnostic::Severity::Note,
 	};
 	Diagnostic::new(severity)
 		.with_message(&error.main.desc)

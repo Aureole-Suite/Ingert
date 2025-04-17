@@ -1,4 +1,4 @@
-use super::error::Errors;
+use crate::diag::Errors;
 use crate::lex::{Cursor, CursorError};
 
 #[derive(Debug)]

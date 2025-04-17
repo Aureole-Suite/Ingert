@@ -1,4 +1,4 @@
-use super::parse::error::Errors;
+use super::diag::Errors;
 
 mod cursor;
 pub use cursor::{Cursor, Error as CursorError};
