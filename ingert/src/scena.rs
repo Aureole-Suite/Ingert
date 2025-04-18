@@ -81,8 +81,18 @@ pub fn decompile(scena: &mut Scena, opts: &DecompileOptions) {
 		if let Called::Raw(called) = &f.called && opts.called {
 			match &mut f.body {
 				Body::Asm(_) => {},
-				Body::Flat(stmts) => f.called = Called::Merged(called::apply_flat(stmts, called, &mut funcsig).unwrap()),
-				Body::Tree(stmts) => f.called = Called::Merged(called::apply_tree(stmts, called, &mut funcsig).unwrap()),
+				Body::Flat(stmts) => {
+					match called::apply_flat(stmts, called, &mut funcsig) {
+						Ok(result) => f.called = Called::Merged(result),
+						Err(e) => tracing::error!("called error: {e}"),
+					}
+				}
+				Body::Tree(stmts) => {
+					match called::apply_tree(stmts, called, &mut funcsig) {
+						Ok(result) => f.called = Called::Merged(result),
+						Err(e) => tracing::error!("called error: {e}"),
+					}
+				}
 			}
 		}
 	}
