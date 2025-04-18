@@ -194,7 +194,10 @@ fn print_errors(path: &Path, errors: &diag::Errors, str: &str) {
 	let config = codespan_reporting::term::Config::default();
 	let file = SimpleFile::new(path.display().to_string(), &str);
 
-	for error in &errors.errors {
+	let mut errors = errors.errors.iter().collect::<Vec<_>>();
+	errors.sort_by(|a, b| a.sort_key().cmp(&b.sort_key()));
+
+	for error in &errors {
 		let diag = to_diagnostic(error);
 		codespan_reporting::term::emit(&mut writer.lock(), &config, &file, &diag).unwrap();
 	}
