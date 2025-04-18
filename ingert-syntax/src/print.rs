@@ -832,7 +832,13 @@ impl Print for Value {
 	fn print(&self, ctx: &mut Ctx) {
 		match self {
 			Value::Int(v) => ctx.token(format!("{v}")),
-			Value::Float(v) => ctx.token(format!("{v:?}")),
+			Value::Float(v) => {
+				if *v == v.trunc() {
+					ctx.token(format!("{v:.1}"))
+				} else {
+					ctx.token(format!("{v}"))
+				}
+			}
 			Value::String(v) => ctx.str(v, '"'),
 		}
 	}
