@@ -1,4 +1,4 @@
-# Unreleased
+# 1.0.1
 
 - Fix panic if failing to make sense of called table
 - Print floats in a consistent format (no scientific notation)
