@@ -21,9 +21,13 @@ pub enum ReadError {
 		#[snafu(implicit)]
 		location: snafu::Location,
 	},
+	#[snafu(display("could not read function {number} (at {start})"))]
 	Function { number: usize, start: usize, source: function::ReadError },
+	#[snafu(display("could not read global {number} (at {start})"))]
 	Global { number: usize, start: usize, source: global::ReadError },
+	#[snafu(display("could not read calleds for {name} ({number}) (at {start})"))]
 	Called { name: String, number: usize, start: usize, source: called::ReadError },
+	#[snafu(display("could not read code for {name} ({number}) (at {start})"))]
 	Code { name: String, number: usize, start: usize, source: code::ReadError },
 }
 

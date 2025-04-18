@@ -29,7 +29,7 @@ fn main() {
 		let scp = match ingert::scp::read(&data) {
 			Ok(scp) => scp,
 			Err(e) => {
-				tracing::error!("Error reading file: {e}");
+				tracing::error!("Error reading file: {e:?}", e = anyhow::Error::from(e));
 				return;
 			}
 		};
