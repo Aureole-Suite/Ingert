@@ -168,12 +168,11 @@ fn sink_expr<'a>(expr: &'a mut Expr<FlatVar>, lines: &mut Vec<&'a mut Line>) {
 }
 
 fn sink_exprs<'a>(exprs: &'a mut [Expr<FlatVar>], lines: &mut Vec<&'a mut Line>) {
-	for expr in exprs.iter_mut().rev() {
+	for expr in exprs.iter_mut() {
 		sink_lines(lines);
 		sink_expr(expr, lines);
 	}
 }
-
 
 fn sink_lines(lines: &mut Vec<&mut Line>) {
 	let count = lines.iter().take_while(|l| l.is_some()).count();
