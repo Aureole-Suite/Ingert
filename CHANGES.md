@@ -1,0 +1,9 @@
+# Unreleased
+
+- Fix panic if failing to make sense of called table
+- Print floats in a consistent format (no scientific notation)
+- Sink line numbers in system, debug, and tailcall expressions
+
+# 1.0.0
+
+- Initial release
