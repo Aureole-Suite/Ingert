@@ -149,9 +149,13 @@ fn sink_expr<'a>(expr: &'a mut Expr<FlatVar>, lines: &mut Vec<&'a mut Line>) {
 		Expr::Ref(l, _) => {
 			lines.push(l);
 		}
-		Expr::Call(l, _, exprs) | Expr::Syscall(l, _, _, exprs) => {
+		Expr::Call(l, _, exprs) => {
 			sink_exprs(exprs, lines);
 			sink_lines(lines);
+			lines.push(l);
+		}
+		Expr::Syscall(l, _, _, exprs) => {
+			sink_exprs(exprs, lines);
 			lines.push(l);
 		}
 		Expr::Unop(l, _, expr) => {
