@@ -1,3 +1,7 @@
+# 1.0.2
+
+- Allow large pops, caused by functions with many locals
+
 # 1.0.1
 
 - Fix panic if failing to make sense of called table
