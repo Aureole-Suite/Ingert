@@ -4,6 +4,7 @@ use codespan_reporting::files::SimpleFile;
 use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
 use ingert::scena::{DecompileMode, DecompileOptions};
 use ingert_syntax::diag;
+use rayon::prelude::*;
 use similar_asserts::SimpleDiff;
 use std::path::{Path, PathBuf};
 use tracing_subscriber::prelude::*;
@@ -21,7 +22,7 @@ fn main() {
 	unsafe { compact_debug::enable(true) };
 	let args = Args::parse();
 
-	for file in &args.files {
+	args.files.par_iter().for_each(|file| {
 		let _span = tracing::info_span!("file", path = %file.display()).entered();
 		let data = std::fs::read(file).unwrap();
 
@@ -29,7 +30,7 @@ fn main() {
 			Ok(scp) => scp,
 			Err(e) => {
 				tracing::error!("Error reading file: {e}");
-				continue;
+				return;
 			}
 		};
 		let data2 = ingert::scp::write(&scp).unwrap();
@@ -44,7 +45,7 @@ fn main() {
 		check_roundtrip(file, scp.clone(), DecompileMode::Asm, true);
 		check_roundtrip(file, scp.clone(), DecompileMode::Flat, true);
 		check_roundtrip(file, scp.clone(), DecompileMode::Tree, true);
-	}
+	});
 }
 
 fn check_roundtrip(file: &Path, scp: ingert::scp::Scp, mode: DecompileMode, called: bool) {
