@@ -190,7 +190,7 @@ pub fn decompile(code: &[Op]) -> Result<Vec<FlatStmt>, DecompileError> {
 				for _ in 0..n {
 					args.push(ctx.pop()?);
 				}
-				if n != 0 && ctx.next() != Some(&Op::Pop(n)) {
+				if n != 0 && ctx.next() != Some(&Op::Pop(n as u16)) {
 					return error::BadCall.fail();
 				}
 				ctx.push(Expr::Syscall(None, a, b, args))?;
@@ -343,7 +343,7 @@ pub fn compile(stmts: &[FlatStmt]) -> Result<Vec<Op>, CompileError> {
 				}
 				ctx.out.push(Op::SetTemp(0));
 				if *pop != 0 {
-					ctx.out.push(Op::Pop(*pop as u8));
+					ctx.out.push(Op::Pop(*pop as u16));
 				}
 				ctx.out.push(Op::Return);
 			}
@@ -361,7 +361,7 @@ pub fn compile(stmts: &[FlatStmt]) -> Result<Vec<Op>, CompileError> {
 			}
 			FlatStmt::Goto(label, pop) => {
 				if *pop != 0 {
-					ctx.out.push(Op::Pop(*pop as u8));
+					ctx.out.push(Op::Pop(*pop as u16));
 				}
 				ctx.out.push(Op::Goto(*backrefs.get(label).unwrap_or(label)));
 			}
@@ -382,7 +382,7 @@ pub fn compile(stmts: &[FlatStmt]) -> Result<Vec<Op>, CompileError> {
 				ctx.out.push(Op::PushNull);
 			}
 			FlatStmt::PopVar(pop) => {
-				ctx.out.push(Op::Pop(*pop as u8));
+				ctx.out.push(Op::Pop(*pop as u16));
 			}
 			FlatStmt::Debug(l, exprs) => {
 				ctx.line(*l);
@@ -401,7 +401,7 @@ pub fn compile(stmts: &[FlatStmt]) -> Result<Vec<Op>, CompileError> {
 					ctx.out.push(Op::SetTemp(i));
 				}
 				if *pop != 0 {
-					ctx.out.push(Op::Pop(*pop as u8));
+					ctx.out.push(Op::Pop(*pop as u16));
 				}
 				for i in (1..=n).rev() {
 					ctx.out.push(Op::GetTemp(i));
@@ -458,7 +458,7 @@ fn compile_expr(ctx: &mut OutCtx, expr: &Expr, depth: u32) {
 			}
 			ctx.out.push(Op::CallSystem(*a, *b, exprs.len() as u8));
 			if !exprs.is_empty() {
-				ctx.out.push(Op::Pop(exprs.len() as u8));
+				ctx.out.push(Op::Pop(exprs.len() as u16));
 			}
 			ctx.out.push(Op::GetTemp(0));
 		}

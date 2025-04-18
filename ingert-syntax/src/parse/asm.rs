@@ -49,7 +49,7 @@ fn parse_op(parser: &mut Parser, ctx: &mut Ctx) -> Result<Op> {
 		})
 		.test(|parser| {
 			parser.keyword("pop")?;
-			let pop = parse_u8(parser)?;
+			let pop = parse_u16(parser)?;
 			parser.punct(';')?;
 			Ok(Op::Pop(pop))
 		})

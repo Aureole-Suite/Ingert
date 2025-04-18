@@ -182,7 +182,7 @@ pub enum Op {
 	Label(Label),
 
 	Push(Value),
-	Pop(u8),
+	Pop(u16),
 	PushNull,
 
 	GetVar(StackSlot),

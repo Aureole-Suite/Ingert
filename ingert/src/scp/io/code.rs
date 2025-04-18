@@ -26,6 +26,8 @@ pub enum ReadError {
 	Op { op: u8, pos: usize },
 	#[snafu(display("invalid stack slot {value}"))]
 	StackSlot { value: i32 },
+	#[snafu(display("invalid pop count {value}"))]
+	PopCount { value: u16 },
 	#[snafu(display("missing label(s) {labels:x?}"))]
 	MissingLabel { labels: Vec<usize> },
 	#[snafu(display("invalid global id {id}"))]
@@ -77,7 +79,21 @@ pub fn read(
 				f.seek(p)?;
 				Op::Push(value(f).context(ValueSnafu)?)
 			}
-			1 => Op::Pop(pop_count(f)?),
+			1 => {
+				let mut value = 0;
+				loop {
+					let v = f.u8()?;
+					value += v as u16;
+					if v != 255 {
+						break;
+					}
+					f.check_u8(1)?;
+				}
+				if value % 4 != 0 {
+					return PopCountSnafu { value }.fail();
+				}
+				Op::Pop(value / 4)
+			}
 			2 => Op::GetVar(stack_slot(f)?),
 			3 => Op::GetRef(stack_slot(f)?),
 			4 => Op::PushRef(stack_slot(f)?),
@@ -167,14 +183,6 @@ fn stack_slot(f: &mut Reader) -> Result<StackSlot, ReadError> {
 	Ok(StackSlot((-value / 4) as u32))
 }
 
-fn pop_count(f: &mut Reader) -> Result<u8, ReadError> {
-	let value = f.u8()?;
-	if value % 4 != 0 {
-		return StackSlotSnafu { value: value as i32 }.fail();
-	}
-	Ok(value / 4)
-}
-
 #[derive(Debug, snafu::Snafu)]
 #[snafu(module(write), context(suffix(false)))]
 pub enum WriteError {
@@ -203,8 +211,14 @@ pub fn write(code: &[Op], number: usize, w: &mut super::WCtx) -> Result<(), Writ
 				write_value(f, &mut w.f_code_strings, v);
 			}
 			Op::Pop(n) => {
+				let mut m = n * 4;
+				while m > 255 {
+					f.u8(1);
+					f.u8(255);
+					m -= 255;
+				}
 				f.u8(1);
-				f.u8(n * 4);
+				f.u8(m as u8);
 			}
 			Op::PushNull => {
 				f.u8(0);
