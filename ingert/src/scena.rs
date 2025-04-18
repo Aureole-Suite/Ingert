@@ -82,14 +82,22 @@ pub fn decompile(scena: &mut Scena, opts: &DecompileOptions) {
 			match &mut f.body {
 				Body::Asm(_) => {},
 				Body::Flat(stmts) => {
-					match called::apply_flat(stmts, called, &mut funcsig) {
-						Ok(result) => f.called = Called::Merged(result),
+					let mut stmts2 = stmts.clone();
+					match called::apply_flat(&mut stmts2, called, &mut funcsig) {
+						Ok(result) => {
+							*stmts = stmts2;
+							f.called = Called::Merged(result);
+						}
 						Err(e) => tracing::error!("called error: {e}"),
 					}
 				}
 				Body::Tree(stmts) => {
-					match called::apply_tree(stmts, called, &mut funcsig) {
-						Ok(result) => f.called = Called::Merged(result),
+					let mut stmts2 = stmts.clone();
+					match called::apply_tree(&mut stmts2, called, &mut funcsig) {
+						Ok(result) => {
+							*stmts = stmts2;
+							f.called = Called::Merged(result);
+						}
 						Err(e) => tracing::error!("called error: {e}"),
 					}
 				}
