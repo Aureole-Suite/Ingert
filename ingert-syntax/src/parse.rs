@@ -1,9 +1,10 @@
 use std::ops::RangeInclusive;
 
 use indexmap::IndexMap;
-use crate::lex::Cursor;
 
-use crate::print::SyscallWrapper;
+use crate::lex::Cursor;
+use crate::SyscallWrapper;
+
 use ingert::scena::{Arg, ArgType, Body, Called, Expr, Function, Global, Line, Place, Scena, Stmt, Value, Var};
 
 mod parser;

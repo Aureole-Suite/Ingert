@@ -2,8 +2,7 @@ use indexmap::IndexMap;
 use ingert::scena::Global;
 use ingert::scp::{ArgType, GlobalType};
 
-use crate::print::SyscallWrapper;
-
+use crate::SyscallWrapper;
 use super::parser::{Parser, Result};
 use super::alt::{Alt, TryParser};
 use super::{do_parse, parse_comma_sep, parse_value, PArg, PBody, PCalled, PFunction};

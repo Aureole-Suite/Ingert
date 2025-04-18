@@ -3,6 +3,8 @@ use std::borrow::Cow;
 use ingert::scp::{Call, CallArg, CallKind, GlobalType, Label, Op};
 use ingert::scena::{ArgType, Binop, Body, Called, Expr, FlatStmt, FlatVar, Function, Global, Line, Name, Place, Scena, Stmt, Unop, Value, Var};
 
+use crate::SyscallWrapper;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
 enum Space {
 	#[default]
@@ -217,13 +219,6 @@ fn print_global(ctx: &mut Ctx, name: &str, global: &Global) {
 	ctx.sym_(":");
 	global.ty.print(ctx);
 	ctx.sym_(";");
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SyscallWrapper {
-	pub ret: bool,
-	pub a: u8,
-	pub b: u8,
 }
 
 fn as_wrapper(f: &Function) -> Option<SyscallWrapper> {
