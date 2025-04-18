@@ -175,7 +175,8 @@ pub fn print(scena: &Scena) -> String {
 				ctx.set_space(Space::Block(0));
 			}
 			Item::Function(name, function) => {
-				if let Some(wr) = as_wrapper(function) {
+				if let Body::Tree(body) = &function.body
+				&& let Some(wr) = SyscallWrapper::from_tree(body, function.args.len()) {
 					ctx.set_space(Space::Block(0));
 					print_wrapper(&mut ctx, name, function, &wr);
 					ctx.set_space(Space::Block(0));
@@ -219,21 +220,6 @@ fn print_global(ctx: &mut Ctx, name: &str, global: &Global) {
 	ctx.sym_(":");
 	global.ty.print(ctx);
 	ctx.sym_(";");
-}
-
-fn as_wrapper(f: &Function) -> Option<SyscallWrapper> {
-	let Body::Tree(body) = &f.body else { return None };
-	let (ret, a, b, args) = match body.as_slice() {
-		[Stmt::Return(None, Some(Expr::Syscall(None, a, b, args)))] => (true, *a, *b, args),
-		[Stmt::Expr(Expr::Syscall(None, a, b, args)), Stmt::Return(None, None)] => (false, *a, *b, args),
-		_ => return None,
-	};
-	for (i, arg) in args.iter().rev().enumerate().rev() {
-		if arg != &Expr::Var(None, Place::Var(Var(i as u32))) {
-			return None;
-		}
-	}
-	Some(SyscallWrapper { ret, a, b })
 }
 
 fn print_wrapper(ctx: &mut Ctx, name: &str, f: &Function, wr: &SyscallWrapper) {

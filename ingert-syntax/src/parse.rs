@@ -5,7 +5,7 @@ use indexmap::IndexMap;
 use crate::lex::Cursor;
 use crate::SyscallWrapper;
 
-use ingert::scena::{Arg, ArgType, Body, Called, Expr, Function, Global, Line, Place, Scena, Stmt, Value, Var};
+use ingert::scena::{Arg, ArgType, Body, Called, Function, Global, Line, Scena, Value};
 
 mod parser;
 mod alt;
@@ -86,7 +86,7 @@ fn parse_fn_inner(f: &PFunction, scope: &Scope, errors: &mut crate::diag::Errors
 			vars.push(arg.name.clone().clone());
 			Arg { ty: arg.ty, default: arg.default.clone(), line: arg.line }
 		})
-		.collect();
+		.collect::<Vec<_>>();
 	vars.reverse();
 
 	let called = match &f.called {
@@ -98,19 +98,7 @@ fn parse_fn_inner(f: &PFunction, scope: &Scope, errors: &mut crate::diag::Errors
 		PBody::Asm(cursor) => Body::Asm(asm::parse(Parser::new(cursor.clone(), errors), scope)),
 		PBody::Flat(cursor) => Body::Flat(flat::parse(Parser::new(cursor.clone(), errors), scope)),
 		PBody::Tree(cursor) => Body::Tree(tree::parse(Parser::new(cursor.clone(), errors), scope, vars)),
-		PBody::Wrapper(wr) => {
-			let args = (0..f.args.as_ref().map_or(0, |args| args.len()))
-				.rev()
-				.map(|i| Expr::Var(None, Place::Var(Var(i as u32))))
-				.collect();
-			let syscall = Expr::Syscall(None, wr.a, wr.b, args);
-			let body = if wr.ret {
-				vec![Stmt::Return(None, Some(syscall))]
-			} else {
-				vec![Stmt::Expr(syscall), Stmt::Return(None, None)]
-			};
-			Body::Tree(body)
-		}
+		PBody::Wrapper(wr) => Body::Tree(wr.as_tree(args.len())),
 	};
 
 	Function {
