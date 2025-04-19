@@ -232,11 +232,11 @@ impl<'a> Lex<'a> {
 		}
 
 		if self.consume("\"") {
-			return Some(TokenKind::String(self.lex_string(start, "\"")));
+			return Some(TokenKind::String(self.lex_string(start, '"')));
 		}
 
 		if self.consume("`") {
-			return Some(TokenKind::RawIdent(self.lex_string(start, "`")));
+			return Some(TokenKind::RawIdent(self.lex_string(start, '`')));
 		}
 
 		if let Some(c) = self.next_char() {
@@ -246,20 +246,14 @@ impl<'a> Lex<'a> {
 		None
 	}
 
-	fn lex_string(&mut self, start: usize, delim: &str) -> Box<str> {
+	fn lex_string(&mut self, start: usize, delim: char) -> Box<str> {
 		let mut s = String::new();
 		loop {
 			let escstart = self.pos;
-			if self.consume(delim) {
-				break;
-			}
 			match self.next_char() {
+				Some(c) if c == delim => break,
 				Some('\\') => {
-					if self.consume(delim) {
-						s.push_str(delim);
-						continue;
-					}
-					if let Some(c) = self.lex_escape() {
+					if let Some(c) = self.lex_escape(delim) {
 						s.push(c);
 					} else {
 						self.errors.error("invalid escape sequence", escstart..self.pos);
@@ -275,19 +269,30 @@ impl<'a> Lex<'a> {
 		s.into_boxed_str()
 	}
 
-	fn lex_escape(&mut self) -> Option<char> {
+	fn lex_escape(&mut self, delim: char) -> Option<char> {
 		match self.next_char()? {
+			c if c == delim => Some(c),
 			'\\' => Some('\\'),
 			'n' => Some('\n'),
 			'r' => Some('\r'),
 			't' => Some('\t'),
-			'x' => {
+			'u' => {
+				if !self.consume("{") {
+					return None;
+				}
 				let hexstart = self.pos;
-				if self.consume_if(|c| c.is_ascii_hexdigit()) && self.consume_if(|c| c.is_ascii_hexdigit()) {
-					let hex = &self.src[hexstart..self.pos];
-					u8::from_str_radix(hex, 16).ok().map(char::from)
+				while self.consume_if(|c| c.is_ascii_hexdigit()) {}
+				let hexend = self.pos;
+				if !self.consume("}") {
+					return None;
+				}
+
+				let char = u32::from_str_radix(&self.src[hexstart..hexend], 16).ok().and_then(std::char::from_u32);
+				if let Some(chr) = char {
+					Some(chr)
 				} else {
-					None
+					self.errors.error("invalid unicode escape", hexstart..hexend);
+					Some('\u{FFFD}') // replacement character
 				}
 			}
 			_ => None,
