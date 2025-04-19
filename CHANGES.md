@@ -1,3 +1,7 @@
+# Unreleased
+
+- Make partial decompile failure a warning, not an error
+
 # 1.0.2
 
 - Allow large pops, caused by functions with many locals

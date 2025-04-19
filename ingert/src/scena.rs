@@ -67,14 +67,14 @@ pub fn decompile(scena: &mut Scena, opts: &DecompileOptions) {
 		if let Body::Asm(ops) = &f.body && opts.mode >= DecompileMode::Flat {
 			match flat::decompile(ops) {
 				Ok(stmts) => f.body = Body::Flat(stmts),
-				Err(e) => tracing::error!("decompile error: {e}"),
+				Err(e) => tracing::warn!("decompile error: {e}"),
 			}
 		}
 
 		if let Body::Flat(fstmts) = &f.body && opts.mode >= DecompileMode::Tree {
 			match tree::decompile(fstmts, f.args.len()) {
 				Ok(stmts) => f.body = Body::Tree(stmts),
-				Err(e) => tracing::error!("decompile error: {e}"),
+				Err(e) => tracing::warn!("decompile error: {e}"),
 			}
 		}
 
@@ -88,7 +88,7 @@ pub fn decompile(scena: &mut Scena, opts: &DecompileOptions) {
 							*stmts = stmts2;
 							f.called = Called::Merged(result);
 						}
-						Err(e) => tracing::error!("called error: {e}"),
+						Err(e) => tracing::warn!("called error: {e}"),
 					}
 				}
 				Body::Tree(stmts) => {
@@ -98,7 +98,7 @@ pub fn decompile(scena: &mut Scena, opts: &DecompileOptions) {
 							*stmts = stmts2;
 							f.called = Called::Merged(result);
 						}
-						Err(e) => tracing::error!("called error: {e}"),
+						Err(e) => tracing::warn!("called error: {e}"),
 					}
 				}
 			}
