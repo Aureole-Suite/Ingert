@@ -156,8 +156,4 @@ impl<'a, 'e> Parser<'a, 'e> {
 	pub fn prev_span(&self) -> std::ops::Range<usize> {
 		self.cursor.prev_span()
 	}
-
-	pub fn next_span(&self) -> std::ops::Range<usize> {
-		self.cursor.next_span()
-	}
 }
