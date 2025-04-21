@@ -353,7 +353,6 @@ struct Params {
 	brk: Option<(usize, Label)>,
 	cont: Option<(usize, Label)>,
 	depth: usize,
-	with_pop: bool,
 }
 
 impl Params {
@@ -362,12 +361,11 @@ impl Params {
 			brk: None,
 			cont: None,
 			depth: nargs,
-			with_pop: true,
 		}
 	}
 
 	fn sub(&self, depth: usize) -> Self {
-		Self { depth, with_pop: false, ..*self }
+		Self { depth, ..*self }
 	}
 
 	fn brk(self, depth: usize, label: Label) -> Self {
@@ -377,20 +375,24 @@ impl Params {
 	fn cont(self, depth: usize, label: Label) -> Self {
 		Self { cont: Some((depth, label)), ..self }
 	}
-
-	fn with_pop(self) -> Self {
-		Self { with_pop: true, ..self }
-	}
 }
 
 pub fn compile(stmts: &[Stmt], nargs: usize) -> Result<Vec<FlatStmt>, CompileError> {
 	let mut ctx = OutCtx { out: Vec::new(), label: 0 };
-	compile_block(&mut ctx, stmts, Params::new(nargs))?;
+	compile_block_no_pop(&mut ctx, stmts, Params::new(nargs))?;
 	crate::labels::normalize(&mut ctx.out, 0)?;
 	Ok(ctx.out)
 }
 
 fn compile_block(ctx: &mut OutCtx, stmts: &[Stmt], p: Params) -> Result<(), CompileError> {
+	let d = compile_block_no_pop(ctx, stmts, p)?;
+	if d > 0 {
+		ctx.push(FlatStmt::PopVar(d));
+	}
+	Ok(())
+}
+
+fn compile_block_no_pop(ctx: &mut OutCtx, stmts: &[Stmt], p: Params) -> Result<usize, CompileError> {
 	let mut depth = p.depth;
 	for stmt in stmts {
 		match stmt {
@@ -434,7 +436,7 @@ fn compile_block(ctx: &mut OutCtx, stmts: &[Stmt], p: Params) -> Result<(), Comp
 				));
 				for (k, l) in labels {
 					ctx.push(FlatStmt::Label(l));
-					compile_block(ctx, &cases[&k], p.sub(depth).brk(depth, brk).with_pop())?;
+					compile_block_no_pop(ctx, &cases[&k], p.sub(depth).brk(depth, brk))?;
 				}
 				ctx.push(FlatStmt::Label(brk));
 			}
@@ -471,8 +473,5 @@ fn compile_block(ctx: &mut OutCtx, stmts: &[Stmt], p: Params) -> Result<(), Comp
 			}
 		}
 	}
-	if depth > p.depth && !p.with_pop {
-		ctx.push(FlatStmt::PopVar(depth - p.depth));
-	}
-	Ok(())
+	Ok(depth.saturating_sub(p.depth))
 }
