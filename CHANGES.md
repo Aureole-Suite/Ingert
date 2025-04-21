@@ -1,4 +1,4 @@
-# Unreleased
+# 1.1.0
 
 - Make partial decompile failure a warning, not an error
 - Remove \x escape, add \u instead
