@@ -370,29 +370,57 @@ impl OutCtx {
 	}
 }
 
+#[derive(Debug, Clone)]
+struct Params {
+	brk: Option<(usize, Label)>,
+	cont: Option<(usize, Label)>,
+	depth: usize,
+	then: Option<Label>,
+}
+
+impl Params {
+	fn new(nargs: usize) -> Self {
+		Self {
+			brk: None,
+			cont: None,
+			depth: nargs,
+			then: None,
+		}
+	}
+
+	fn sub(&self, depth: usize) -> Self {
+		Self { depth, then: None, ..*self }
+	}
+
+	fn brk(self, depth: usize, label: Label) -> Self {
+		Self { brk: Some((depth, label)), ..self }
+	}
+
+	fn cont(self, depth: usize, label: Label) -> Self {
+		Self { cont: Some((depth, label)), ..self }
+	}
+
+	fn then(self, then: Label) -> Self {
+		Self { then: Some(then), ..self }
+	}
+}
+
 pub fn compile(stmts: &[Stmt], nargs: usize) -> Result<Vec<FlatStmt>, CompileError> {
 	let mut ctx = OutCtx { out: Vec::new(), label: 0 };
-	compile_block(&mut ctx, stmts, None, None, nargs, None)?;
+	compile_block(&mut ctx, stmts, Params::new(nargs))?;
 	crate::labels::normalize(&mut ctx.out, 0)?;
 	Ok(ctx.out)
 }
 
-fn compile_block(
-	ctx: &mut OutCtx,
-	stmts: &[Stmt],
-	brk: Option<(usize, Label)>,
-	cont: Option<(usize, Label)>,
-	mut depth: usize,
-	then: Option<Label>,
-) -> Result<(), CompileError> {
-	let depth0 = depth;
+fn compile_block(ctx: &mut OutCtx, stmts: &[Stmt], p: Params) -> Result<(), CompileError> {
+	let mut depth = p.depth;
 	for stmt in stmts {
 		match stmt {
 			Stmt::Expr(expr) => ctx.push(FlatStmt::Expr(expr.sub(depth))),
 			Stmt::Set(l, place, expr) => ctx.push(FlatStmt::Set(*l, place.sub(depth), expr.sub(depth))),
 			Stmt::Return(l, expr) => {
 				ctx.push(FlatStmt::Return(*l, expr.sub(depth), depth));
-				if then.is_none() {
+				if p.then.is_none() {
 					depth = 0;
 				}
 			}
@@ -403,53 +431,53 @@ fn compile_block(
 				ctx.push(FlatStmt::If(*l, expr.sub(depth), label));
 				if let Some(stmts1) = stmts1 {
 					let label2 = ctx.label();
-					compile_block(ctx, stmts, brk, cont, depth, Some(label2))?;
+					compile_block(ctx, stmts, p.sub(depth).then(label2))?;
 					ctx.push(FlatStmt::Label(label));
-					compile_block(ctx, stmts1, brk, cont, depth, None)?;
+					compile_block(ctx, stmts1, p.sub(depth))?;
 					ctx.push(FlatStmt::Label(label2));
 				} else {
-					compile_block(ctx, stmts, brk, cont, depth, None)?;
+					compile_block(ctx, stmts, p.sub(depth))?;
 					ctx.push(FlatStmt::Label(label));
 				}
 			}
 			Stmt::While(l, expr, stmts) => {
-				let brk = (depth, ctx.label());
-				let cont = (depth, ctx.label());
-				ctx.push(FlatStmt::Label(cont.1));
-				ctx.push(FlatStmt::If(*l, expr.sub(depth), brk.1));
-				compile_block(ctx, stmts, Some(brk), Some(cont), depth, Some(cont.1))?;
-				ctx.push(FlatStmt::Label(brk.1));
+				let brk = ctx.label();
+				let cont = ctx.label();
+				ctx.push(FlatStmt::Label(cont));
+				ctx.push(FlatStmt::If(*l, expr.sub(depth), brk));
+				compile_block(ctx, stmts, p.sub(depth).brk(depth, brk).cont(depth, cont).then(cont))?;
+				ctx.push(FlatStmt::Label(brk));
 			}
 			Stmt::Switch(l, expr, cases) => {
-				let brk = (depth, ctx.label());
+				let brk = ctx.label();
 				let labels = cases.iter().map(|(k, _)| (*k, ctx.label())).collect::<IndexMap<_, _>>();
 				ctx.push(FlatStmt::Switch(
 					*l,
 					expr.sub(depth),
 					labels.iter().filter_map(|(&k, &v)| Some((k?, v))).collect(),
-					labels.get(&None).copied().unwrap_or(brk.1),
+					labels.get(&None).copied().unwrap_or(brk),
 				));
 				for (k, l) in labels {
 					ctx.push(FlatStmt::Label(l));
-					compile_block(ctx, &cases[&k], Some(brk), cont, depth, None)?;
+					compile_block(ctx, &cases[&k], p.sub(depth).brk(depth, brk))?;
 				}
-				ctx.push(FlatStmt::Label(brk.1));
+				ctx.push(FlatStmt::Label(brk));
 			}
 			Stmt::Block(stmts) => {
-				compile_block(ctx, stmts, brk, cont, depth, None)?;
+				compile_block(ctx, stmts, p.sub(depth))?;
 			}
 			Stmt::Break => {
-				if let Some(brk) = brk {
-					ctx.push(FlatStmt::Goto(brk.1, depth.saturating_sub(brk.0)));
-					depth = brk.0;
+				if let Some((d, l)) = p.brk {
+					ctx.push(FlatStmt::Goto(l, depth.saturating_sub(d)));
+					depth = d;
 				} else {
 					return compile::BadBreak.fail()
 				}
 			}
 			Stmt::Continue => {
-				if let Some(cont) = cont {
-					ctx.push(FlatStmt::Goto(cont.1, depth.saturating_sub(cont.0)));
-					depth = cont.0;
+				if let Some((d, l)) = p.cont {
+					ctx.push(FlatStmt::Goto(l, depth.saturating_sub(d)));
+					depth = d;
 				} else {
 					return compile::BadContinue.fail()
 				}
@@ -464,10 +492,10 @@ fn compile_block(
 			}
 		}
 	}
-	if let Some(then) = then {
-		ctx.push(FlatStmt::Goto(then, depth.saturating_sub(depth0)));
-	} else if depth > depth0 {
-		ctx.push(FlatStmt::PopVar(depth - depth0));
+	if let Some(then) = p.then {
+		ctx.push(FlatStmt::Goto(then, depth.saturating_sub(p.depth)));
+	} else if depth > p.depth {
+		ctx.push(FlatStmt::PopVar(depth - p.depth));
 	}
 	Ok(())
 }
