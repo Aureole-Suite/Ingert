@@ -15,7 +15,7 @@ pub fn from_scp(scp: Scp) -> Scena {
 	let mut globals_iter = globals.iter_mut();
 	let mut functions = IndexMap::with_capacity(scp.functions.len());
 	for mut f in scp.functions {
-		let _span = tracing::info_span!("function", name = f.name).entered();
+		let _span = tracing::error_span!("function", name = f.name).entered();
 
 		let mut code = f.code.as_slice();
 		while code.last().is_some_and(|op| matches!(op, Op::Line(_))) {
@@ -63,7 +63,7 @@ pub fn decompile(scena: &mut Scena, opts: &DecompileOptions) {
 	let mut funcsig = scena.functions.iter().map(|(name, f)| (name.clone(), f.args.clone())).collect();
 
 	for (name, f) in &mut scena.functions {
-		let _span = tracing::info_span!("function", name = name).entered();
+		let _span = tracing::error_span!("function", name = name).entered();
 
 		if let Body::Asm(ops) = &f.body && opts.mode >= DecompileMode::Flat {
 			match flat::decompile(ops) {
@@ -166,7 +166,7 @@ pub fn compile(scena: Scena) -> Result<Scp, CompileError> {
 				last_func.code.push(Op::Line(global_line));
 			}
 		}
-		let _span = tracing::info_span!("function", name = name).entered();
+		let _span = tracing::error_span!("function", name = name).entered();
 		let called = match (func.called, &mut func.body) {
 			(Called::Raw(called), _) => called,
 			(Called::Merged(dup), Body::Flat(stmts)) => called::infer_flat(stmts, dup, &funcsig)?,

@@ -124,7 +124,7 @@ fn out_dir(path: &Path, out: Option<&Path>, old_suffix: &str, new_suffix: &str) 
 }
 
 fn decompile(args: &Args, infile: &Path, outfile: &Path) {
-	let _span = tracing::info_span!("decompile", file = %infile.display()).entered();
+	let _span = tracing::error_span!("decompile", file = %infile.display()).entered();
 	if let Err(e) = decompile_inner(args, infile, outfile) {
 		if infile.file_name().is_some_and(|n| n == "mon9996_c00.dat") {
 			tracing::warn!("{e:?}");
@@ -137,7 +137,7 @@ fn decompile(args: &Args, infile: &Path, outfile: &Path) {
 }
 
 fn compile(_args: &Args, infile: &Path, outfile: &Path) {
-	let _span = tracing::info_span!("compile", file = %infile.display()).entered();
+	let _span = tracing::error_span!("compile", file = %infile.display()).entered();
 	if let Err(e) = compile_inner(infile, outfile) {
 		tracing::error!("{e:?}");
 		tracing::error!("This is probably a bug in Ingert, please report it.");

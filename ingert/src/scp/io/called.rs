@@ -120,7 +120,7 @@ fn make_sense(name: Option<Name>, kind: RawCallKind, args: Vec<CallArg>) -> Opti
 			if let Some(name) = name {
 				if name != name2 { return None; }
 			} else if name2.is_local() {
-				tracing::warn!("tail call to missing function {name2}");
+				tracing::info!("tail call to missing function {name2}");
 			}
 			CallKind::Tailcall(name2)
 		}
@@ -168,7 +168,7 @@ pub fn write(call: &Call, w: &mut super::WCtx) -> Result<(), WriteError> {
 				if let Some(id) = w.function_names.get(name).copied() {
 					f.u32(id as u32);
 				} else {
-					tracing::warn!("tail call to missing function {name}");
+					tracing::info!("tail call to missing function {name}");
 					f.u32(0xFFFFFFFF);
 				};
 				name

@@ -43,7 +43,7 @@ pub fn read(data: &[u8]) -> Result<Scp, ReadError> {
 	f.seek(func_start)?;
 	let mut raw_functions = Vec::with_capacity(func_count);
 	for number in 0..func_count {
-		let _span = tracing::info_span!("function", number = number).entered();
+		let _span = tracing::error_span!("function", number = number).entered();
 		let start = f.pos();
 		let func = function::read(number, &mut f).context(FunctionSnafu { number, start })?;
 		raw_functions.push(func);
@@ -53,7 +53,7 @@ pub fn read(data: &[u8]) -> Result<Scp, ReadError> {
 	let mut globals = Vec::with_capacity(global_count);
 	if global_count > 0 {
 		for number in 0..global_count {
-			let _span = tracing::info_span!("global", number = number).entered();
+			let _span = tracing::error_span!("global", number = number).entered();
 			let start = f.pos();
 			let global = global::read(&mut f).context(GlobalSnafu { number, start })?;
 			globals.push(global);
@@ -70,11 +70,10 @@ pub fn read(data: &[u8]) -> Result<Scp, ReadError> {
 	let func_ends = raw_functions.iter().skip(1).map(|f| Some(f.code_start)).chain([None]).collect::<Vec<_>>();
 	let mut functions = Vec::new();
 	for (func, end) in std::iter::zip(raw_functions, func_ends) {
-		let _span = tracing::info_span!("function", name = func.name, number = func.number).entered();
+		let _span = tracing::error_span!("function", name = func.name).entered();
 		f.seek(func.called_start)?;
 		let mut called = Vec::with_capacity(func.called_count);
 		for number in 0..func.called_count {
-			let _span = tracing::info_span!("call", name = &func.name, number = number).entered();
 			let start = f.pos();
 			let call = called::read(&mut f, &func_names)
 				.context(CalledSnafu { start, name: &func.name, number })?;
@@ -163,7 +162,7 @@ pub fn write(scp: &Scp) -> Result<Vec<u8>, WriteError> {
 	let func_labels = sorted_funcs.iter().enumerate().map(|(i, f)| (f.name.as_str(), (Label::new(), i))).collect::<HashMap<_, _>>();
 
 	for func in sorted_funcs {
-		let _span = tracing::info_span!("function", name = &func.name).entered();
+		let _span = tracing::error_span!("function", name = &func.name).entered();
 		let label = func_labels[func.name.as_str()].0;
 		function::write(func, label, &mut w).context(write::Function { name: &func.name })?;
 		for call in &func.called {
@@ -172,12 +171,12 @@ pub fn write(scp: &Scp) -> Result<Vec<u8>, WriteError> {
 	}
 
 	for global in &scp.globals {
-		let _span = tracing::info_span!("global", name = &global.name).entered();
+		let _span = tracing::error_span!("global", name = &global.name).entered();
 		global::write(global, &mut w).context(write::Global { name: &global.name })?;
 	}
 
 	for func in &scp.functions {
-		let _span = tracing::info_span!("function", name = &func.name).entered();
+		let _span = tracing::error_span!("function", name = &func.name).entered();
 		let (label, i) = func_labels[func.name.as_str()];
 		w.f_code.place(label);
 		code::write(&func.code, i, &mut w).context(write::Code { name: &func.name })?;
