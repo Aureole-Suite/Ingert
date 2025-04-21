@@ -26,6 +26,8 @@ struct Args {
 	mode: DecompileMode,
 	#[clap(long, help = "Do not minimize called table")]
 	no_called: bool,
+	#[clap(long, help = "Do not perform steps that fail to roundtrip")]
+	roundtrip: bool,
 
 	#[clap(long, short, help = "Output file")]
 	output: Option<PathBuf>,
@@ -150,6 +152,7 @@ fn decompile_inner(args: &Args, infile: &Path, outfile: &Path) -> anyhow::Result
 			DecompileMode::Tree => ingert::scena::DecompileMode::Tree,
 		},
 		called: !args.no_called,
+		roundtrip: args.roundtrip,
 	};
 
 	let data = std::fs::read(infile).with_context(|| format!("failed to read file: {}", infile.display()))?;

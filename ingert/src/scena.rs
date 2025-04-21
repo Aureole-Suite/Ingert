@@ -56,6 +56,7 @@ pub enum DecompileMode {
 pub struct DecompileOptions {
 	pub mode: DecompileMode,
 	pub called: bool,
+	pub roundtrip: bool,
 }
 
 pub fn decompile(scena: &mut Scena, opts: &DecompileOptions) {
@@ -66,15 +67,43 @@ pub fn decompile(scena: &mut Scena, opts: &DecompileOptions) {
 
 		if let Body::Asm(ops) = &f.body && opts.mode >= DecompileMode::Flat {
 			match flat::decompile(ops) {
+				Ok(stmts) if opts.roundtrip => {
+					match flat::compile(&stmts) {
+						Ok(ops2) if ops2 == *ops => {
+							f.body = Body::Flat(stmts)
+						},
+						Ok(ops2) => {
+							tracing::warn!("flat roundtrip failed");
+							tracing::debug!("original: {ops:#?}");
+							tracing::debug!("decompiled: {stmts:#?}");
+							tracing::debug!("compiled: {ops2:#?}");
+						}
+						Err(e) => tracing::warn!("flat recompile error: {e}"),
+					}
+				},
 				Ok(stmts) => f.body = Body::Flat(stmts),
-				Err(e) => tracing::warn!("decompile error: {e}"),
+				Err(e) => tracing::warn!("flat decompile error: {e}"),
 			}
 		}
 
 		if let Body::Flat(fstmts) = &f.body && opts.mode >= DecompileMode::Tree {
 			match tree::decompile(fstmts, f.args.len()) {
+				Ok(stmts) if opts.roundtrip => {
+					match tree::compile(&stmts, f.args.len()) {
+						Ok(fstmts2) if fstmts2 == *fstmts => {
+							f.body = Body::Tree(stmts)
+						},
+						Ok(fstmts2) => {
+							tracing::warn!("tree roundtrip failed");
+							tracing::debug!("original: {fstmts:#?}");
+							tracing::debug!("decompiled: {stmts:#?}");
+							tracing::debug!("compiled: {fstmts2:#?}");
+						}
+						Err(e) => tracing::warn!("tree recompile error: {e}"),
+					}
+				},
 				Ok(stmts) => f.body = Body::Tree(stmts),
-				Err(e) => tracing::warn!("decompile error: {e}"),
+				Err(e) => tracing::warn!("tree decompile error: {e}"),
 			}
 		}
 
@@ -113,11 +142,11 @@ pub fn decompile(scena: &mut Scena, opts: &DecompileOptions) {
 #[derive(Debug, snafu::Snafu)]
 #[snafu(module(compile), context(suffix(false)))]
 pub enum CompileError {
-	#[snafu(context(false))]
+	#[snafu(display("could not compile flat"), context(false))]
 	Flat { source: flat::CompileError },
-	#[snafu(context(false))]
+	#[snafu(display("could not compile tree"), context(false))]
 	Tree { source: tree::CompileError },
-	#[snafu(context(false))]
+	#[snafu(display("could not compile called"), context(false))]
 	Called { source: called::InferError },
 	#[snafu(display("can't infer calls for asm function"))]
 	CalledAsm,

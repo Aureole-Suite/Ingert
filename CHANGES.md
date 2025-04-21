@@ -2,6 +2,7 @@
 
 - Make partial decompile failure a warning, not an error
 - Remove \x escape, add \u instead
+- Add --roundtrip flag, which is more conservative about what passes it applies
 
 # 1.0.2
 

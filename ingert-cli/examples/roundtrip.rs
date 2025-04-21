@@ -52,7 +52,7 @@ fn check_roundtrip(file: &Path, scp: ingert::scp::Scp, mode: DecompileMode, call
 	let _span = tracing::info_span!("roundtrip", ?mode, called).entered();
 
 	let mut scena = ingert::scena::from_scp(scp.clone());
-	ingert::scena::decompile(&mut scena, &DecompileOptions { mode, called });
+	ingert::scena::decompile(&mut scena, &DecompileOptions { mode, called, roundtrip: true });
 
 	match ingert::scena::compile(scena.clone()) {
 		Ok(scp2) => {
@@ -66,7 +66,7 @@ fn check_roundtrip(file: &Path, scp: ingert::scp::Scp, mode: DecompileMode, call
 			}
 		}
 		Err(e) => {
-			tracing::error!("Error recompiling scena: {e}");
+			tracing::error!("Error recompiling scena: {:?}", anyhow::Error::from(e));
 			return;
 		}
 	}
