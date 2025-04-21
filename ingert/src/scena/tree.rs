@@ -353,6 +353,7 @@ struct Params {
 	cont: Option<(usize, Label)>,
 	depth: usize,
 	then: Option<Label>,
+	with_pop: bool,
 }
 
 impl Params {
@@ -362,11 +363,12 @@ impl Params {
 			cont: None,
 			depth: nargs,
 			then: None,
+			with_pop: true,
 		}
 	}
 
 	fn sub(&self, depth: usize) -> Self {
-		Self { depth, then: None, ..*self }
+		Self { depth, then: None, with_pop: false, ..*self }
 	}
 
 	fn brk(self, depth: usize, label: Label) -> Self {
@@ -380,6 +382,10 @@ impl Params {
 	fn then(self, then: Label) -> Self {
 		Self { then: Some(then), ..self }
 	}
+
+	fn with_pop(self) -> Self {
+		Self { with_pop: true, ..self }
+	}
 }
 
 pub fn compile(stmts: &[Stmt], nargs: usize) -> Result<Vec<FlatStmt>, CompileError> {
@@ -391,15 +397,11 @@ pub fn compile(stmts: &[Stmt], nargs: usize) -> Result<Vec<FlatStmt>, CompileErr
 
 fn compile_block(ctx: &mut OutCtx, stmts: &[Stmt], p: Params) -> Result<(), CompileError> {
 	let mut depth = p.depth;
-	let mut diverged = false;
 	for stmt in stmts {
 		match stmt {
 			Stmt::Expr(expr) => ctx.push(FlatStmt::Expr(expr.sub(depth))),
 			Stmt::Set(l, place, expr) => ctx.push(FlatStmt::Set(*l, place.sub(depth), expr.sub(depth))),
-			Stmt::Return(l, expr) => {
-				ctx.push(FlatStmt::Return(*l, expr.sub(depth), depth));
-				diverged = true;
-			}
+			Stmt::Return(l, expr) => ctx.push(FlatStmt::Return(*l, expr.sub(depth), depth)),
 			Stmt::Debug(l, exprs) => ctx.push(FlatStmt::Debug(*l, exprs.sub(depth))),
 			Stmt::Tailcall(l, name, exprs) => ctx.push(FlatStmt::Tailcall(*l, name.clone(), exprs.sub(depth), depth)),
 			Stmt::If(l, expr, stmts, stmts1) => {
@@ -435,7 +437,7 @@ fn compile_block(ctx: &mut OutCtx, stmts: &[Stmt], p: Params) -> Result<(), Comp
 				));
 				for (k, l) in labels {
 					ctx.push(FlatStmt::Label(l));
-					compile_block(ctx, &cases[&k], p.sub(depth).brk(depth, brk))?;
+					compile_block(ctx, &cases[&k], p.sub(depth).brk(depth, brk).with_pop())?;
 				}
 				ctx.push(FlatStmt::Label(brk));
 			}
@@ -445,7 +447,6 @@ fn compile_block(ctx: &mut OutCtx, stmts: &[Stmt], p: Params) -> Result<(), Comp
 			Stmt::Break => {
 				if let Some((d, l)) = p.brk {
 					ctx.push(FlatStmt::Goto(l, depth.saturating_sub(d)));
-					diverged = true;
 				} else {
 					return compile::BadBreak.fail()
 				}
@@ -453,7 +454,6 @@ fn compile_block(ctx: &mut OutCtx, stmts: &[Stmt], p: Params) -> Result<(), Comp
 			Stmt::Continue => {
 				if let Some((d, l)) = p.cont {
 					ctx.push(FlatStmt::Goto(l, depth.saturating_sub(d)));
-					diverged = true;
 				} else {
 					return compile::BadContinue.fail()
 				}
@@ -470,7 +470,7 @@ fn compile_block(ctx: &mut OutCtx, stmts: &[Stmt], p: Params) -> Result<(), Comp
 	}
 	if let Some(then) = p.then {
 		ctx.push(FlatStmt::Goto(then, depth.saturating_sub(p.depth)));
-	} else if depth > p.depth && !diverged {
+	} else if depth > p.depth && !p.with_pop {
 		ctx.push(FlatStmt::PopVar(depth - p.depth));
 	}
 	Ok(())
