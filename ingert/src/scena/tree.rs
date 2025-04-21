@@ -353,7 +353,6 @@ struct Params {
 	brk: Option<(usize, Label)>,
 	cont: Option<(usize, Label)>,
 	depth: usize,
-	then: Option<Label>,
 	with_pop: bool,
 }
 
@@ -363,13 +362,12 @@ impl Params {
 			brk: None,
 			cont: None,
 			depth: nargs,
-			then: None,
 			with_pop: true,
 		}
 	}
 
 	fn sub(&self, depth: usize) -> Self {
-		Self { depth, then: None, with_pop: false, ..*self }
+		Self { depth, with_pop: false, ..*self }
 	}
 
 	fn brk(self, depth: usize, label: Label) -> Self {
@@ -378,10 +376,6 @@ impl Params {
 
 	fn cont(self, depth: usize, label: Label) -> Self {
 		Self { cont: Some((depth, label)), ..self }
-	}
-
-	fn then(self, then: Label) -> Self {
-		Self { then: Some(then), ..self }
 	}
 
 	fn with_pop(self) -> Self {
@@ -410,7 +404,8 @@ fn compile_block(ctx: &mut OutCtx, stmts: &[Stmt], p: Params) -> Result<(), Comp
 				ctx.push(FlatStmt::If(*l, expr.sub(depth), label));
 				if let Some(stmts1) = stmts1 {
 					let label2 = ctx.label();
-					compile_block(ctx, stmts, p.sub(depth).then(label2))?;
+					compile_block(ctx, stmts, p.sub(depth))?;
+					ctx.push(FlatStmt::Goto(label2));
 					ctx.push(FlatStmt::Label(label));
 					compile_block(ctx, stmts1, p.sub(depth))?;
 					ctx.push(FlatStmt::Label(label2));
@@ -424,7 +419,8 @@ fn compile_block(ctx: &mut OutCtx, stmts: &[Stmt], p: Params) -> Result<(), Comp
 				let cont = ctx.label();
 				ctx.push(FlatStmt::Label(cont));
 				ctx.push(FlatStmt::If(*l, expr.sub(depth), brk));
-				compile_block(ctx, stmts, p.sub(depth).brk(depth, brk).cont(depth, cont).then(cont))?;
+				compile_block(ctx, stmts, p.sub(depth).brk(depth, brk).cont(depth, cont))?;
+				ctx.push(FlatStmt::Goto(cont));
 				ctx.push(FlatStmt::Label(brk));
 			}
 			Stmt::Switch(l, expr, cases) => {
@@ -477,9 +473,6 @@ fn compile_block(ctx: &mut OutCtx, stmts: &[Stmt], p: Params) -> Result<(), Comp
 	}
 	if depth > p.depth && !p.with_pop {
 		ctx.push(FlatStmt::PopVar(depth - p.depth));
-	}
-	if let Some(then) = p.then {
-		ctx.push(FlatStmt::Goto(then));
 	}
 	Ok(())
 }
