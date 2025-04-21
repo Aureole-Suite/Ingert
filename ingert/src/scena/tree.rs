@@ -209,7 +209,7 @@ fn block(ctx: &mut Ctx, goto_allowed: GotoAllowed, mut depth: usize) -> Result<(
 }
 
 fn push_diverging(ctx: &Ctx, stmts: &mut Vec<Stmt>, stmt: Stmt, goto_allowed: GotoAllowed) {
-	if needs_wrap(ctx, goto_allowed) {
+	if needs_wrap(ctx, goto_allowed) && ctx.end != ctx.gctx.stmts.len() {
 		stmts.push(Stmt::Block(vec![stmt]));
 	} else {
 		stmts.push(stmt);
@@ -414,15 +414,14 @@ pub fn compile(stmts: &[Stmt], nargs: usize) -> Result<Vec<FlatStmt>, CompileErr
 
 fn compile_block(ctx: &mut OutCtx, stmts: &[Stmt], p: Params) -> Result<(), CompileError> {
 	let mut depth = p.depth;
+	let mut diverged = false;
 	for stmt in stmts {
 		match stmt {
 			Stmt::Expr(expr) => ctx.push(FlatStmt::Expr(expr.sub(depth))),
 			Stmt::Set(l, place, expr) => ctx.push(FlatStmt::Set(*l, place.sub(depth), expr.sub(depth))),
 			Stmt::Return(l, expr) => {
 				ctx.push(FlatStmt::Return(*l, expr.sub(depth), depth));
-				if p.then.is_none() {
-					depth = 0;
-				}
+				diverged = true;
 			}
 			Stmt::Debug(l, exprs) => ctx.push(FlatStmt::Debug(*l, exprs.sub(depth))),
 			Stmt::Tailcall(l, name, exprs) => ctx.push(FlatStmt::Tailcall(*l, name.clone(), exprs.sub(depth), depth)),
@@ -469,7 +468,7 @@ fn compile_block(ctx: &mut OutCtx, stmts: &[Stmt], p: Params) -> Result<(), Comp
 			Stmt::Break => {
 				if let Some((d, l)) = p.brk {
 					ctx.push(FlatStmt::Goto(l, depth.saturating_sub(d)));
-					depth = d;
+					diverged = true;
 				} else {
 					return compile::BadBreak.fail()
 				}
@@ -477,7 +476,7 @@ fn compile_block(ctx: &mut OutCtx, stmts: &[Stmt], p: Params) -> Result<(), Comp
 			Stmt::Continue => {
 				if let Some((d, l)) = p.cont {
 					ctx.push(FlatStmt::Goto(l, depth.saturating_sub(d)));
-					depth = d;
+					diverged = true;
 				} else {
 					return compile::BadContinue.fail()
 				}
@@ -494,7 +493,7 @@ fn compile_block(ctx: &mut OutCtx, stmts: &[Stmt], p: Params) -> Result<(), Comp
 	}
 	if let Some(then) = p.then {
 		ctx.push(FlatStmt::Goto(then, depth.saturating_sub(p.depth)));
-	} else if depth > p.depth {
+	} else if depth > p.depth && !diverged {
 		ctx.push(FlatStmt::PopVar(depth - p.depth));
 	}
 	Ok(())
