@@ -205,12 +205,10 @@ fn block(ctx: &mut Ctx, goto_allowed: GotoAllowed, mut depth: usize) -> Result<(
 				depth += 1;
 			}
 			FlatStmt::PopVar(n) => {
-				let mut iter = stmts.iter()
-					.enumerate()
-					.filter(|(_, s)| matches!(s, Stmt::PushVar(..)));
 				if ctx.pos != ctx.end
-					&& let Some(pos) = iter.nth_back(*n - 1)
-					&& iter.next_back().is_some()
+					&& let Some(pos) = stmts.iter()
+					.enumerate()
+					.filter(|(_, s)| matches!(s, Stmt::PushVar(..))).nth_back(*n - 1)
 				{
 					let body = stmts.split_off(pos.0);
 					stmts.push(Stmt::Block(body));

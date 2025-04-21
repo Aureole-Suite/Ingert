@@ -1,3 +1,7 @@
+# 1.1.1
+
+- Fix overeager check that was meant to reduce unnecessary braces
+
 # 1.1.0
 
 - Make partial decompile failure a warning, not an error
