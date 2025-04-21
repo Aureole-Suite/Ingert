@@ -163,15 +163,17 @@ fn block(ctx: &mut Ctx, goto_allowed: GotoAllowed, mut depth: usize) -> Result<(
 					.context(decompile::Block { what: "switch", start, end })?
 			},
 
-			FlatStmt::Goto(l, _) if Some(*l) == ctx.brk => stmts.push(Stmt::Break),
-			FlatStmt::Goto(l, _) if Some(*l) == ctx.cont => stmts.push(Stmt::Continue),
 			FlatStmt::Goto(l, _) => {
 				let ok = match goto_allowed {
 					GotoAllowed::Anywhere => true,
 					GotoAllowed::Yes => ctx.pos == ctx.end,
 					GotoAllowed::No => false,
 				};
-				if ok {
+				if Some(*l) == ctx.brk {
+					stmts.push(Stmt::Break)
+				} else if Some(*l) == ctx.cont {
+					stmts.push(Stmt::Continue)
+				} else if ok {
 					return Ok((stmts, Some(*l)))
 				} else {
 					return decompile::UnexpectedJump { label: *l }.fail()
@@ -192,7 +194,7 @@ fn block(ctx: &mut Ctx, goto_allowed: GotoAllowed, mut depth: usize) -> Result<(
 				depth += 1;
 			}
 			FlatStmt::PopVar(n) => {
-				if needs_wrap(ctx, goto_allowed)
+				if ctx.pos != ctx.end
 					&& let Some(pos) = stmts.iter()
 					.enumerate()
 					.filter(|(_, s)| matches!(s, Stmt::PushVar(..)))
@@ -206,23 +208,6 @@ fn block(ctx: &mut Ctx, goto_allowed: GotoAllowed, mut depth: usize) -> Result<(
 		}
 	}
 	Ok((stmts, None))
-}
-
-fn needs_wrap(ctx: &Ctx, goto_allowed: GotoAllowed) -> bool {
-	if ctx.pos == ctx.end {
-		return false
-	}
-	if matches!(ctx.gctx.stmts[ctx.pos], FlatStmt::Goto(..)) {
-		match goto_allowed {
-			GotoAllowed::Anywhere => return false,
-			GotoAllowed::Yes if ctx.pos + 1 == ctx.end => return false,
-			_ => {}
-		}
-	}
-	if matches!(ctx.gctx.stmts[ctx.pos], FlatStmt::Label(..)) {
-		return false
-	}
-	true
 }
 
 fn parse_if(
