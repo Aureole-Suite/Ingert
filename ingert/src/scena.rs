@@ -82,7 +82,7 @@ pub fn decompile(scena: &mut Scena, opts: &DecompileOptions) {
 					}
 				},
 				Ok(stmts) => f.body = Body::Flat(stmts),
-				Err(e) => tracing::warn!("flat decompile error: {e}"),
+				Err(e) => tracing::warn!("flat decompile error: {}", snafu::Report::from_error(e)),
 			}
 		}
 
@@ -103,7 +103,7 @@ pub fn decompile(scena: &mut Scena, opts: &DecompileOptions) {
 					}
 				},
 				Ok(stmts) => f.body = Body::Tree(stmts),
-				Err(e) => tracing::warn!("tree decompile error: {e}"),
+				Err(e) => tracing::warn!("tree decompile error: {}", snafu::Report::from_error(e)),
 			}
 		}
 
