@@ -3,7 +3,7 @@
 - Make partial decompile failure a warning, not an error
 - Remove \x escape, add \u instead
 - Add --roundtrip flag, which is more conservative about what passes it applies
-- Improve handling of diverging statements on top level, which fixes some roundtrip issues and unnecessary braces
+- Fix some issues with unnecessary braces, and a few roundtrips
 
 # 1.0.2
 

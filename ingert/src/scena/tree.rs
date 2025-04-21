@@ -180,6 +180,17 @@ fn block(ctx: &mut Ctx, goto_allowed: GotoAllowed, mut depth: usize) -> Result<(
 				}
 			}
 
+			FlatStmt::PopVar(_) if (
+				ctx.pos < ctx.end
+				&& matches!(ctx.gctx.stmts[ctx.pos], FlatStmt::Goto(..))
+			) || (
+				ctx.pos + 1 < ctx.end
+				&& matches!(ctx.gctx.stmts[ctx.pos], FlatStmt::PopVar(..))
+				&& matches!(ctx.gctx.stmts[ctx.pos + 1], FlatStmt::Goto(..))
+			) => {
+				// this is part of goto, skip it
+			}
+
 			FlatStmt::PushVar(l) => {
 				let e = if 
 					ctx.pos < ctx.end
@@ -445,8 +456,11 @@ fn compile_block_no_pop(ctx: &mut OutCtx, stmts: &[Stmt], p: Params) -> Result<u
 			}
 			Stmt::Break => {
 				if let Some((d, l)) = p.brk {
-					if depth > d {
-						ctx.push(FlatStmt::PopVar(depth - d));
+					if p.depth > d {
+						ctx.push(FlatStmt::PopVar(p.depth - d));
+					}
+					if depth > p.depth {
+						ctx.push(FlatStmt::PopVar(depth - p.depth));
 					}
 					ctx.push(FlatStmt::Goto(l));
 				} else {
@@ -455,8 +469,11 @@ fn compile_block_no_pop(ctx: &mut OutCtx, stmts: &[Stmt], p: Params) -> Result<u
 			}
 			Stmt::Continue => {
 				if let Some((d, l)) = p.cont {
-					if depth > d {
-						ctx.push(FlatStmt::PopVar(depth - d));
+					if p.depth > d {
+						ctx.push(FlatStmt::PopVar(p.depth - d));
+					}
+					if depth > p.depth {
+						ctx.push(FlatStmt::PopVar(depth - p.depth));
 					}
 					ctx.push(FlatStmt::Goto(l));
 				} else {
