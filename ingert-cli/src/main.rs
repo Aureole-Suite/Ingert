@@ -36,7 +36,9 @@ struct Args {
 fn main() {
 	tracing_subscriber::registry()
 		.with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
-		.with(tracing_subscriber::EnvFilter::from_default_env())
+		.with(tracing_subscriber::EnvFilter::builder()
+			.with_default_directive(tracing::Level::INFO.into())
+			.from_env_lossy())
 		.init();
 	let args = Args::parse();
 
