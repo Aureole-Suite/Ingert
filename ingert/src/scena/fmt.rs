@@ -47,7 +47,7 @@ impl Debug for FlatStmt {
 			Self::Set(l, v, e) => line(f, l)?.debug_tuple("Set").field(v).field(e).finish(),
 			Self::Return(l, e, pop) => line(f, l)?.debug_tuple(&format!("Return[{pop}]")).field(e).finish(),
 			Self::If(l, e, label) => line(f, l)?.debug_tuple("If").field(e).field(label).finish(),
-			Self::Goto(label, pop) => f.debug_tuple(&format!("Goto[{pop}]")).field(label).finish(),
+			Self::Goto(label) => f.debug_tuple("Goto").field(label).finish(),
 			Self::Switch(l, e, cases, default) => line(f, l)?.debug_tuple("Switch").field(e).field(cases).field(default).finish(),
 			Self::PushVar(l) => line(f, l)?.debug_tuple("PushVar").finish(),
 			Self::PopVar(pop) => f.debug_tuple(&format!("PopVar[{pop}]")).finish(),

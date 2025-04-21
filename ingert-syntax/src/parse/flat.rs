@@ -69,10 +69,9 @@ fn parse_stmt(parser: &mut Parser, ctx: &mut Ctx) -> Result<FlatStmt> {
 		.test(|parser| {
 			parser.keyword("goto")?;
 			parser.commit();
-			let depth = parse_depth(parser).unwrap_or(0);
 			let label = parse_label(parser, ctx, false)?;
 			parser.punct(';')?;
-			Ok(FlatStmt::Goto(label, depth))
+			Ok(FlatStmt::Goto(label))
 		})
 		.test(|parser| {
 			parser.keyword("push_var")?;

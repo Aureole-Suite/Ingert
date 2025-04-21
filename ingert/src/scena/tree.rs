@@ -118,7 +118,7 @@ impl<'a> Ctx<'a> {
 	#[track_caller]
 	fn goto_before(&self, label: Label) -> Result<Option<Label>, DecompileError> {
 		let pos = self.lookup(label)?;
-		if pos > 0 && let FlatStmt::Goto(cont, _) = self.gctx.stmts[pos - 1] {
+		if pos > 0 && let FlatStmt::Goto(cont) = self.gctx.stmts[pos - 1] {
 			Ok(Some(cont))
 		} else {
 			Ok(None)
@@ -163,7 +163,7 @@ fn block(ctx: &mut Ctx, goto_allowed: GotoAllowed, mut depth: usize) -> Result<(
 					.context(decompile::Block { what: "switch", start, end })?
 			},
 
-			FlatStmt::Goto(l, _) => {
+			FlatStmt::Goto(l) => {
 				let ok = match goto_allowed {
 					GotoAllowed::Anywhere => true,
 					GotoAllowed::Yes => ctx.pos == ctx.end,
@@ -194,11 +194,12 @@ fn block(ctx: &mut Ctx, goto_allowed: GotoAllowed, mut depth: usize) -> Result<(
 				depth += 1;
 			}
 			FlatStmt::PopVar(n) => {
-				if ctx.pos != ctx.end
-					&& let Some(pos) = stmts.iter()
+				let mut iter = stmts.iter()
 					.enumerate()
-					.filter(|(_, s)| matches!(s, Stmt::PushVar(..)))
-					.nth_back(*n - 1)
+					.filter(|(_, s)| matches!(s, Stmt::PushVar(..)));
+				if ctx.pos != ctx.end
+					&& let Some(pos) = iter.nth_back(*n - 1)
+					&& iter.next_back().is_some()
 				{
 					let body = stmts.split_off(pos.0);
 					stmts.push(Stmt::Block(body));
@@ -446,14 +447,20 @@ fn compile_block(ctx: &mut OutCtx, stmts: &[Stmt], p: Params) -> Result<(), Comp
 			}
 			Stmt::Break => {
 				if let Some((d, l)) = p.brk {
-					ctx.push(FlatStmt::Goto(l, depth.saturating_sub(d)));
+					if depth > d {
+						ctx.push(FlatStmt::PopVar(depth - d));
+					}
+					ctx.push(FlatStmt::Goto(l));
 				} else {
 					return compile::BadBreak.fail()
 				}
 			}
 			Stmt::Continue => {
 				if let Some((d, l)) = p.cont {
-					ctx.push(FlatStmt::Goto(l, depth.saturating_sub(d)));
+					if depth > d {
+						ctx.push(FlatStmt::PopVar(depth - d));
+					}
+					ctx.push(FlatStmt::Goto(l));
 				} else {
 					return compile::BadContinue.fail()
 				}
@@ -468,10 +475,11 @@ fn compile_block(ctx: &mut OutCtx, stmts: &[Stmt], p: Params) -> Result<(), Comp
 			}
 		}
 	}
-	if let Some(then) = p.then {
-		ctx.push(FlatStmt::Goto(then, depth.saturating_sub(p.depth)));
-	} else if depth > p.depth && !p.with_pop {
+	if depth > p.depth && !p.with_pop {
 		ctx.push(FlatStmt::PopVar(depth - p.depth));
+	}
+	if let Some(then) = p.then {
+		ctx.push(FlatStmt::Goto(then));
 	}
 	Ok(())
 }

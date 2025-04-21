@@ -272,7 +272,7 @@ pub enum FlatStmt {
 	Set(Line, Place<FlatVar>, Expr<FlatVar>),
 	Return(Line, Option<Expr<FlatVar>>, usize),
 	If(Line, Expr<FlatVar>, Label),
-	Goto(Label, usize),
+	Goto(Label),
 	Switch(Line, Expr<FlatVar>, Vec<(i32, Label)>, Label),
 	PushVar(Line),
 	PopVar(usize),
@@ -315,7 +315,7 @@ impl crate::labels::Labels for FlatStmt {
 	fn referenced(&self, mut f: impl FnMut(&Label)) {
 		match self {
 			Self::If(_, _, l) => f(l),
-			Self::Goto(l, _) => f(l),
+			Self::Goto(l) => f(l),
 			Self::Switch(_, _, cases, default) => {
 				for (_, l) in cases {
 					f(l);
@@ -338,7 +338,7 @@ impl crate::labels::LabelsMut for FlatStmt {
 	fn referenced_mut(&mut self, mut f: impl FnMut(&mut Label)) {
 		match self {
 			Self::If(_, _, l) => f(l),
-			Self::Goto(l, _) => f(l),
+			Self::Goto(l) => f(l),
 			Self::Switch(_, _, cases, default) => {
 				for (_, l) in cases {
 					f(l);

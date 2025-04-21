@@ -120,11 +120,7 @@ pub fn decompile(code: &[Op]) -> Result<Vec<FlatStmt>, DecompileError> {
 				ctx.stmt(FlatStmt::If(None, cond, l))?;
 			}
 			Op::Goto(l) => {
-				ctx.stmt(FlatStmt::Goto(l, 0))?;
-			}
-			Op::Pop(n) if let [Op::Goto(l), ..] = ctx.peek() => {
-				ctx.next();
-				ctx.stmt(FlatStmt::Goto(*l, n as usize))?;
+				ctx.stmt(FlatStmt::Goto(l))?;
 			}
 
 			Op::Pop(n) if let [Op::CallTail(name, 0), ..] = ctx.peek() => {
@@ -359,10 +355,7 @@ pub fn compile(stmts: &[FlatStmt]) -> Result<Vec<Op>, CompileError> {
 				compile_expr(&mut ctx, expr, 0);
 				ctx.out.push(Op::Jz(*label));
 			}
-			FlatStmt::Goto(label, pop) => {
-				if *pop != 0 {
-					ctx.out.push(Op::Pop(*pop as u16));
-				}
+			FlatStmt::Goto(label) => {
 				ctx.out.push(Op::Goto(*backrefs.get(label).unwrap_or(label)));
 			}
 			FlatStmt::Switch(l, expr, items, label) => {

@@ -526,12 +526,8 @@ impl Print for FlatStmt {
 				expr.print(ctx);
 				label.print(ctx);
 			}
-			FlatStmt::Goto(label, pop) => {
-				if *pop != 0 {
-					ctx.token(format!("goto[{pop}]"));
-				} else {
-					ctx.word("goto");
-				}
+			FlatStmt::Goto(label) => {
+				ctx.word("goto");
 				label.print(ctx);
 			}
 			FlatStmt::Switch(l, expr, items, label) => {
