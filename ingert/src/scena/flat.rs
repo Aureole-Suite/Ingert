@@ -34,8 +34,8 @@ pub enum DecompileError {
 	BadSwitch,
 	#[snafu(display("could not parse tailcall statement"))]
 	BadTailcall,
-	#[snafu(display("unexpected op"))]
-	UnexpectedOp,
+	#[snafu(display("unexpected op: {op:?}"))]
+	UnexpectedOp { op: Op },
 	#[snafu(display("could not normalize labels"), context(false))]
 	Labels { source: crate::labels::LabelError },
 }
@@ -162,7 +162,7 @@ pub fn decompile(code: &[Op]) -> Result<Vec<FlatStmt>, DecompileError> {
 				handle_return(&mut ctx, Some(v))?;
 			}
 			Op::Return => {
-				return error::UnexpectedOp.fail();
+				return error::UnexpectedOp { op: op.clone() }.fail();
 			}
 
 			Op::PushNull => {
@@ -205,8 +205,8 @@ pub fn decompile(code: &[Op]) -> Result<Vec<FlatStmt>, DecompileError> {
 				}
 				ctx.stmt(FlatStmt::Debug(None, args))?;
 			}
-			Op::CallTail(_, _) => return error::UnexpectedOp.fail(),
-			Op::Jnz(_) | Op::GetTemp(_) | Op::SetTemp(_) => return error::UnexpectedOp.fail(),
+			Op::CallTail(_, _) => return error::UnexpectedOp { op: op.clone() }.fail(),
+			Op::Jnz(_) | Op::GetTemp(_) | Op::SetTemp(_) => return error::UnexpectedOp { op: op.clone() }.fail(),
 		}
 	}
 	let mut out = ctx.finish()?;
@@ -226,7 +226,7 @@ fn handle_return(ctx: &mut Ctx, val: Option<Expr>) -> Result<(), DecompileError>
 		ctx.stmt(FlatStmt::Return(None, val, pop))?;
 		Ok(())
 	} else {
-		error::UnexpectedOp.fail()
+		error::UnexpectedOp { op: ctx.peek()[0].clone() }.fail()
 	}
 }
 
