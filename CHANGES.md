@@ -1,3 +1,8 @@
+# 1.1.2
+
+- Default to showing warnings
+- Fix an edge case with tail calls, exhibited in some Ys X scripts
+
 # 1.1.1
 
 - Fix overeager check that was meant to reduce unnecessary braces

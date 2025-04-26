@@ -253,7 +253,7 @@ dependencies = [
 
 [[package]]
 name = "ingert"
-version = "1.1.1"
+version = "1.1.2"
 dependencies = [
  "crc32fast",
  "gospel",
@@ -265,7 +265,7 @@ dependencies = [
 
 [[package]]
 name = "ingert-cli"
-version = "1.1.1"
+version = "1.1.2"
 dependencies = [
  "anyhow",
  "clap",
@@ -282,7 +282,7 @@ dependencies = [
 
 [[package]]
 name = "ingert-syntax"
-version = "1.1.1"
+version = "1.1.2"
 dependencies = [
  "indexmap",
  "ingert",
