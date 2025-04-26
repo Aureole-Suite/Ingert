@@ -123,6 +123,9 @@ pub fn decompile(code: &[Op]) -> Result<Vec<FlatStmt>, DecompileError> {
 				ctx.stmt(FlatStmt::Goto(l))?;
 			}
 
+			Op::CallTail(ref name, 0) => {
+				ctx.stmt(FlatStmt::Tailcall(None, name.clone(), vec![], 0))?;
+			}
 			Op::Pop(n) if let [Op::CallTail(name, 0), ..] = ctx.peek() => {
 				ctx.next();
 				ctx.stmt(FlatStmt::Tailcall(None, name.clone(), vec![], n as usize))?;
