@@ -259,11 +259,11 @@ impl<'a> Lex<'a> {
 						self.errors.error("invalid escape sequence", escstart..self.pos);
 					}
 				}
-				Some(c) => s.push(c),
-				None => {
-					self.errors.error("unterminated string", start..self.pos);
+				None | Some('\n') => {
+					self.errors.error("unterminated string", start..self.pos - 1);
 					break;
 				}
+				Some(c) => s.push(c),
 			}
 		}
 		s.into_boxed_str()
