@@ -138,7 +138,7 @@ struct Writers {
 	globals_strings: Writer,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct StringCache {
 	map: HashMap<String, VecDeque<Label>>,
 }
@@ -182,16 +182,19 @@ pub fn write(scp: &Scp) -> Result<Vec<u8>, WriteError> {
 	let func_start = w.f.functions.here();
 	let global_start = w.f.globals.here();
 
-	let func_labels = sorted_funcs.iter().enumerate().map(|(i, f)| (f.name.as_str(), (Label::new(), i))).collect::<HashMap<_, _>>();
+	let func_labels = sorted_funcs.iter().enumerate()
+		.map(|(i, f)| (f.name.as_str(), (Label::new(), Label::new(), i)))
+		.collect::<HashMap<_, _>>();
 
-	for func in sorted_funcs {
+	for func in &sorted_funcs {
 		let _span = tracing::error_span!("function", name = &func.name).entered();
-		let label = func_labels[func.name.as_str()].0;
-		function::write(func, label, &mut w).context(write::Function { name: &func.name })?;
-		for call in &func.called {
-			called::write(call, &mut w).context(write::Called { name: &func.name })?;
-		}
-		w.strings.clear();
+		let (flabel, clabel, _) = func_labels[func.name.as_str()];
+		function::write(
+			func,
+			flabel,
+			clabel,
+			&mut w,
+		).context(write::Function { name: &func.name })?;
 	}
 
 	for global in &scp.globals {
@@ -199,11 +202,24 @@ pub fn write(scp: &Scp) -> Result<Vec<u8>, WriteError> {
 		global::write(global, &mut w).context(write::Global { name: &global.name })?;
 	}
 
+	let mut strings = HashMap::new();
+
 	for func in &scp.functions {
 		let _span = tracing::error_span!("function", name = &func.name).entered();
-		let (label, i) = func_labels[func.name.as_str()];
-		w.f.code.place(label);
+		let (flabel, _, i) = func_labels[func.name.as_str()];
+		w.f.code.place(flabel);
 		code::write(&func.code, i, &mut w).context(write::Code { name: &func.name })?;
+		strings.insert(&func.name, std::mem::take(&mut w.strings));
+	}
+
+	for func in &sorted_funcs {
+		let _span = tracing::error_span!("function", name = &func.name).entered();
+		let (_, clabel, _) = func_labels[func.name.as_str()];
+		w.f.called.place(clabel);
+		w.strings = strings.remove(&func.name).unwrap();
+		for call in &func.called {
+			called::write(call, &mut w).context(write::Called { name: &func.name })?;
+		}
 	}
 
 	let mut f = Writer::new();

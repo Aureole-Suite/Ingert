@@ -110,16 +110,21 @@ pub enum WriteError {
 	Inhabited,
 }
 
-pub fn write(func: &crate::scp::Function, code: Label, w: &mut super::WCtx) -> Result<(), WriteError> {
+pub fn write(
+	func: &crate::scp::Function,
+	func_label: Label,
+	called_label: Label,
+	w: &mut super::WCtx,
+) -> Result<(), WriteError> {
 	let f = &mut w.f.functions;
-	f.label32(code);
+	f.label32(func_label);
 	f.u8(func.args.len() as u8);
 	f.u16(if func.is_prelude { 1 } else { 0 });
 	f.u8(func.args.iter().filter(|a| a.default.is_some()).count() as u8);
 	f.label32(w.f.defaults.here());
 	f.label32(w.f.args.here());
 	f.u32(func.called.len() as u32);
-	f.label32(w.f.called.here());
+	f.label32(called_label);
 	f.u32(!crc32fast::hash(func.name.as_bytes()));
 	write_string_value(f, &mut w.f.functions_strings, &func.name);
 
