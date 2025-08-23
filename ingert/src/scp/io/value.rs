@@ -1,5 +1,5 @@
 use gospel::read::{Le as _, Reader};
-use gospel::write::{Le as _, Writer};
+use gospel::write::{Label, Le as _, Writer};
 use snafu::ResultExt as _;
 pub use super::super::Value;
 
@@ -75,15 +75,31 @@ pub fn string_value(f: &mut Reader) -> Result<String, ValueError> {
 
 pub fn write_value(f: &mut Writer, g: &mut Writer, v: &Value) {
 	match v {
-		Value::Int(v) => f.u32(1 << 30 | (*v as u32 & 0x3FFFFFFF)),
-		Value::Float(v) => f.u32(2 << 30 | (f32::to_bits(*v) >> 2)),
-		Value::String(v) => write_string_value(f, g, v)
+		Value::Int(v) => write_int_value(f, *v),
+		Value::Float(v) => write_float_value(f, *v),
+		Value::String(v) => write_string_value(f, g, v),
 	}
 }
 
+pub fn write_int_value(f: &mut Writer, v: i32) {
+	f.u32(1 << 30 | (v as u32 & 0x3FFFFFFF));
+}
+
+pub fn write_float_value(f: &mut Writer, v: f32) {
+	f.u32(2 << 30 | (f32::to_bits(v) >> 2));
+}
+
 pub fn write_string_value(f: &mut Writer, g: &mut Writer, v: &str) {
+	write_string_label(f, write_string(g, v))
+}
+
+pub fn write_string(g: &mut Writer, v: &str) -> Label {
 	let pos = g.here();
 	g.slice(v.as_bytes());
 	g.u8(0);
+	pos
+}
+
+pub fn write_string_label(f: &mut Writer, pos: Label) {
 	f.delay(move |c| Ok((3 << 30 | c.label(pos)? as u32).to_le_bytes()));
 }

@@ -4,7 +4,7 @@ mod called;
 mod global;
 mod code;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 
 use gospel::read::{Le as _, Reader};
 use gospel::write::{Le as _, Writer, Label};
@@ -118,6 +118,7 @@ struct WCtx<'a> {
 	function_names: HashMap<&'a String, usize>,
 	global_names: HashMap<&'a String, usize>,
 	f: Writers,
+	strings: StringCache,
 }
 
 #[derive(Default)]
@@ -137,6 +138,33 @@ struct Writers {
 	globals_strings: Writer,
 }
 
+#[derive(Debug)]
+struct StringCache {
+	map: HashMap<String, VecDeque<Label>>,
+}
+
+impl StringCache {
+	fn new() -> Self {
+		Self { map: HashMap::new() }
+	}
+
+	fn clear(&mut self) {
+		self.map.clear();
+	}
+
+	fn add(&mut self, s: &str, f: &mut Writer) -> Label {
+		let pos = value::write_string(f, s);
+		self.map.entry(s.to_string()).or_default().push_back(pos);
+		pos
+	}
+
+	fn get(&mut self, s: &str, f: &mut Writer) -> Label {
+		self.map.get_mut(s)
+			.and_then(VecDeque::pop_front)
+			.unwrap_or_else(|| value::write_string(f, s))
+	}
+}
+
 pub fn write(scp: &Scp) -> Result<Vec<u8>, WriteError> {
 	let mut sorted_funcs = scp.functions.iter().collect::<Vec<_>>();
 	sorted_funcs.sort_by_key(|f| f.name.as_str());
@@ -148,6 +176,7 @@ pub fn write(scp: &Scp) -> Result<Vec<u8>, WriteError> {
 		function_names,
 		global_names,
 		f: Default::default(),
+		strings: StringCache::new(),
 	};
 
 	let func_start = w.f.functions.here();
@@ -162,6 +191,7 @@ pub fn write(scp: &Scp) -> Result<Vec<u8>, WriteError> {
 		for call in &func.called {
 			called::write(call, &mut w).context(write::Called { name: &func.name })?;
 		}
+		w.strings.clear();
 	}
 
 	for global in &scp.globals {

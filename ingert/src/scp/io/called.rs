@@ -3,7 +3,7 @@ use gospel::write::Le as _;
 use snafu::{ensure, OptionExt as _, ResultExt as _};
 use crate::scp::{Call, CallArg, CallKind, Name};
 
-use super::value::{value, write_string_value, write_value, Value, ValueError};
+use super::value::{self, value, write_string_value, write_value, Value, ValueError};
 
 #[derive(Debug, snafu::Snafu)]
 pub enum ReadError {
@@ -195,7 +195,14 @@ pub fn write(call: &Call, w: &mut super::WCtx) -> Result<(), WriteError> {
 	for value in &call.args {
 		match value {
 			CallArg::Value(v) => {
-				write_value(g, &mut w.f.called_strings, v);
+				match v {
+					Value::Int(v) => value::write_int_value(g, *v),
+					Value::Float(v) => value::write_float_value(g, *v),
+					Value::String(v) => {
+						let pos = w.strings.get(v, &mut w.f.called_strings);
+						value::write_string_label(g, pos);
+					}
+				}
 				g.u32(0);
 			}
 			CallArg::Call => {

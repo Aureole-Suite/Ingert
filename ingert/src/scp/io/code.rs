@@ -5,10 +5,10 @@ use gospel::read::{Le as _, Reader};
 use gospel::write::Le as _;
 use snafu::{OptionExt as _, ResultExt as _};
 
-use crate::scp::Name;
+use crate::scp::{Name, Value};
 
 use super::super::{Op, Label, StackSlot, Binop, Unop};
-use super::value::{string_value, value, write_string_value, write_value, ValueError};
+use super::value::{self, string_value, value, write_string_value, ValueError};
 
 #[derive(Debug, snafu::Snafu)]
 pub enum ReadError {
@@ -208,7 +208,14 @@ pub fn write(code: &[Op], number: usize, w: &mut super::WCtx) -> Result<(), Writ
 			Op::Push(ref v) => {
 				f.u8(0);
 				f.u8(4);
-				write_value(f, &mut w.f.code_strings, v);
+				match v {
+					Value::Int(v) => value::write_int_value(f, *v),
+					Value::Float(v) => value::write_float_value(f, *v),
+					Value::String(v) => {
+						let pos = w.strings.add(v, &mut w.f.code_strings);
+						value::write_string_label(f, pos);
+					}
+				}
 			}
 			Op::Pop(n) => {
 				let mut m = n * 4;
@@ -285,12 +292,14 @@ pub fn write(code: &[Op], number: usize, w: &mut super::WCtx) -> Result<(), Writ
 			}
 			Op::CallExtern(ref name, n) => {
 				f.u8(34);
+				// These are stored in a different form in called, and thus we don't cache them
 				write_string_value(f, &mut w.f.code_strings, &name.0);
 				write_string_value(f, &mut w.f.code_strings, &name.1);
 				f.u8(n);
 			}
 			Op::CallTail(ref name, n) => {
 				f.u8(35);
+				// Same here.
 				write_string_value(f, &mut w.f.code_strings, &name.0);
 				write_string_value(f, &mut w.f.code_strings, &name.1);
 				f.u8(n);
