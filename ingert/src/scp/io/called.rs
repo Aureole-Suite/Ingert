@@ -142,8 +142,8 @@ pub enum WriteError {
 }
 
 pub fn write(call: &Call, w: &mut super::WCtx) -> Result<(), WriteError> {
-	let f = &mut w.f_called;
-	let g = &mut w.f_called_arg;
+	let f = &mut w.f.called;
+	let g = &mut w.f.called_arg;
 	let nargs = call.args.len() as u16;
 	let arg_start = g.here();
 	match &call.kind {
@@ -159,7 +159,7 @@ pub fn write(call: &Call, w: &mut super::WCtx) -> Result<(), WriteError> {
 				f.u32(0xFFFFFFFF);
 				f.u16(RawCallKind::Extern as u16);
 				f.u16(1 + nargs);
-				write_string_value(g, &mut w.f_called_strings, &name.to_string());
+				write_string_value(g, &mut w.f.called_strings, &name.to_string());
 				g.u32(0);
 			}
 		}
@@ -178,16 +178,16 @@ pub fn write(call: &Call, w: &mut super::WCtx) -> Result<(), WriteError> {
 			};
 			f.u16(RawCallKind::Tailcall as u16);
 			f.u16(1 + nargs);
-			write_string_value(g, &mut w.f_called_strings, name_str);
+			write_string_value(g, &mut w.f.called_strings, name_str);
 			g.u32(0);
 		}
 		CallKind::Syscall(a, b) => {
 			f.u32(0xFFFFFFFF);
 			f.u16(RawCallKind::Syscall as u16);
 			f.u16(2 + nargs);
-			write_value(g, &mut w.f_called_strings, &Value::Int(*a as i32));
+			write_value(g, &mut w.f.called_strings, &Value::Int(*a as i32));
 			g.u32(0);
-			write_value(g, &mut w.f_called_strings, &Value::Int(*b as i32));
+			write_value(g, &mut w.f.called_strings, &Value::Int(*b as i32));
 			g.u32(0);
 		}
 	}
@@ -195,7 +195,7 @@ pub fn write(call: &Call, w: &mut super::WCtx) -> Result<(), WriteError> {
 	for value in &call.args {
 		match value {
 			CallArg::Value(v) => {
-				write_value(g, &mut w.f_called_strings, v);
+				write_value(g, &mut w.f.called_strings, v);
 				g.u32(0);
 			}
 			CallArg::Call => {

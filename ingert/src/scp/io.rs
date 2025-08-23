@@ -117,19 +117,24 @@ pub enum WriteError {
 struct WCtx<'a> {
 	function_names: HashMap<&'a String, usize>,
 	global_names: HashMap<&'a String, usize>,
-	f_functions: Writer,
-	f_args: Writer,
-	f_defaults: Writer,
-	f_globals: Writer,
-	f_called: Writer,
-	f_called_arg: Writer,
-	f_code: Writer,
+	f: Writers,
+}
 
-	f_code_strings: Writer,
-	f_functions_strings: Writer,
-	f_defaults_strings: Writer,
-	f_called_strings: Writer,
-	f_globals_strings: Writer,
+#[derive(Default)]
+struct Writers {
+	functions: Writer,
+	args: Writer,
+	defaults: Writer,
+	globals: Writer,
+	called: Writer,
+	called_arg: Writer,
+	code: Writer,
+
+	code_strings: Writer,
+	functions_strings: Writer,
+	defaults_strings: Writer,
+	called_strings: Writer,
+	globals_strings: Writer,
 }
 
 pub fn write(scp: &Scp) -> Result<Vec<u8>, WriteError> {
@@ -142,22 +147,11 @@ pub fn write(scp: &Scp) -> Result<Vec<u8>, WriteError> {
 	let mut w = WCtx {
 		function_names,
 		global_names,
-		f_functions: Writer::new(),
-		f_args: Writer::new(),
-		f_defaults: Writer::new(),
-		f_globals: Writer::new(),
-		f_called: Writer::new(),
-		f_called_arg: Writer::new(),
-		f_code: Writer::new(),
-		f_code_strings: Writer::new(),
-		f_functions_strings: Writer::new(),
-		f_defaults_strings: Writer::new(),
-		f_called_strings: Writer::new(),
-		f_globals_strings: Writer::new(),
+		f: Default::default(),
 	};
 
-	let func_start = w.f_functions.here();
-	let global_start = w.f_globals.here();
+	let func_start = w.f.functions.here();
+	let global_start = w.f.globals.here();
 
 	let func_labels = sorted_funcs.iter().enumerate().map(|(i, f)| (f.name.as_str(), (Label::new(), i))).collect::<HashMap<_, _>>();
 
@@ -178,7 +172,7 @@ pub fn write(scp: &Scp) -> Result<Vec<u8>, WriteError> {
 	for func in &scp.functions {
 		let _span = tracing::error_span!("function", name = &func.name).entered();
 		let (label, i) = func_labels[func.name.as_str()];
-		w.f_code.place(label);
+		w.f.code.place(label);
 		code::write(&func.code, i, &mut w).context(write::Code { name: &func.name })?;
 	}
 
@@ -190,18 +184,18 @@ pub fn write(scp: &Scp) -> Result<Vec<u8>, WriteError> {
 	f.u32(scp.globals.len() as u32);
 	f.u32(0);
 
-	f.append(w.f_functions);
-	f.append(w.f_defaults);
-	f.append(w.f_args);
-	f.append(w.f_called);
-	f.append(w.f_called_arg);
-	f.append(w.f_globals);
-	f.append(w.f_code);
-	f.append(w.f_code_strings);
-	f.append(w.f_functions_strings);
-	f.append(w.f_defaults_strings);
-	f.append(w.f_called_strings);
-	f.append(w.f_globals_strings);
+	f.append(w.f.functions);
+	f.append(w.f.defaults);
+	f.append(w.f.args);
+	f.append(w.f.called);
+	f.append(w.f.called_arg);
+	f.append(w.f.globals);
+	f.append(w.f.code);
+	f.append(w.f.code_strings);
+	f.append(w.f.functions_strings);
+	f.append(w.f.defaults_strings);
+	f.append(w.f.called_strings);
+	f.append(w.f.globals_strings);
 
 	Ok(f.finish().unwrap())
 }

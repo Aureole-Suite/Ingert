@@ -111,26 +111,26 @@ pub enum WriteError {
 }
 
 pub fn write(func: &crate::scp::Function, code: Label, w: &mut super::WCtx) -> Result<(), WriteError> {
-	let f = &mut w.f_functions;
+	let f = &mut w.f.functions;
 	f.label32(code);
 	f.u8(func.args.len() as u8);
 	f.u16(if func.is_prelude { 1 } else { 0 });
 	f.u8(func.args.iter().filter(|a| a.default.is_some()).count() as u8);
-	f.label32(w.f_defaults.here());
-	f.label32(w.f_args.here());
+	f.label32(w.f.defaults.here());
+	f.label32(w.f.args.here());
 	f.u32(func.called.len() as u32);
-	f.label32(w.f_called.here());
+	f.label32(w.f.called.here());
 	f.u32(!crc32fast::hash(func.name.as_bytes()));
-	write_string_value(f, &mut w.f_functions_strings, &func.name);
+	write_string_value(f, &mut w.f.functions_strings, &func.name);
 
-	let f = &mut w.f_defaults;
+	let f = &mut w.f.defaults;
 	for arg in &func.args {
 		if let Some(v) = &arg.default {
-			write_value(f, &mut w.f_defaults_strings, v);
+			write_value(f, &mut w.f.defaults_strings, v);
 		}
 	}
 
-	let f = &mut w.f_args;
+	let f = &mut w.f.args;
 	for arg in &func.args {
 		let ty = match arg.ty {
 			ArgType::Number => 1,

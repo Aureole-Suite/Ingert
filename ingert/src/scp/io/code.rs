@@ -199,7 +199,7 @@ pub fn write(code: &[Op], number: usize, w: &mut super::WCtx) -> Result<(), Writ
 		Op::Label(l) => Some((l, gospel::write::Label::new())),
 		_ => None,
 	}).collect::<HashMap<_, _>>();
-	let f = &mut w.f_code;
+	let f = &mut w.f.code;
 	for op in code {
 		match *op {
 			Op::Label(label) => {
@@ -208,7 +208,7 @@ pub fn write(code: &[Op], number: usize, w: &mut super::WCtx) -> Result<(), Writ
 			Op::Push(ref v) => {
 				f.u8(0);
 				f.u8(4);
-				write_value(f, &mut w.f_code_strings, v);
+				write_value(f, &mut w.f.code_strings, v);
 			}
 			Op::Pop(n) => {
 				let mut m = n * 4;
@@ -285,14 +285,14 @@ pub fn write(code: &[Op], number: usize, w: &mut super::WCtx) -> Result<(), Writ
 			}
 			Op::CallExtern(ref name, n) => {
 				f.u8(34);
-				write_string_value(f, &mut w.f_code_strings, &name.0);
-				write_string_value(f, &mut w.f_code_strings, &name.1);
+				write_string_value(f, &mut w.f.code_strings, &name.0);
+				write_string_value(f, &mut w.f.code_strings, &name.1);
 				f.u8(n);
 			}
 			Op::CallTail(ref name, n) => {
 				f.u8(35);
-				write_string_value(f, &mut w.f_code_strings, &name.0);
-				write_string_value(f, &mut w.f_code_strings, &name.1);
+				write_string_value(f, &mut w.f.code_strings, &name.0);
+				write_string_value(f, &mut w.f.code_strings, &name.1);
 				f.u8(n);
 			}
 			Op::CallSystem(a, b, n) => {

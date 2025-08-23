@@ -34,8 +34,8 @@ pub enum WriteError {
 }
 
 pub fn write(global: &Global, w: &mut super::WCtx) -> Result<(), WriteError> {
-	let f = &mut w.f_globals;
-	write_string_value(f, &mut w.f_globals_strings, &global.name);
+	let f = &mut w.f.globals;
+	write_string_value(f, &mut w.f.globals_strings, &global.name);
 	match global.ty {
 		GlobalType::Number => f.u32(0),
 		GlobalType::String => f.u32(1),
