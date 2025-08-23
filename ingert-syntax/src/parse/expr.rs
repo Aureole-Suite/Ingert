@@ -4,7 +4,7 @@ use ingert::scp::{Binop, Name, Unop, Value};
 use crate::parse::{self, do_parse, Alt, Parser, Result, Scope};
 
 pub trait HasScope {
-	fn scope(&self) -> &Scope;
+	fn scope(&self) -> &Scope<'_>;
 }
 
 pub trait ParseVar: Sized {
@@ -157,13 +157,14 @@ pub fn parse_func_call<T: ParseVar>(parser: &mut Parser, ctx: &mut T::Ctx<'_>, m
 			let span = parser.prev_span();
 			let missing = ctx.scope().functions.get(name).is_none();
 			let args = if let Some(args) = parse_args(parser.delim('(')?, ctx) {
-				if let Some(func) = ctx.scope().functions.get(name) {
-					if let Some(sig) = &func.arg_count && !sig.contains(&args.len()) {
-						if missing_ok {
-							parser.errors.warning(format!("expected {sig:?} args"), span.clone());
-						} else {
-							parser.errors.error(format!("expected {sig:?} args"), span.clone());
-						}
+				if let Some(func) = ctx.scope().functions.get(name)
+				&& let Some(sig) = &func.arg_count
+				&& !sig.contains(&args.len())
+				{
+					if missing_ok {
+						parser.errors.warning(format!("expected {sig:?} args"), span.clone());
+					} else {
+						parser.errors.error(format!("expected {sig:?} args"), span.clone());
 					}
 				}
 				args

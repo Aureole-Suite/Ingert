@@ -197,7 +197,7 @@ fn parse_switch(parser: &mut Parser, mut ctx: Ctx) -> Result<IndexMap<Option<i32
 }
 
 impl expr::HasScope for Ctx<'_> {
-	fn scope(&self) -> &Scope {
+	fn scope(&self) -> &Scope<'_> {
 		self.scope
 	}
 }

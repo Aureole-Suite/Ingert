@@ -149,7 +149,7 @@ fn parse_label(parser: &mut Parser, ctx: &mut Ctx, def: bool) -> Result<Label> {
 }
 
 impl expr::HasScope for Ctx<'_> {
-	fn scope(&self) -> &Scope {
+	fn scope(&self) -> &Scope<'_> {
 		self.scope
 	}
 }

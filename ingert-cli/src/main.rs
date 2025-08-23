@@ -1,5 +1,3 @@
-#![feature(let_chains)]
-
 use anyhow::Context as _;
 use clap::Parser;
 use codespan_reporting::diagnostic::{Diagnostic, Label};

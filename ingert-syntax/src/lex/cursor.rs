@@ -3,7 +3,7 @@ use std::ops::Range;
 use super::{RawToken, TokenKind, Tokens};
 
 impl Tokens {
-	pub fn cursor(&self) -> Cursor {
+	pub fn cursor(&self) -> Cursor<'_> {
 		Cursor { tokens: &self.0, range: 0..self.0.len() - 1, pos: 1 }
 	}
 }

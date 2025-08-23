@@ -1,4 +1,4 @@
-#![feature(let_chains, if_let_guard, never_type, iter_order_by)]
+#![feature(if_let_guard, never_type, iter_order_by)]
 
 use ingert::scena::{Expr, Place, Stmt, Var};
 

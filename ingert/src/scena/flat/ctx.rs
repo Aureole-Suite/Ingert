@@ -54,11 +54,9 @@ impl<'a> Ctx<'a> {
 
 	pub fn push(&mut self, val: impl Into<StackVal>) -> Result<(), DecompileError> {
 		let mut val = val.into();
-		if let StackVal::Expr(e) = &mut val {
-			if let Some(l) = e.line_mut() {
-				assert!(l.is_none());
-				*l = self.lines.pop();
-			}
+		if let StackVal::Expr(e) = &mut val && let Some(l) = e.line_mut() {
+			assert!(l.is_none());
+			*l = self.lines.pop();
 		}
 		self.stack.push((val, std::mem::take(&mut self.lines)));
 		Ok(())
