@@ -7,6 +7,7 @@ use ingert::scena::DecompileOptions;
 use ingert_syntax::diag;
 use walkdir::WalkDir;
 use std::path::{Path, PathBuf};
+use std::process::ExitCode;
 use tracing_subscriber::prelude::*;
 
 #[derive(clap::ValueEnum, Clone, Copy)]
@@ -31,7 +32,7 @@ struct Args {
 	output: Option<PathBuf>,
 }
 
-fn main() {
+fn main() -> ExitCode {
 	tracing_subscriber::registry()
 		.with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
 		.with(tracing_subscriber::EnvFilter::builder()
@@ -40,24 +41,33 @@ fn main() {
 		.init();
 	let args = Args::parse();
 
+	let mut success = true;
+
 	if args.output.is_some() && args.files.len() > 1 {
 		tracing::error!("Cannot specify output file with multiple input files");
-		std::process::exit(1);
+		success = false;
+	} else {
+		for path in &args.files {
+			let _span = tracing::info_span!("process_arg", path = %path.display()).entered();
+			if !path.exists() {
+				tracing::error!("File does not exist: {}", path.display());
+				success = false;
+			} else if path.is_dir() {
+				success &= handle_dir(&args, path, args.output.as_deref());
+			} else {
+				success &= handle_file(&args, path, args.output.as_deref());
+			}
+		}
 	}
 
-	for path in &args.files {
-		let _span = tracing::info_span!("process_arg", path = %path.display()).entered();
-		if !path.exists() {
-			tracing::error!("File does not exist: {}", path.display());
-		} else if path.is_dir() {
-			handle_dir(&args, path, args.output.as_deref());
-		} else {
-			handle_file(&args, path, args.output.as_deref());
-		}
+	if success {
+		ExitCode::SUCCESS
+	} else {
+		ExitCode::FAILURE
 	}
 }
 
-fn handle_dir(args: &Args, path: &Path, out: Option<&Path>) {
+fn handle_dir(args: &Args, path: &Path, out: Option<&Path>) -> bool {
 	let mut ing = Vec::new();
 	let mut dat = Vec::new();
 	for entry in WalkDir::new(path).into_iter().filter_map(|v| v.ok()) {
@@ -72,36 +82,43 @@ fn handle_dir(args: &Args, path: &Path, out: Option<&Path>) {
 
 	if !ing.is_empty() && !dat.is_empty() {
 		tracing::error!("Found both ing ({}) and dat ({}) files in the same directory", ing[0].display(), dat[0].display());
+		false
 	} else if !ing.is_empty() {
 		let outdir = out_dir(path, out, ".ing", ".dat");
+		let mut success = true;
 		for file in ing {
 			let infile = path.join(&file);
 			let outfile = out_file(&outdir.join(&file), ".ing", ".dat");
-			compile(args, &infile, &outfile);
+			success &= compile(args, &infile, &outfile);
 		}
+		success
 	} else if !dat.is_empty() {
 		let outdir = out_dir(path, out, ".dat", ".ing");
+		let mut success = true;
 		for file in dat {
 			let infile = path.join(&file);
 			let outfile = out_file(&outdir.join(&file), ".dat", ".ing");
-			decompile(args, &infile, &outfile);
+			success &= decompile(args, &infile, &outfile);
 		}
+		success
 	} else {
 		tracing::error!("No ing or dat files found in directory");
+		false
 	}
 }
 
-fn handle_file(args: &Args, path: &Path, out: Option<&Path>) {
+fn handle_file(args: &Args, path: &Path, out: Option<&Path>) -> bool {
 	if path.extension().is_some_and(|e| e == "ing") {
 		let infile = path;
 		let outfile = out.map_or_else(|| out_file(path, ".ing", ".dat"), |x| x.to_owned());
-		compile(args, infile, &outfile);
+		compile(args, infile, &outfile)
 	} else if path.extension().is_some_and(|e| e == "dat") {
 		let infile = path;
 		let outfile = out.map_or_else(|| out_file(path, ".dat", ".ing"), |x| x.to_owned());
-		decompile(args, infile, &outfile);
+		decompile(args, infile, &outfile)
 	} else {
 		tracing::error!("File is not ing or dat");
+		false
 	}
 }
 
@@ -123,28 +140,36 @@ fn out_dir(path: &Path, out: Option<&Path>, old_suffix: &str, new_suffix: &str) 
 	}
 }
 
-fn decompile(args: &Args, infile: &Path, outfile: &Path) {
+fn decompile(args: &Args, infile: &Path, outfile: &Path) -> bool {
 	let _span = tracing::error_span!("decompile", file = %infile.display()).entered();
-	if let Err(e) = decompile_inner(args, infile, outfile) {
-		if infile.file_name().is_some_and(|n| n == "mon9996_c00.dat") {
-			tracing::warn!("{e:?}");
-			tracing::warn!("This file is known to be broken");
-		} else {
-			tracing::error!("{e:?}");
-			tracing::error!("This is probably a bug in Ingert, please report it.");
+	match decompile_inner(args, infile, outfile) {
+		Ok(v) => v,
+		Err(e) => {
+			if infile.file_name().is_some_and(|n| n == "mon9996_c00.dat") {
+				tracing::warn!("{e:?}");
+				tracing::warn!("This file is known to be broken");
+			} else {
+				tracing::error!("{e:?}");
+				tracing::error!("This is probably a bug in Ingert, please report it.");
+			}
+			false
 		}
 	}
 }
 
-fn compile(_args: &Args, infile: &Path, outfile: &Path) {
+fn compile(_args: &Args, infile: &Path, outfile: &Path) -> bool {
 	let _span = tracing::error_span!("compile", file = %infile.display()).entered();
-	if let Err(e) = compile_inner(infile, outfile) {
-		tracing::error!("{e:?}");
-		tracing::error!("This is probably a bug in Ingert, please report it.");
+	match compile_inner(infile, outfile) {
+		Ok(v) => v,
+		Err(e) => {
+			tracing::error!("{e:?}");
+			tracing::error!("This is probably a bug in Ingert, please report it.");
+			false
+		}
 	}
 }
 
-fn decompile_inner(args: &Args, infile: &Path, outfile: &Path) -> anyhow::Result<()> {
+fn decompile_inner(args: &Args, infile: &Path, outfile: &Path) -> anyhow::Result<bool> {
 	let opts = DecompileOptions {
 		mode: match args.mode {
 			DecompileMode::Asm => ingert::scena::DecompileMode::Asm,
@@ -158,7 +183,7 @@ fn decompile_inner(args: &Args, infile: &Path, outfile: &Path) -> anyhow::Result
 	let data = std::fs::read(infile).with_context(|| format!("failed to read file: {}", infile.display()))?;
 	if !data.starts_with(b"#scp") {
 		tracing::error!("File is not a valid scp file");
-		return Ok(());
+		return Ok(false);
 	}
 	let scp = ingert::scp::read(&data).context("failed to read scp")?;
 	let mut scena = ingert::scena::from_scp(scp);
@@ -168,21 +193,21 @@ fn decompile_inner(args: &Args, infile: &Path, outfile: &Path) -> anyhow::Result
 		std::fs::create_dir_all(parent).with_context(|| format!("failed to create directory: {}", parent.display()))?;
 	}
 	std::fs::write(outfile, &str).with_context(|| format!("failed to write file: {}", outfile.display()))?;
-	Ok(())
+	Ok(true)
 }
 
-fn compile_inner(infile: &Path, outfile: &Path) -> anyhow::Result<()> {
+fn compile_inner(infile: &Path, outfile: &Path) -> anyhow::Result<bool> {
 	let source = std::fs::read_to_string(infile).with_context(|| format!("failed to read file: {}", infile.display()))?;
 	let mut errors = diag::Errors::new();
 	let tokens = ingert_syntax::lex::lex(&source, &mut errors);
 	if errors.max_severity() >= diag::Severity::Fatal {
 		print_errors(infile, &errors, &source);
-		return Ok(());
+		return Ok(false);
 	}
 	let scena = ingert_syntax::parse::parse(&tokens, &mut errors);
 	print_errors(infile, &errors, &source);
 	if errors.max_severity() >= diag::Severity::Error {
-		return Ok(());
+		return Ok(false);
 	}
 	let scp = ingert::scena::compile(scena).context("failed to compile")?;
 	let data = ingert::scp::write(&scp).context("failed to write scp")?;
@@ -190,7 +215,7 @@ fn compile_inner(infile: &Path, outfile: &Path) -> anyhow::Result<()> {
 		std::fs::create_dir_all(parent).with_context(|| format!("failed to create directory: {}", parent.display()))?;
 	}
 	std::fs::write(outfile, &data)?;
-	Ok(())
+	Ok(true)
 }
 
 fn print_errors(path: &Path, errors: &diag::Errors, str: &str) {
