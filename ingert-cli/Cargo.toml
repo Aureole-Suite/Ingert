@@ -3,6 +3,10 @@ name = "ingert-cli"
 version.workspace = true
 edition = "2024"
 
+[[bin]]
+name = "ingert"
+path = "src/main.rs"
+
 [dependencies]
 ingert.path = "../ingert"
 ingert-syntax.path = "../ingert-syntax"
