@@ -63,9 +63,25 @@ fn main() -> ExitCode {
 	if success {
 		ExitCode::SUCCESS
 	} else {
+		windows_wait();
 		ExitCode::FAILURE
 	}
 }
+
+#[cfg(target_os = "windows")]
+fn windows_wait() {
+	use windows_sys::Win32::System::Console::{GetConsoleProcessList, GetConsoleWindow};
+	if unsafe { GetConsoleWindow() }.is_null() {
+		return;
+	}
+	let process_count: u32 = unsafe { GetConsoleProcessList([0].as_mut_ptr(), 1) };
+	if process_count == 1 {
+		std::process::Command::new("cmd").arg("/c").arg("pause").status().ok();
+	}
+}
+
+#[cfg(not(target_os = "windows"))]
+fn windows_wait() {}
 
 fn handle_dir(args: &Args, path: &Path, out: Option<&Path>) -> bool {
 	let mut ing = Vec::new();
